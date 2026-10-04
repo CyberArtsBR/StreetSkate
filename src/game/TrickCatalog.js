@@ -1,3 +1,5 @@
+import { grindProfile } from './SkateSystems.js';
+
 export const DIR = Object.freeze({
   NONE: 'none', LEFT: 'left', RIGHT: 'right', UP: 'up', DOWN: 'down',
   UP_LEFT: 'upLeft', UP_RIGHT: 'upRight', DOWN_LEFT: 'downLeft', DOWN_RIGHT: 'downRight',
@@ -53,23 +55,26 @@ export const GRIND_TRICKS = Object.freeze({
   [DIR.DOWN_RIGHT]: { name: 'Smith', points: 250 },
 });
 
+export const BOARDSLIDE = Object.freeze({ name: 'Boardslide', points: 190 });
+
 export const FLATLAND_TRICKS = Object.freeze({
-  'grind+grind': { name: 'Pogo', points: 200 },
-  'flip+flip': { name: 'Wrap Around', points: 225 },
-  'grab+grab': { name: 'Handstand', points: 300 },
-  'flip+grind': { name: 'Casper', points: 250 },
-  'grind+flip': { name: 'Truck Stand', points: 300 },
-  'flip+grab': { name: 'Anti Casper', points: 275 },
-  'grab+flip': { name: 'To Rail', points: 250 },
-  'grind+grab': { name: 'Switch Foot Pogo', points: 325 },
-  'grab+grind': { name: 'One Foot Manual', points: 325 },
+  'grind+grind': { name: 'Pogo', points: 200, instability: 0.34 },
+  'flip+flip': { name: 'Wrap Around', points: 225, instability: 0.30 },
+  'grab+grab': { name: 'Handstand', points: 300, instability: 0.48 },
+  'flip+grind': { name: 'Casper', points: 250, instability: 0.40 },
+  'grind+flip': { name: 'Truck Stand', points: 300, instability: 0.46 },
+  'flip+grab': { name: 'Anti Casper', points: 275, instability: 0.42 },
+  'grab+flip': { name: 'To Rail', points: 250, instability: 0.38 },
+  'grind+grab': { name: 'Switch Foot Pogo', points: 325, instability: 0.52 },
+  'grab+grind': { name: 'One Foot Manual', points: 325, instability: 0.50 },
 });
 
 export const MANUALS = Object.freeze({
-  manual: { name: 'Manual', points: 100, pitch: -0.16 },
-  noseManual: { name: 'Nose Manual', points: 100, pitch: 0.16 },
+  manual: { name: 'Manual', points: 100, pitch: -0.16, difficulty: 1.0, durationRate: 28 },
+  noseManual: { name: 'Nose Manual', points: 100, pitch: 0.16, difficulty: 1.06, durationRate: 30 },
 });
 
 export function flipFor(direction) { return FLIP_TRICKS[direction] || FLIP_TRICKS[DIR.NONE]; }
 export function grabFor(direction) { return GRAB_TRICKS[direction] || GRAB_TRICKS[DIR.NONE]; }
-export function grindFor(direction) { return GRIND_TRICKS[direction] || GRIND_TRICKS[DIR.NONE]; }
+export function grindFor(direction, boardslide = false) { return boardslide ? BOARDSLIDE : (GRIND_TRICKS[direction] || GRIND_TRICKS[DIR.NONE]); }
+export function grindPresentation(name) { return grindProfile(name); }

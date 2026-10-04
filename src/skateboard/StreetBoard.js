@@ -26,8 +26,8 @@ export class StreetBoard {
     return this;
   }
 
-  update({ airborne = false, flipState = null, grab = false, manual = null, grinding = false, wallRide = false }) {
-    this.root.position.y = this.deckHeight + (airborne || grinding ? 0.025 : 0);
+  update({ airborne = false, flipState = null, grab = false, manual = null, manualBalance = 0, grind = null, wallRide = false }) {
+    this.root.position.y = this.deckHeight + (airborne ? 0.025 : 0) + (grind?.profile?.presentation?.visualLift || 0);
     let x = grab ? -0.12 : 0;
     let y = 0;
     let z = 0;
@@ -37,9 +37,14 @@ export class StreetBoard {
       y += p * Math.PI * 2 * (flipState.yaw || 0);
       z += p * Math.PI * 2 * (flipState.roll || 0);
     }
-    if (manual === 'manual') x -= 0.16;
-    if (manual === 'noseManual') x += 0.16;
-    if (grinding) z += 0.035;
+    if (manual === 'manual') x -= 0.16 + THREE.MathUtils.clamp(manualBalance, -1, 1) * 0.035;
+    if (manual === 'noseManual') x += 0.16 - THREE.MathUtils.clamp(manualBalance, -1, 1) * 0.035;
+    if (grind?.profile?.presentation) {
+      const presentation = grind.profile.presentation;
+      x += presentation.pitch || 0;
+      y += presentation.yaw || 0;
+      z += presentation.roll || 0;
+    }
     if (wallRide) z += 0.22;
     this.root.rotation.set(x, y, z);
   }

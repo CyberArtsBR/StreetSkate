@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { StreetPhysics } from './StreetPhysics.js';
+import { SkillStreetPhysics } from './SkillStreetPhysics.js';
 import { UnrealRider } from '../character/UnrealRider.js';
 import { StreetBoard } from '../skateboard/StreetBoard.js';
+import { ensureBalanceHud } from './BalanceHud.js';
 
-export class StreetSkater extends StreetPhysics {
+export class StreetSkater extends SkillStreetPhysics {
   constructor(options) {
     super(options);
     this.root = new THREE.Group();
@@ -20,6 +21,7 @@ export class StreetSkater extends StreetPhysics {
     ]);
     this.visual.add(this.board.root, this.rider.root);
     this.rider.deckHeight = this.board.deckHeight;
+    this.balanceHud = ensureBalanceHud();
     this.update(0, {}, 0);
     return this;
   }
@@ -43,7 +45,8 @@ export class StreetSkater extends StreetPhysics {
       airborne: !this.grounded && !this.grind,
       grab: grabActive,
       manual: this.manual,
-      grinding: Boolean(this.grind),
+      manualBalance: this.manualBalance,
+      grind: this.grind,
       wallRide: Boolean(this.wallRide),
     });
     this.rider?.update({
@@ -61,6 +64,7 @@ export class StreetSkater extends StreetPhysics {
       stance: this.stance,
       flatland: this.flatland,
     });
+    this.balanceHud?.update(this.balanceMode(), this.balanceValue());
     return { speedRatio };
   }
 }

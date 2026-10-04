@@ -1,3 +1,5 @@
+import { DirectionTapDetector } from './DirectionTapDetector.js';
+
 const PREVENT_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export class SkateInput {
@@ -8,6 +10,7 @@ export class SkateInput {
     this.released = new Set();
     this.enabled = false;
     this.padPrevious = {};
+    this.analogTaps = new DirectionTapDetector({ activation: 0.65, neutral: 0.30 });
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.pointerLook = false;
@@ -52,6 +55,7 @@ export class SkateInput {
   clear() {
     this.keys.clear(); this.pressed.clear(); this.released.clear();
     this.padPrevious = {};
+    this.analogTaps.reset();
     this.mouseDX = 0; this.mouseDY = 0; this.pointerLook = false;
   }
 
@@ -83,19 +87,21 @@ export class SkateInput {
     const dpadSteer = Number(buttons.dpadRight) - Number(buttons.dpadLeft);
     const keyboardDrive = Number(held('KeyW')) - Number(held('KeyS'));
     const dpadDrive = Number(buttons.dpadUp) - Number(buttons.dpadDown);
-    const steer = keyboardSteer || dpadSteer || axis(pad?.axes[0]);
-    const drive = keyboardDrive || dpadDrive || -axis(pad?.axes[1]);
+    const rawStickX = pad?.axes?.[0] || 0;
+    const rawStickY = -(pad?.axes?.[1] || 0);
+    const steer = keyboardSteer || dpadSteer || axis(rawStickX);
+    const drive = keyboardDrive || dpadDrive || axis(rawStickY);
 
-    const directionTaps = [];
-    if (just('KeyW') || edge('dpadUp')) directionTaps.push('up');
-    if (just('KeyS') || edge('dpadDown')) directionTaps.push('down');
-    if (just('KeyA') || edge('dpadLeft')) directionTaps.push('left');
-    if (just('KeyD') || edge('dpadRight')) directionTaps.push('right');
+    const directionTaps = new Set(this.analogTaps.update(rawStickX, rawStickY));
+    if (just('KeyW') || edge('dpadUp')) directionTaps.add('up');
+    if (just('KeyS') || edge('dpadDown')) directionTaps.add('down');
+    if (just('KeyA') || edge('dpadLeft')) directionTaps.add('left');
+    if (just('KeyD') || edge('dpadRight')) directionTaps.add('right');
 
     const state = {
       steer,
       drive,
-      directionTaps,
+      directionTaps: [...directionTaps],
       brake: held('ShiftLeft', 'ShiftRight'),
       ollieHeld: held('Space') || buttons.ollie,
       olliePressed: just('Space') || edge('ollie'),
