@@ -1,0 +1,94 @@
+name: StreetSkate CI
+
+on:
+  push:
+    branches: [main, infra/ci-guardrails]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: streetskate-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate required runtime assets
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const required = [
+            ['public/assets/park/insanity-inspired-park.glb', 100_000],
+            ['public/assets/park/park-collision.glb', 10_000],
+            ['public/assets/rider/TheanchoURi.glb', 100_000],
+            ['public/assets/rider/skateboard.glb', 100_000],
+            ['public/assets/park/park-manifest.json', 100],
+          ];
+
+          for (const [file, minBytes] of required) {
+            if (!fs.existsSync(file)) throw new Error(`Missing runtime asset: ${file}`);
+            const size = fs.statSync(file).size;
+            if (size < minBytes) throw new Error(`Runtime asset looks truncated: ${file} (${size} bytes)`);
+            console.log(`OK ${file} ${size} bytes`);
+          }
+
+          const manifest = JSON.parse(fs.readFileSync('public/assets/park/park-manifest.json', 'utf8'));
+          if (!Array.isArray(manifest.spawn) || manifest.spawn.length !== 3) throw new Error('Manifest spawn is invalid');
+          if (!Array.isArray(manifest.rails) || manifest.rails.length === 0) throw new Error('Manifest rails are missing');
+          if (!Number.isFinite(manifest.visualTriangles) || !Number.isFinite(manifest.collisionTriangles)) {
+            throw new Error('Manifest triangle counts are invalid');
+          }
+          console.log(`Manifest OK: ${manifest.visualTriangles} visual / ${manifest.collisionTriangles} collision triangles / ${manifest.rails.length} rail paths`);
+          NODE
+
+      - name: Syntax-check JavaScript modules
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src tools -type f \( -name '*.js' -o -name '*.mjs' \) -print0)
+
+      - name: Run adaptive verification suite
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const scripts = Object.keys(pkg.scripts || {})
+            .filter(name => name === 'verify' || name.startsWith('verify:'))
+            .sort();
+
+          if (!scripts.length) {
+            console.log('No verify scripts found yet; CI will automatically run them when added.');
+            process.exit(0);
+          }
+
+          for (const script of scripts) {
+            console.log(`\n=== npm run ${script} ===`);
+            const result = spawnSync('npm', ['run', script], { stdio: 'inherit', shell: process.platform === 'win32' });
+            if (result.status !== 0) process.exit(result.status ?? 1);
+          }
+          NODE
+
+      - name: Production build
+        run: npm run build
