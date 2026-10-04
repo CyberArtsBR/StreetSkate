@@ -1,15 +1,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { createProceduralPark } from './park/ProceduralPark.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
 const app = document.querySelector('#app');
-const loader = new GLTFLoader();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#25363d');
 scene.fog = new THREE.FogExp2('#25363d', 0.005);
@@ -144,36 +143,18 @@ function showError(error) {
 
 async function loadGame() {
   try {
-    const [manifestResponse, parkGltf, collisionGltf] = await Promise.all([
-      fetch('/assets/park/park-manifest.json'),
-      loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
-      loader.loadAsync('/assets/park/park-collision.glb'),
-    ]);
-    if (!manifestResponse.ok) throw new Error('Park manifest unavailable');
-    manifest = await manifestResponse.json();
-
-    park = parkGltf.scene;
-    park.traverse((object) => {
-      if (!object.isMesh) return;
-      if (!object.geometry.attributes.normal) object.geometry.computeVertexNormals();
-      object.castShadow = true;
-      object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        if (material?.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      }
-    });
+    const built = createProceduralPark();
+    manifest = { spawn: built.spawn, visualTriangles: built.visualTriangles };
+    park = built.scene;
+    collision = built.collision;
     scene.add(park);
-
-    collision = collisionGltf.scene;
-    collision.name = 'park-collision';
-    collision.updateMatrixWorld(true);
 
     skater = await new StreetSkater({ collision, spawn: manifest.spawn }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
 
-    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
+    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k test triangles`;
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');

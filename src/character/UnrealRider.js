@@ -20,8 +20,13 @@ export class UnrealRider {
   }
 
   async load() {
-    const gltf = await new GLTFLoader().loadAsync(this.url);
-    this.model = gltf.scene;
+    try {
+      const gltf = await new GLTFLoader().loadAsync(this.url);
+      this.model = gltf.scene;
+    } catch (error) {
+      console.warn('Rider GLB unavailable; using procedural test rider.', error);
+      this.model = this._buildFallback();
+    }
     this.model.name = 'TheanchoURi';
     const referenceSphere = this.model.getObjectByName('Icosphere');
     referenceSphere?.removeFromParent();
@@ -48,6 +53,27 @@ export class UnrealRider {
     this.root.userData.sourceHeight = height;
     this.root.userData.runtimeHeight = 1.82;
     return this;
+  }
+
+  _buildFallback() {
+    const root = new THREE.Group();
+    root.name = 'TheanchoURi-fallback';
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc69a78, roughness: 0.72 });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x242b36, roughness: 0.8 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0x70d7ff, roughness: 0.55, metalness: 0.15 });
+    const add = (geometry, material, position, rotation=[0,0,0]) => {
+      const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position); mesh.rotation.set(...rotation); mesh.castShadow=true; root.add(mesh); return mesh;
+    };
+    add(new THREE.CapsuleGeometry(.24,.62,5,10), cloth, [0,1.08,0]);
+    add(new THREE.SphereGeometry(.24,16,12), skin, [0,1.67,0]);
+    add(new THREE.CapsuleGeometry(.10,.52,4,8), cloth, [-.18,.53,.02],[0,0,.08]);
+    add(new THREE.CapsuleGeometry(.10,.52,4,8), cloth, [.18,.53,-.02],[0,0,-.08]);
+    add(new THREE.BoxGeometry(.18,.09,.52), accent, [-.18,.13,.04]);
+    add(new THREE.BoxGeometry(.18,.09,.52), accent, [.18,.13,-.04]);
+    add(new THREE.CapsuleGeometry(.075,.48,4,8), skin, [-.38,1.10,0],[0,0,.5]);
+    add(new THREE.CapsuleGeometry(.075,.48,4,8), skin, [.38,1.10,0],[0,0,-.5]);
+    root.userData.fallback = true;
+    return root;
   }
 
   _rotate(slot, x = 0, y = 0, z = 0) {

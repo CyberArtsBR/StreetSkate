@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "verify": "node tools/verify-park.mjs",
-    "verify:player": "node tools/verify-player.mjs",
-    "prebuild": "node tools/restore-assets.mjs"
+    "verify:player": "node tools/verify-player.mjs"
   },
   "dependencies": {
     "three": "0.180.0"
