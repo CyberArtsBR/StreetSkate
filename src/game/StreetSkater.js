@@ -36,11 +36,32 @@ export class StreetSkater extends StreetPhysics {
     const back = forward.clone().negate();
     const right = new THREE.Vector3().crossVectors(this.presentationNormal, back).normalize();
     this.visual.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, this.presentationNormal, back));
+
     const speedRatio = Math.min(Math.abs(this.speed) / this.config.maxSpeed, 1);
-    this.board?.update({ distance: this.distance, flip: this.flipActive ? this.flipProgress : 0,
-      airborne: !this.grounded, grab: !this.grounded && input.grab });
-    this.rider?.update({ speedRatio, crouch: this.charge, airborne: !this.grounded,
-      steer: this.steer, grab: !this.grounded && input.grab, time: elapsed, dt: delta, bail: this.bailTime > 0 });
+    const grabActive = Boolean(this.grabState && input.grabHeld);
+    this.board?.update({
+      flipState: this.flipState,
+      airborne: !this.grounded && !this.grind,
+      grab: grabActive,
+      manual: this.manual,
+      grinding: Boolean(this.grind),
+      wallRide: Boolean(this.wallRide),
+    });
+    this.rider?.update({
+      speedRatio,
+      crouch: Math.max(this.charge, this.grind ? 0.34 : this.manual ? 0.2 : 0),
+      airborne: !this.grounded && !this.grind,
+      steer: this.steer,
+      grab: grabActive,
+      time: elapsed,
+      dt: delta,
+      bail: this.bailTime > 0,
+      manual: this.manual,
+      grinding: Boolean(this.grind),
+      wallRide: Boolean(this.wallRide),
+      stance: this.stance,
+      flatland: this.flatland,
+    });
     return { speedRatio };
   }
 }
