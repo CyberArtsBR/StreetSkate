@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+const clamp = THREE.MathUtils.clamp;
+
 export class StreetBoard {
   constructor(url) {
     this.url = url;
     this.root = new THREE.Group();
     this.root.name = 'street-board';
+    this._rotation = new THREE.Vector3();
   }
 
   async load() {
@@ -19,33 +22,69 @@ export class StreetBoard {
     this.deckHeight = -original.min.y * this.model.scale.x;
     this.model.position.set(-center.x, -box.min.y - this.deckHeight, -center.z);
     this.root.add(this.model);
-    this.model.traverse(o => {
-      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
-    });
+    this.model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.root.userData.source = 'CyberArtsBR/Skate skateboard.glb';
     return this;
   }
 
-  update({ airborne = false, flipState = null, grab = false, manual = null, manualBalance = 0, grind = null, wallRide = false }) {
-    this.root.position.y = this.deckHeight + (airborne ? 0.025 : 0) + (grind?.profile?.presentation?.visualLift || 0);
-    let x = grab ? -0.12 : 0;
+  pointWorld(x, y, z, target = new THREE.Vector3()) {
+    target.set(x, y, z);
+    return this.root.localToWorld(target);
+  }
+
+  update({ airborne = false, flipState = null, grabState = null, manual = null, manualBalance = 0,
+    grind = null, grindBalance = 0, wallRide = null, bail = false, bailProgress = 0,
+    stance = 1, flatland = null, time = 0 }) {
+    const grindPose = grind?.profile?.presentation;
+    this.root.position.set(0,
+      this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);
+    let x = grabState ? -0.045 : 0;
     let y = 0;
     let z = 0;
+
     if (flipState) {
-      const p = THREE.MathUtils.clamp(flipState.progress, 0, 1);
+      const p = clamp(flipState.progress, 0, 1);
       x += p * Math.PI * 2 * (flipState.pitch || 0);
       y += p * Math.PI * 2 * (flipState.yaw || 0);
       z += p * Math.PI * 2 * (flipState.roll || 0);
     }
-    if (manual === 'manual') x -= 0.16 + THREE.MathUtils.clamp(manualBalance, -1, 1) * 0.035;
-    if (manual === 'noseManual') x += 0.16 - THREE.MathUtils.clamp(manualBalance, -1, 1) * 0.035;
-    if (grind?.profile?.presentation) {
-      const presentation = grind.profile.presentation;
-      x += presentation.pitch || 0;
-      y += presentation.yaw || 0;
-      z += presentation.roll || 0;
+    if (manual === 'manual') x -= 0.16 + clamp(manualBalance, -1, 1) * 0.035;
+    if (manual === 'noseManual') x += 0.16 - clamp(manualBalance, -1, 1) * 0.035;
+    if (grindPose) {
+      x += grindPose.pitch || 0;
+      y += grindPose.yaw || 0;
+      z += grindPose.roll || 0;
+      z += clamp(grindBalance, -1, 1) * 0.04;
     }
-    if (wallRide) z += 0.22;
-    this.root.rotation.set(x, y, z);
+    if (wallRide) z += 0.12;
+
+    if (flatland) {
+      const wave = Math.sin(time * 7) * 0.08;
+      switch (flatland) {
+        case 'Pogo': x -= 0.48; break;
+        case 'Wrap Around': y += wave * 2.4; break;
+        case 'Handstand': x += 0.11; break;
+        case 'Casper': z += Math.PI; x -= 0.12; break;
+        case 'Truck Stand': y += Math.PI * 0.5; x -= 0.2; break;
+        case 'Anti Casper': z += Math.PI; x += 0.12; break;
+        case 'To Rail': y -= Math.PI * 0.5; break;
+        case 'Switch Foot Pogo': x += 0.48; break;
+        case 'One Foot Manual': x += stance > 0 ? -0.18 : 0.18; break;
+        default: break;
+      }
+    }
+
+    if (bail) {
+      const p = clamp(bailProgress, 0, 1);
+      this.root.position.x += (stance < 0 ? -1 : 1) * (0.08 + p * 0.28);
+      this.root.position.y += 0.05 + p * 0.2;
+      this.root.position.z += p * 0.12;
+      x += p * 1.7;
+      y += p * 1.1;
+      z += p * 2.2;
+    }
+
+    this._rotation.set(x, y, z);
+    this.root.rotation.copy(this._rotation);
   }
 }

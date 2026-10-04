@@ -1,171 +1,45 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 
-const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const V = (x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+const Q = ()=>new THREE.Quaternion();
+const M = ()=>new THREE.Matrix4();
+const C = THREE.MathUtils.clamp;
+const SEMANTIC = Object.freeze({root:'root',pelvis:'pelvis',spine1:'spine_01',spine2:'spine_02',spine3:'spine_03',neck:'neck_01',head:'head',clavicleL:'clavicle_l',clavicleR:'clavicle_r',upperArmL:'upperarm_l',upperArmR:'upperarm_r',lowerArmL:'lowerarm_l',lowerArmR:'lowerarm_r',handL:'hand_l',handR:'hand_r',thighL:'thigh_l',thighR:'thigh_r',calfL:'calf_l',calfR:'calf_r',footL:'foot_l',footR:'foot_r'});
 
-function setWorldRotation(bone, rotation) {
-  bone.quaternion.copy(bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(rotation));
-  bone.updateWorldMatrix(false, true);
-}
+function finiteQ(q){return Number.isFinite(q.x)&&Number.isFinite(q.y)&&Number.isFinite(q.z)&&Number.isFinite(q.w)}
+function setWorldQ(b,q){if(!b?.parent||!finiteQ(q))return;b.quaternion.copy(b.parent.getWorldQuaternion(Q()).invert().multiply(q));if(!finiteQ(b.quaternion))b.quaternion.identity();b.updateWorldMatrix(false,true)}
+function frame(dir,ref){const x=dir.clone().normalize();const y=ref.clone().projectOnPlane(x);if(y.lengthSq()<1e-8)y.copy(Math.abs(x.y)<.9?V(0,1,0):V(0,0,1)).projectOnPlane(x);y.normalize();return Q().setFromRotationMatrix(M().makeBasis(x,y,V().crossVectors(x,y).normalize()))}
+function aim(b,child,target){if(!b||!child)return;b.updateWorldMatrix(true,true);const o=b.getWorldPosition(V()),a=child.getWorldPosition(V()).sub(o),d=target.clone().sub(o);if(a.lengthSq()<1e-9||d.lengthSq()<1e-9)return;setWorldQ(b,Q().setFromUnitVectors(a.normalize(),d.normalize()).multiply(b.getWorldQuaternion(Q())))}
+function limb(upper,lower,end,target,pole){if(!upper||!lower||!end)return;const hip=upper.getWorldPosition(V()),knee=lower.getWorldPosition(V()),foot=end.getWorldPosition(V());const a=hip.distanceTo(knee),b=knee.distanceTo(foot),ray=target.clone().sub(hip);if(a<1e-5||b<1e-5||ray.lengthSq()<1e-9)return;const axis=ray.normalize(),dist=C(hip.distanceTo(target),Math.abs(a-b)+.001,a+b-.001),along=(a*a+dist*dist-b*b)/(2*dist);const side=pole.clone().sub(hip).projectOnPlane(axis);if(side.lengthSq()<1e-8)side.set(0,0,1).projectOnPlane(axis);side.normalize();const wanted=hip.clone().addScaledVector(axis,along).addScaledVector(side,Math.sqrt(Math.max(0,a*a-along*along)));aim(upper,lower,wanted);aim(lower,end,hip.clone().addScaledVector(axis,dist))}
 
-function frame(direction, reference) {
-  const x = direction.clone().normalize();
-  const y = reference.clone().projectOnPlane(x);
-  if (y.lengthSq() < 1e-8) y.copy(Math.abs(x.y) < 0.9 ? V(0, 1, 0) : V(0, 0, 1)).projectOnPlane(x);
-  y.normalize();
-  const z = V().crossVectors(x, y).normalize();
-  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
-}
-
-// Aim using world directions; Unreal bone axes are not anatomical Euler axes.
-function aim(bone, child, target) {
-  bone.updateWorldMatrix(true, true);
-  const origin = bone.getWorldPosition(V());
-  const current = child.getWorldPosition(V()).sub(origin).normalize();
-  const desired = target.clone().sub(origin).normalize();
-  const rotation = new THREE.Quaternion().setFromUnitVectors(current, desired)
-    .multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
-  setWorldRotation(bone, rotation);
-}
-
-function solveLimb(upper, lower, end, target, pole, alignElbow = false) {
-  const hip = upper.getWorldPosition(V());
-  const knee = lower.getWorldPosition(V());
-  const foot = end.getWorldPosition(V());
-  const a = hip.distanceTo(knee), b = knee.distanceTo(foot);
-  const axis = target.clone().sub(hip).normalize();
-  const distance = THREE.MathUtils.clamp(hip.distanceTo(target), Math.abs(a - b) + 0.001, a + b - 0.001);
-  const reachable = hip.clone().addScaledVector(axis, distance);
-  const along = (a * a + distance * distance - b * b) / (2 * distance);
-  const perpendicular = pole.clone().sub(hip).projectOnPlane(axis).normalize();
-  const desiredKnee = hip.clone().addScaledVector(axis, along)
-    .addScaledVector(perpendicular, Math.sqrt(Math.max(0, a * a - along * along)));
-  if (alignElbow) {
-    // Match the authored elbow bend plane, not just the upper-arm direction.
-    // A direction-only solve can roll the sleeve and make the elbow bend sideways.
-    const restDirection = knee.clone().sub(hip).normalize();
-    const restNormal = V().crossVectors(restDirection, foot.clone().sub(knee).normalize());
-    const desiredDirection = desiredKnee.clone().sub(hip).normalize();
-    const desiredNormal = V().crossVectors(desiredDirection, reachable.clone().sub(desiredKnee).normalize());
-    if (restNormal.lengthSq() > 1e-5 && desiredNormal.lengthSq() > 1e-5) {
-      const rotation = frame(desiredDirection, desiredNormal)
-        .multiply(frame(restDirection, restNormal).invert())
-        .multiply(upper.getWorldQuaternion(new THREE.Quaternion()));
-      setWorldRotation(upper, rotation);
-    } else aim(upper, lower, desiredKnee);
-  } else aim(upper, lower, desiredKnee);
-  aim(lower, end, reachable);
-}
-
-export class UnrealRider {
-  constructor(url) {
-    this.url = url;
-    this.root = new THREE.Group();
-    this.root.name = 'street-rider';
-    this.rest = new Map();
-    this.feet = {};
-    this.hands = {};
-    this.pose = { compression: 0, air: 0, grab: 0, steer: 0 };
-    this.deckHeight = 0.12;
-  }
-
-  async load() {
-    this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
-    const box = new THREE.Box3().setFromObject(this.model);
-    this.model.scale.setScalar(1.82 / box.getSize(V()).y);
-    this.model.rotation.y = Math.PI / 2;
-    this.model.position.y = -box.min.y * this.model.scale.x;
-    this.baseY = this.model.position.y;
-    this.root.add(this.model);
-    this.model.traverse(o => {
-      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
-      if (o.isBone) this.rest.set(o, o.quaternion.clone());
-    });
-    this.bones = Object.fromEntries([...this.rest.keys()].map(b => [b.name, b]));
-    this.root.updateMatrixWorld(true);
-    for (const side of ['l', 'r']) {
-      const foot = this.bones['foot_' + side];
-      this.feet[side] = {
-        point: this.root.worldToLocal(foot.getWorldPosition(V())),
-        quaternion: foot.getWorldQuaternion(new THREE.Quaternion()),
-      };
-      const hand = this.bones['hand_' + side];
-      const wrist = hand.getWorldPosition(V());
-      const fingers = this.bones['middle_03_' + side].getWorldPosition(V()).sub(wrist);
-      const thumb = this.bones['thumb_02_' + side].getWorldPosition(V()).sub(wrist);
-      this.hands[side] = {
-        frame: frame(fingers, thumb),
-        rotation: hand.getWorldQuaternion(new THREE.Quaternion()),
-      };
-    }
-    this.root.userData.rig = 'Unreal 61-bone skeleton; procedural skating pose with foot IK';
-    this.root.userData.runtimeHeight = 1.82;
-    return this;
-  }
-
-  update({ speedRatio = 0, crouch = 0, airborne = false, steer = 0, grab = false, time = 0, dt = 1 / 60, bail = false }) {
-    for (const [bone, q] of this.rest) bone.quaternion.copy(q);
-    const blend = 1 - Math.exp(-12 * Math.max(dt, 1 / 120));
-    const goals = { compression: THREE.MathUtils.clamp(crouch + (airborne ? grab ? 0.8 : 0.3 : 0), 0, 1),
-      air: Number(airborne), grab: Number(grab), steer };
-    for (const key of Object.keys(this.pose)) this.pose[key] += (goals[key] - this.pose[key]) * blend;
-    const { compression, air, grab: grabWeight, steer: balance } = this.pose;
-    this.root.position.y = this.deckHeight + (airborne ? 0.025 : 0);
-    this.model.position.y = this.baseY - 0.025 - compression * 0.13;
-    this.root.updateWorldMatrix(true, true);
-    const rootRotation = this.root.getWorldQuaternion(new THREE.Quaternion());
-    const rotate = (name, axis, angle) => {
-      const bone = this.bones[name];
-      const delta = new THREE.Quaternion().setFromAxisAngle(axis.clone().applyQuaternion(rootRotation), angle);
-      setWorldRotation(bone, delta.multiply(bone.getWorldQuaternion(new THREE.Quaternion())));
-    };
-    // Share the gaze and crouch across the torso instead of twisting only the neck.
-    for (const name of ['spine_01', 'spine_02', 'spine_03']) {
-      rotate(name, V(0, 1, 0), 0.055);
-      rotate(name, V(0, 0, 1), -0.015 - compression * 0.045 - balance * 0.018);
-    }
-    rotate('neck_01', V(0, 1, 0), 0.13);
-    rotate('head', V(0, 1, 0), 0.28);
-    for (const side of ['l', 'r']) {
-      const target = this.root.localToWorld(this.feet[side].point.clone());
-      solveLimb(this.bones['thigh_' + side], this.bones['calf_' + side], this.bones['foot_' + side],
-        target, this.root.localToWorld(V(1, 0.2, 0)));
-      const foot = this.bones['foot_' + side];
-      foot.quaternion.copy(foot.parent.getWorldQuaternion(new THREE.Quaternion()).invert()
-        .multiply(rootRotation.clone().multiply(this.feet[side].quaternion)));
-    }
-    for (const side of ['l', 'r']) {
-      const sign = side === 'l' ? -1 : 1;
-      const upper = this.bones['upperarm_' + side];
-      const lower = this.bones['lowerarm_' + side];
-      const hand = this.bones['hand_' + side];
-      const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
-      const sway = Math.sin(time * 3.5 + sign * 0.4) * 0.008 * speedRatio;
-      const target = shoulder.clone().add(V(0.13 + compression * 0.025,
-        -0.31 + air * 0.065 + sign * balance * 0.035 + sway, sign * (0.13 + air * 0.075)));
-      if (side === 'l') target.lerp(V(0.18, 0.43, -0.22), grabWeight);
-      if (bail) target.y += 0.25;
-      const elbowPole = shoulder.clone().add(V(-0.18, -0.2, sign * 0.7));
-      solveLimb(upper, lower, hand, this.root.localToWorld(target), this.root.localToWorld(elbowPole), true);
-
-      // Fingers extend along the forearm; thumbs face forward. Share wrist roll
-      // with the forearm so the cuffs do not take the entire twist.
-      const fingerDirection = hand.getWorldPosition(V()).sub(lower.getWorldPosition(V())).normalize();
-      const thumbDirection = V(1, 0, 0).applyQuaternion(rootRotation);
-      const desired = frame(fingerDirection, thumbDirection)
-        .multiply(this.hands[side].frame.clone().invert()).multiply(this.hands[side].rotation);
-      const current = hand.getWorldQuaternion(new THREE.Quaternion());
-      const correction = desired.clone().multiply(current.clone().invert());
-      if (correction.w < 0) correction.set(-correction.x, -correction.y, -correction.z, -correction.w);
-      const roll = THREE.MathUtils.clamp(2 * Math.atan2(V(correction.x, correction.y, correction.z).dot(fingerDirection), correction.w), -0.8, 0.8);
-      const forearmRoll = new THREE.Quaternion().setFromAxisAngle(fingerDirection, roll * 0.65);
-      setWorldRotation(lower, forearmRoll.multiply(lower.getWorldQuaternion(new THREE.Quaternion())));
-      const twist = this.bones['lowerarm_twist_01_' + side];
-      twist.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(hand.position.clone().normalize(), -roll * 0.325).multiply(this.rest.get(twist)));
-      const wrist = hand.getWorldQuaternion(new THREE.Quaternion());
-      const angle = wrist.angleTo(desired);
-      setWorldRotation(hand, wrist.slerp(desired, Math.min(1, 0.45 / Math.max(angle, 1e-6))));
-    }
-    this.root.updateWorldMatrix(true, true);
+export class UnrealRider{
+  constructor(url){this.url=url;this.root=new THREE.Group();this.root.name='street-rider';this.rest=new Map();this.feet={};this.hands={};this.deckHeight=.12;this.channels=new Map();for(const s of Object.values(PRESENTATION_STATES))this.channels.set(s,{value:s==='IDLE'?1:0,velocity:0});this.scalar={compression:{value:0,velocity:0},manual:{value:0,velocity:0},grind:{value:0,velocity:0},land:{value:0,velocity:0}};this.ft={l:V(),r:V()};this.at={l:V(),r:V()}}
+  async load(){this.model=(await new GLTFLoader().loadAsync(this.url)).scene;const box=new THREE.Box3().setFromObject(this.model);this.model.scale.setScalar(1.82/box.getSize(V()).y);this.model.rotation.y=Math.PI/2;this.model.position.y=-box.min.y*this.model.scale.x;this.basePos=this.model.position.clone();this.baseQ=this.model.quaternion.clone();this.root.add(this.model);this.model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false}if(o.isBone)this.rest.set(o,o.quaternion.clone())});this.bones=Object.fromEntries([...this.rest.keys()].map(b=>[b.name,b]));const missing=Object.entries(SEMANTIC).filter(([,n])=>!this.bones[n]).map(([k])=>k);this.rigAudit={boneCount:this.rest.size,missing,semanticNames:Object.fromEntries(Object.entries(SEMANTIC).map(([k,n])=>[k,this.bones[n]?.name||null]))};if(missing.length)console.warn('[StreetSkate] rider rig missing:',missing.join(', '));this.root.updateMatrixWorld(true);for(const side of ['l','r']){const f=this.bones['foot_'+side];if(f)this.feet[side]={point:this.root.worldToLocal(f.getWorldPosition(V())),q:f.getWorldQuaternion(Q())};const h=this.bones['hand_'+side];if(h)this.hands[side]={q:h.getWorldQuaternion(Q())}}this.root.userData.rigAudit=this.rigAudit;this.root.userData.rig=`Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;return this}
+  w(s){return this.channels.get(s)?.value||0}
+  rotate(name,axis,angle,rootQ){const b=this.bones[name];if(!b||Math.abs(angle)<1e-5)return;const worldAxis=axis.clone().applyQuaternion(rootQ);setWorldQ(b,Q().setFromAxisAngle(worldAxis,angle).multiply(b.getWorldQuaternion(Q())))}
+  boardPoint(board,x,y,z){return board?.pointWorld?.(x,y,z,V())||null}
+  grabTarget(name,side,stance,board){const sign=side==='l'?-1:1,front=stance<0?'r':'l',rear=front==='l'?'r':'l';switch(name){case'Indy':return side===rear?this.boardPoint(board,0,.04,sign*.16):null;case'Melon':return side===front?this.boardPoint(board,0,.04,-sign*.16):null;case'Nosegrab':return side===front?this.boardPoint(board,.43,.05,0):null;case'Tailgrab':return side===rear?this.boardPoint(board,-.43,.05,0):null;case'Japan':return side===front?this.boardPoint(board,.04,.04,-sign*.18):null;case'Madonna':return side===front?this.boardPoint(board,.43,.05,sign*.08):null;case'Benihana':return side===rear?this.boardPoint(board,-.35,.05,sign*.08):null;default:return null}}
+  update({presentation,board,speedRatio=0,crouch=0,steer=0,pushWeight=0,pushPhase=0,flipState=null,flipPhase=null,grabState=null,manual=null,manualBalance=0,grindType=null,grindBalance=0,wallRide=null,vert=false,verticalVelocity=0,bail=false,bailProgress=0,stance=1,flatland=null,landingSeverity=0,pumpState='OFF',time=0,dt=1/60}){
+    for(const [b,q]of this.rest)b.quaternion.copy(q);this.model.position.copy(this.basePos);this.model.quaternion.copy(this.baseQ);
+    const state=presentation?.state||PRESENTATION_STATES.IDLE;for(const [name,ch]of this.channels)springStep(ch,name===state?1:0,transitionFrequency(name===state?state:name),dt);
+    const air=this.w(PRESENTATION_STATES.AIR)+this.w(PRESENTATION_STATES.VERT_AIR)+this.w(PRESENTATION_STATES.OLLIE_POP),brake=this.w(PRESENTATION_STATES.BRAKE),wall=this.w(PRESENTATION_STATES.WALLRIDE),flat=this.w(PRESENTATION_STATES.FLATLAND),land=this.w(PRESENTATION_STATES.LAND);const manualW=this.w(PRESENTATION_STATES.MANUAL)+this.w(PRESENTATION_STATES.NOSE_MANUAL),grindW=this.w(PRESENTATION_STATES.GRIND),pump=this.w(PRESENTATION_STATES.PUMP);
+    const compTarget=C(crouch+landingSeverity*.85+grindW*.22+manualW*.12+(grabState?.name?.length?air*.22:0)-pump*.18,0,1);const comp=springStep(this.scalar.compression,compTarget,8,dt);springStep(this.scalar.manual,manualW,7,dt);springStep(this.scalar.grind,grindW,7,dt);springStep(this.scalar.land,land,11,dt);
+    this.root.position.y=this.deckHeight+(air||grindW?.025:0);this.model.position.y=this.basePos.y-.02-comp*.11;if(manual==='manual')this.model.position.x-=.035;if(manual==='noseManual')this.model.position.x+=.035;if(bail){this.model.position.x+=(stance<0?-1:1)*(.08+bailProgress*.16);this.model.position.y+=bailProgress*.12}
+    this.root.updateWorldMatrix(true,true);const rootQ=this.root.getWorldQuaternion(Q()),bal=C(steer+manualBalance*.45+grindBalance*.5,-1,1),apex=vert*C(1-Math.abs(verticalVelocity)/4,0,1);
+    for(const n of['spine_01','spine_02','spine_03']){this.rotate(n,V(0,1,0),.045,rootQ);this.rotate(n,V(0,0,1),(-.02-comp*.05-bal*.025+brake*.04-wall*.05)/3,rootQ);this.rotate(n,V(1,0,0),apex*.03-pump*.025,rootQ)}this.rotate('pelvis',V(0,0,1),manualBalance*manualW*.08-grindBalance*grindW*.06,rootQ);this.rotate('neck_01',V(0,1,0),.11,rootQ);this.rotate('head',V(0,1,0),.22,rootQ);this.rotate('head',V(0,0,1),wall*-.08+bail*.13,rootQ);
+    for(const side of['l','r'])if(this.feet[side])this.ft[side].copy(this.feet[side].point);const front=stance<0?'r':'l',rear=front==='l'?'r':'l';
+    if(this.w(PRESENTATION_STATES.PUSH)>.01&&pushWeight>0){const t=this.ft[rear],p=C(pushPhase/.78,0,1);t.y-=.09+.06*Math.sin(p*Math.PI);t.x+=(rear==='l'?-1:1)*.08*Math.sin(p*Math.PI);t.z+=THREE.MathUtils.lerp(.16,-.24,p)*pushWeight;this.ft[front].y+=.01}
+    const pop=this.w(PRESENTATION_STATES.OLLIE_POP);if(pop>.01&&!flipState){this.ft[rear].y+=.08*pop;this.ft[rear].z+=.07*pop;this.ft[front].y+=.16*pop;this.ft[front].z-=.04*pop}
+    if(flipState){const p=C(flipState.progress,0,1),clear=Math.sin(Math.PI*p);this.ft.l.y+=.14+.16*clear;this.ft.r.y+=.14+.16*clear;if(flipPhase==='FLICK'||flipPhase==='ROTATION'){const heel=/Heel/.test(flipState.name),kick=/Kick|Hard|Varial/.test(flipState.name);this.ft[front].x+=(front==='l'?-1:1)*(heel?-.16:kick?.18:.08)*clear;this.ft[front].z-=.12*clear}if(/Impossible|Shove/.test(flipState.name))this.ft[rear].z+=.16*clear;if(flipPhase==='CATCH'){this.ft.l.y-=.08;this.ft.r.y-=.08}}
+    if(manual==='manual'){this.ft[front].y+=.045;this.ft[rear].z+=.02}if(manual==='noseManual'){this.ft[rear].y+=.045;this.ft[front].z-=.02}
+    if(flatland){const s=Math.sin(time*7);switch(flatland){case'Pogo':this.ft[front].y+=.22;this.ft[rear].y+=.05;break;case'Wrap Around':this.ft[rear].x+=(rear==='l'?-1:1)*(.18+.08*s);break;case'Handstand':this.ft.l.y+=.36;this.ft.r.y+=.36;break;case'Casper':this.ft[front].y+=.2;this.ft[rear].z+=.14;break;case'Truck Stand':this.ft.l.y+=.15;this.ft.r.y+=.05;break;case'Anti Casper':this.ft[rear].y+=.2;this.ft[front].z-=.14;break;case'To Rail':this.ft.l.x-=.1;this.ft.r.x+=.1;break;case'Switch Foot Pogo':this.ft[rear].y+=.24;break;case'One Foot Manual':this.ft[front].y+=.28;break}}
+    if(grabState?.name==='Japan'){this.ft[rear].y+=.2;this.ft[rear].x+=(rear==='l'?-1:1)*.12}if(grabState?.name==='Madonna'){this.ft[rear].y+=.22;this.ft[rear].z+=.2}if(grabState?.name==='Benihana'){this.ft[front].y+=.32;this.ft[front].z-=.28}if(grabState?.name==='Airwalk'){this.ft.l.y+=.28;this.ft.r.y+=.28;this.ft.l.x-=.2;this.ft.r.x+=.2;this.ft.l.z-=.13;this.ft.r.z+=.13}if(bail){this.ft.l.x-=.2+bailProgress*.2;this.ft.r.x+=.2+bailProgress*.2;this.ft.l.y+=.16;this.ft.r.y+=.1}
+    for(const side of['l','r']){const u=this.bones['thigh_'+side],l=this.bones['calf_'+side],f=this.bones['foot_'+side];if(!u||!l||!f||!this.feet[side])continue;limb(u,l,f,this.root.localToWorld(this.ft[side].clone()),this.root.localToWorld(V(.2,.2,side==='l'?-.42:.42)));const world=rootQ.clone().multiply(this.feet[side].q);f.quaternion.copy(f.parent.getWorldQuaternion(Q()).invert().multiply(world));if(!finiteQ(f.quaternion))f.quaternion.copy(this.rest.get(f))}
+    this.root.updateWorldMatrix(true,true);
+    for(const side of['l','r']){const sign=side==='l'?-1:1,u=this.bones['upperarm_'+side],l=this.bones['lowerarm_'+side],h=this.bones['hand_'+side];if(!u||!l||!h)continue;const shoulder=this.root.worldToLocal(u.getWorldPosition(V()));const target=this.at[side].copy(shoulder).add(V(.14+comp*.02,-.31+air*.08+sign*bal*.04,sign*(.14+air*.08)));target.y+=Math.sin(time*3.5+sign*.4)*.01*speedRatio;if(manualW)target.y+=sign*manualBalance*.07;if(grindW){target.y+=sign*grindBalance*.1;target.z+=sign*.07}if(wall){target.z+=sign*.14;target.y+=.06}if(flat)target.y+=.06;if(bail){target.y+=.24+bailProgress*.12;target.z+=sign*.16}let world=this.grabTarget(grabState?.name,side,stance,board);if(grabState?.name==='Madonna'&&side===rear)target.add(V(-.04,.34,sign*.26));if(grabState?.name==='Japan'&&side===rear)target.add(V(-.03,.18,sign*.14));if(grabState?.name==='Airwalk')target.add(V(0,.18,sign*.2));if(flatland==='Handstand'&&board)world=this.boardPoint(board,0,.04,sign*.16);if(!world)world=this.root.localToWorld(target.clone());limb(u,l,h,world,this.root.localToWorld(shoulder.clone().add(V(-.18,-.2,sign*.7))));}
+    if(grindType==='Smith'||grindType==='Feeble')this.rotate('pelvis',V(1,0,0),-.08,rootQ);if(grindType==='Crook'||grindType==='Overcrook')this.rotate('pelvis',V(0,0,1),.1,rootQ);if(wallRide)this.rotate('pelvis',V(1,0,0),-.1,rootQ);if(flatland==='Handstand')this.rotate('spine_02',V(1,0,0),.28,rootQ);if(bail){this.rotate('spine_02',V(1,0,0),.22,rootQ);this.rotate('spine_03',V(0,0,1),(stance<0?-1:1)*.2,rootQ)}
+    for(const[b,q]of this.rest)if(!finiteQ(b.quaternion))b.quaternion.copy(q);this.root.updateWorldMatrix(true,true)
   }
 }
