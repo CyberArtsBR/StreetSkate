@@ -1,104 +1,102 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const RIG = Object.freeze({
-  pelvis: 'pelvis', spine1: 'spine_01', spine2: 'spine_02', spine3: 'spine_03',
-  head: 'head', leftThigh: 'thigh_l', rightThigh: 'thigh_r', leftCalf: 'calf_l',
-  rightCalf: 'calf_r', leftFoot: 'foot_l', rightFoot: 'foot_r',
-  leftUpperArm: 'upperarm_l', rightUpperArm: 'upperarm_r',
-  leftLowerArm: 'lowerarm_l', rightLowerArm: 'lowerarm_r',
-});
+const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+// Aim using world directions; Unreal bone axes are not anatomical Euler axes.
+function aim(bone, child, target) {
+  bone.updateWorldMatrix(true, true);
+  const origin = bone.getWorldPosition(V());
+  const current = child.getWorldPosition(V()).sub(origin).normalize();
+  const desired = target.clone().sub(origin).normalize();
+  const rotation = new THREE.Quaternion().setFromUnitVectors(current, desired)
+    .multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
+  bone.quaternion.copy(bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(rotation));
+  bone.updateWorldMatrix(false, true);
+}
+
+function solveLimb(upper, lower, end, target, pole) {
+  const hip = upper.getWorldPosition(V());
+  const knee = lower.getWorldPosition(V());
+  const foot = end.getWorldPosition(V());
+  const a = hip.distanceTo(knee), b = knee.distanceTo(foot);
+  const axis = target.clone().sub(hip).normalize();
+  const distance = THREE.MathUtils.clamp(hip.distanceTo(target), Math.abs(a - b) + 0.001, a + b - 0.001);
+  const along = (a * a + distance * distance - b * b) / (2 * distance);
+  const perpendicular = pole.clone().sub(hip).projectOnPlane(axis).normalize();
+  const desiredKnee = hip.clone().addScaledVector(axis, along)
+    .addScaledVector(perpendicular, Math.sqrt(Math.max(0, a * a - along * along)));
+  aim(upper, lower, desiredKnee);
+  aim(lower, end, target);
+}
 
 export class UnrealRider {
   constructor(url) {
     this.url = url;
     this.root = new THREE.Group();
     this.root.name = 'street-rider';
-    this.model = null;
-    this.bones = {};
     this.rest = new Map();
+    this.feet = {};
+    this.deckHeight = 0.12;
   }
 
   async load() {
-    try {
-      const gltf = await new GLTFLoader().loadAsync(this.url);
-      this.model = gltf.scene;
-    } catch (error) {
-      console.warn('Rider GLB unavailable; using procedural test rider.', error);
-      this.model = this._buildFallback();
-    }
-    this.model.name = 'TheanchoURi';
-    const referenceSphere = this.model.getObjectByName('Icosphere');
-    referenceSphere?.removeFromParent();
-    this.model.updateMatrixWorld(true);
+    this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
     const box = new THREE.Box3().setFromObject(this.model);
-    const height = box.max.y - box.min.y;
-    const scale = 1.82 / Math.max(height, 0.01);
-    this.model.scale.setScalar(scale);
-    this.model.updateMatrixWorld(true);
-    const scaled = new THREE.Box3().setFromObject(this.model);
-    this.model.position.y -= scaled.min.y;
-    this.model.traverse((object) => {
-      if (object.isMesh) {
-        if (!object.geometry.attributes.normal) object.geometry.computeVertexNormals();
-        object.castShadow = true;
-        object.receiveShadow = true;
-        object.frustumCulled = false;
-      }
-      if (object.isBone) this.rest.set(object, object.quaternion.clone());
-    });
-    for (const [slot, name] of Object.entries(RIG)) this.bones[slot] = this.model.getObjectByName(name);
+    this.model.scale.setScalar(1.82 / box.getSize(V()).y);
+    this.model.rotation.y = Math.PI / 2;
+    this.model.position.y = -box.min.y * this.model.scale.x;
+    this.baseY = this.model.position.y;
     this.root.add(this.model);
-    this.root.userData.rig = 'Unreal Engine-style 61-bone skeleton';
-    this.root.userData.sourceHeight = height;
+    this.model.traverse(o => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+      if (o.isBone) this.rest.set(o, o.quaternion.clone());
+    });
+    this.bones = Object.fromEntries([...this.rest.keys()].map(b => [b.name, b]));
+    this.root.updateMatrixWorld(true);
+    for (const side of ['l', 'r']) {
+      const foot = this.bones['foot_' + side];
+      this.feet[side] = {
+        point: this.root.worldToLocal(foot.getWorldPosition(V())),
+        quaternion: foot.getWorldQuaternion(new THREE.Quaternion()),
+      };
+    }
+    this.root.userData.rig = 'Unreal 61-bone skeleton; procedural skating pose with foot IK';
     this.root.userData.runtimeHeight = 1.82;
     return this;
   }
 
-  _buildFallback() {
-    const root = new THREE.Group();
-    root.name = 'TheanchoURi-fallback';
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc69a78, roughness: 0.72 });
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x242b36, roughness: 0.8 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0x70d7ff, roughness: 0.55, metalness: 0.15 });
-    const add = (geometry, material, position, rotation=[0,0,0]) => {
-      const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position); mesh.rotation.set(...rotation); mesh.castShadow=true; root.add(mesh); return mesh;
-    };
-    add(new THREE.CapsuleGeometry(.24,.62,5,10), cloth, [0,1.08,0]);
-    add(new THREE.SphereGeometry(.24,16,12), skin, [0,1.67,0]);
-    add(new THREE.CapsuleGeometry(.10,.52,4,8), cloth, [-.18,.53,.02],[0,0,.08]);
-    add(new THREE.CapsuleGeometry(.10,.52,4,8), cloth, [.18,.53,-.02],[0,0,-.08]);
-    add(new THREE.BoxGeometry(.18,.09,.52), accent, [-.18,.13,.04]);
-    add(new THREE.BoxGeometry(.18,.09,.52), accent, [.18,.13,-.04]);
-    add(new THREE.CapsuleGeometry(.075,.48,4,8), skin, [-.38,1.10,0],[0,0,.5]);
-    add(new THREE.CapsuleGeometry(.075,.48,4,8), skin, [.38,1.10,0],[0,0,-.5]);
-    root.userData.fallback = true;
-    return root;
-  }
-
-  _rotate(slot, x = 0, y = 0, z = 0) {
-    const bone = this.bones[slot];
-    if (!bone) return;
-    bone.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z, 'XYZ')));
-  }
-
-  update({ speedRatio = 0, crouch = 0, airborne = false, steer = 0, grab = false, time = 0 }) {
-    for (const [bone, rest] of this.rest) bone.quaternion.copy(rest);
-    const compression = THREE.MathUtils.clamp(crouch + (airborne ? 0.28 : 0), 0, 1);
-    const bob = airborne ? 0 : Math.sin(time * (5 + speedRatio * 7)) * 0.025 * speedRatio;
-    this._rotate('pelvis', -0.12 - compression * 0.22, steer * 0.05, bob);
-    this._rotate('spine1', 0.08 + compression * 0.10, -0.12, -steer * 0.08);
-    this._rotate('spine2', 0.05, -0.14, -steer * 0.07);
-    this._rotate('spine3', 0.02, -0.10, -steer * 0.05);
-    this._rotate('head', 0, 0.18, steer * 0.05);
-    for (const side of ['left', 'right']) {
-      const sign = side === 'left' ? -1 : 1;
-      this._rotate(`${side}Thigh`, -0.30 - compression * 0.30, sign * 0.05, sign * 0.11);
-      this._rotate(`${side}Calf`, 0.55 + compression * 0.42, 0, 0);
-      this._rotate(`${side}Foot`, -0.19 - compression * 0.08, sign * 0.04, 0);
-      this._rotate(`${side}UpperArm`, grab ? -0.9 : -0.12, -0.1, sign * (0.74 + speedRatio * 0.16));
-      this._rotate(`${side}LowerArm`, grab ? -0.75 : -0.26, 0, sign * 0.12);
+  update({ speedRatio = 0, crouch = 0, airborne = false, steer = 0, grab = false, time = 0, bail = false }) {
+    for (const [bone, q] of this.rest) bone.quaternion.copy(q);
+    const compression = THREE.MathUtils.clamp(crouch + (airborne ? 0.25 : 0), 0, 1);
+    this.root.position.y = this.deckHeight + (airborne ? 0.025 : 0);
+    this.model.position.y = this.baseY - 0.025 - compression * 0.13;
+    this.root.updateWorldMatrix(true, true);
+    const rootRotation = this.root.getWorldQuaternion(new THREE.Quaternion());
+    for (const side of ['l', 'r']) {
+      const target = this.root.localToWorld(this.feet[side].point.clone());
+      solveLimb(this.bones['thigh_' + side], this.bones['calf_' + side], this.bones['foot_' + side],
+        target, this.root.localToWorld(V(1, 0.2, 0)));
+      const foot = this.bones['foot_' + side];
+      foot.quaternion.copy(foot.parent.getWorldQuaternion(new THREE.Quaternion()).invert()
+        .multiply(rootRotation.clone().multiply(this.feet[side].quaternion)));
     }
-    this.root.position.y = 0.13 - compression * 0.10 + bob;
+    for (const side of ['l', 'r']) {
+      const sign = side === 'l' ? -1 : 1;
+      const upper = this.bones['upperarm_' + side];
+      const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
+      const sway = Math.sin(time * 4) * 0.015 * speedRatio;
+      const target = shoulder.add(V(0.08 + compression * 0.05, -0.24 + Math.abs(steer) * 0.08 + sway, sign * 0.25));
+      if (grab && side === 'l') target.set(0.14, 0.35, -0.22);
+      if (bail) target.y += 0.25;
+      solveLimb(upper, this.bones['lowerarm_' + side], this.bones['hand_' + side],
+        this.root.localToWorld(target), this.root.localToWorld(V(0.5, 0.7, sign * 0.6)));
+    }
+    // Turn the face toward the nose while retaining the sideways skating stance.
+    const head = this.bones.head;
+    const headWorld = head.getWorldQuaternion(new THREE.Quaternion());
+    const turn = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0).applyQuaternion(rootRotation), 0.8);
+    head.quaternion.copy(head.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(turn.multiply(headWorld)));
+    this.root.updateWorldMatrix(true, true);
   }
 }

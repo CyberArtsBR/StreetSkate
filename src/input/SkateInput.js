@@ -1,61 +1,54 @@
 const PREVENT_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-
 export class SkateInput {
   constructor() {
-    this.keys = new Set();
-    this.pressed = new Set();
-    this.released = new Set();
-    this.enabled = false;
-    this._onDown = (event) => {
-      if (!this.enabled) return;
-      if (PREVENT_DEFAULT.has(event.code)) event.preventDefault();
-      if (!event.repeat) this.pressed.add(event.code);
-      this.keys.add(event.code);
+    this.keys = new Set(); this.pressed = new Set(); this.released = new Set();
+    this.enabled = false; this.padPrevious = {};
+    this._down = e => {
+      if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
+      if (!e.repeat) this.pressed.add(e.code);
+      this.keys.add(e.code);
     };
-    this._onUp = (event) => {
-      if (!this.enabled) return;
-      if (PREVENT_DEFAULT.has(event.code)) event.preventDefault();
-      this.keys.delete(event.code);
-      this.released.add(event.code);
+    this._up = e => {
+      if (this.enabled && PREVENT_DEFAULT.has(e.code)) e.preventDefault();
+      if (this.keys.has(e.code)) this.released.add(e.code);
+      this.keys.delete(e.code);
     };
-    window.addEventListener('keydown', this._onDown, { passive: false });
-    window.addEventListener('keyup', this._onUp, { passive: false });
+    this._blur = () => this.clear();
+    window.addEventListener('keydown', this._down);
+    window.addEventListener('keyup', this._up);
+    window.addEventListener('blur', this._blur);
   }
 
-  value(positive, negative) {
-    return (this.keys.has(positive) ? 1 : 0) - (this.keys.has(negative) ? 1 : 0);
+  clear() {
+    this.keys.clear(); this.pressed.clear(); this.released.clear();
+    this.padPrevious = {};
   }
 
   read() {
-    const pads = navigator.getGamepads?.() || [];
-    const pad = [...pads].find(Boolean);
-    const deadzone = (value) => Math.abs(value) < 0.14 ? 0 : value;
-    const keyboardSteer = this.value('KeyD', 'KeyA') || this.value('ArrowRight', 'ArrowLeft');
-    const keyboardDrive = this.value('KeyW', 'KeyS') || this.value('ArrowUp', 'ArrowDown');
-    return {
-      steer: pad ? deadzone(pad.axes[0] || 0) : keyboardSteer,
-      drive: pad ? -deadzone(pad.axes[1] || 0) : keyboardDrive,
-      brake: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || Boolean(pad?.buttons[1]?.pressed),
-      ollieHeld: this.keys.has('Space') || Boolean(pad?.buttons[0]?.pressed),
-      olliePressed: this.pressed.has('Space') || Boolean(pad?.buttons[0]?.pressed && !this._padOllie),
-      ollieReleased: this.released.has('Space') || Boolean(!pad?.buttons[0]?.pressed && this._padOllie),
-      flip: this.pressed.has('KeyQ') || Boolean(pad?.buttons[2]?.pressed && !this._padFlip),
-      grab: this.keys.has('KeyE') || Boolean(pad?.buttons[3]?.pressed),
-      reset: this.pressed.has('KeyR') || Boolean((pad?.buttons[9]?.pressed || pad?.buttons[8]?.pressed) && !this._padReset),
-      pad,
+    const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
+    const axis = v => Math.abs(v || 0) < 0.16 ? 0 : Math.sign(v) * (Math.abs(v) - 0.16) / 0.84;
+    const held = (...codes) => codes.some(code => this.keys.has(code));
+    const buttons = { ollie: !!pad?.buttons[0]?.pressed, flip: !!pad?.buttons[2]?.pressed, reset: !!pad?.buttons[9]?.pressed };
+    const steer = Number(held('KeyD', 'ArrowRight')) - Number(held('KeyA', 'ArrowLeft'));
+    const drive = Number(held('KeyW', 'ArrowUp')) - Number(held('KeyS', 'ArrowDown'));
+    const state = {
+      steer: steer || axis(pad?.axes[0]), drive: drive || -axis(pad?.axes[1]),
+      brake: held('ShiftLeft', 'ShiftRight') || !!pad?.buttons[1]?.pressed,
+      ollieHeld: held('Space') || buttons.ollie,
+      ollieReleased: this.released.has('Space') || (!buttons.ollie && this.padPrevious.ollie && !!pad),
+      flip: this.pressed.has('KeyQ') || (buttons.flip && !this.padPrevious.flip),
+      grab: held('KeyE') || !!pad?.buttons[3]?.pressed,
+      reset: this.pressed.has('KeyR') || (buttons.reset && !this.padPrevious.reset),
     };
-  }
-
-  endFrame(state) {
-    this._padOllie = Boolean(state.pad?.buttons[0]?.pressed);
-    this._padFlip = Boolean(state.pad?.buttons[2]?.pressed);
-    this._padReset = Boolean(state.pad?.buttons[9]?.pressed || state.pad?.buttons[8]?.pressed);
-    this.pressed.clear();
-    this.released.clear();
+    this.padPrevious = buttons;
+    this.pressed.clear(); this.released.clear();
+    return state;
   }
 
   dispose() {
-    window.removeEventListener('keydown', this._onDown);
-    window.removeEventListener('keyup', this._onUp);
+    window.removeEventListener('keydown', this._down);
+    window.removeEventListener('keyup', this._up);
+    window.removeEventListener('blur', this._blur);
   }
 }

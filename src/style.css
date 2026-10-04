@@ -15,3 +15,13 @@
 #app[data-mode='skate'] #viewport:after{background:linear-gradient(0deg,rgba(14,21,23,.7),transparent 20%)}
 @media(max-width:820px){.skate-hud{left:20px;bottom:95px}.ride-state{min-width:160px}.ride-state small{display:none}.speed span{font-size:42px}}
 @media(max-width:620px){.skate-hud{bottom:92px}.ride-state{display:none}#app[data-mode='skate'] .views{display:none}}
+
+#app{min-height:400px}
+#trick-feedback{position:absolute;top:22%;left:0;right:0;text-align:center;pointer-events:none;color:#d9ff64;font-weight:700;letter-spacing:2px;font-size:20px;text-shadow:0 2px 10px #101b1b}
+.session-score{display:flex;flex-direction:column;gap:6px;padding-right:20px;border-right:1px solid #71808066}.session-score small{font-size:8px;letter-spacing:2px;color:#a6b5b2}.session-score strong{font-size:27px;line-height:1;font-weight:600}
+.controls-card{position:absolute;left:38px;top:93px;font-size:10px;color:#c0ceca;line-height:1.8;pointer-events:none;text-shadow:0 1px 5px #111}
+#app[data-mode='explore'] .controls-card,#app[data-mode='explore'] #trick-feedback{display:none}
+.navigation-help .help-skate{font-size:8px;margin:0}
+#mode-toggle{outline:1px solid #d9ff6499}
+@media(max-width:1000px){.controls-card{left:25px;top:82px;font-size:9px}.session-score{padding-right:12px}}
+@media(max-height:620px){.toolbar{top:24%;gap:3px}.toolbar button{width:34px;height:34px;font-size:20px}.toolbar-label{display:none}.topbar{padding-top:16px}.controls-card{top:65px}.skate-hud{bottom:85px}}

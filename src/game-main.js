@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
-import { createProceduralPark } from './park/ProceduralPark.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -112,7 +112,10 @@ function setMode(nextMode) {
   const skating = mode === 'skate';
   app.dataset.mode = mode;
   controls.enabled = !skating;
+  input.clear();
   input.enabled = skating;
+  skater.charge = 0;
+  skater.jumpBuffer = 0;
   document.querySelector('#mode-toggle').classList.toggle('active', skating);
   document.querySelector('#mode-toggle').setAttribute('aria-pressed', String(skating));
   document.querySelector('#mode-toggle').setAttribute('aria-label', skating ? 'Switch to park explore mode' : 'Start skating');
@@ -130,7 +133,9 @@ function updateHud() {
   const kmh = Math.round(Math.abs(skater.speed) * 3.6);
   document.querySelector('#speed-value').textContent = String(kmh).padStart(2, '0');
   document.querySelector('#charge-fill').style.transform = `scaleX(${skater.charge.toFixed(3)})`;
-  document.querySelector('#state-value').textContent = skater.grounded ? 'RIDING' : 'AIR';
+  document.querySelector('#state-value').textContent = skater.bailTime > 0 ? 'BAIL' : skater.grounded ? 'RIDING' : 'AIR';
+  document.querySelector('#score-value').textContent = skater.score.toLocaleString();
+  document.querySelector('#trick-feedback').textContent = skater.feedbackTime > 0 ? skater.feedback : '';
   document.querySelector('#state-value').classList.toggle('air', !skater.grounded);
 }
 
@@ -143,18 +148,35 @@ function showError(error) {
 
 async function loadGame() {
   try {
-    const built = createProceduralPark();
-    manifest = { spawn: built.spawn, visualTriangles: built.visualTriangles };
-    park = built.scene;
-    collision = built.collision;
+    const loader = new GLTFLoader();
+    const [parkFile, collisionFile, parkManifest] = await Promise.all([
+      loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
+      loader.loadAsync('/assets/park/park-collision.glb'),
+      fetch('/assets/park/park-manifest.json').then(r => {
+        if (!r.ok) throw new Error('Park manifest unavailable');
+        return r.json();
+      }),
+    ]);
+    manifest = parkManifest;
+    park = parkFile.scene;
+    collision = collisionFile.scene;
+    park.traverse(object => {
+      if (!object.isMesh) return;
+      object.castShadow = true;
+      object.receiveShadow = true;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (material.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      }
+    });
     scene.add(park);
+    document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
     skater = await new StreetSkater({ collision, spawn: manifest.spawn }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
 
-    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k test triangles`;
+    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
@@ -170,7 +192,7 @@ document.querySelectorAll('button[data-view]').forEach((button) => button.addEve
   setExploreView(button.dataset.view);
 }));
 document.querySelector('#reset').onclick = () => {
-  if (mode === 'skate') skater?.reset();
+  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); }
   else setExploreView('overview');
 };
 document.querySelector('#topview').onclick = () => {
@@ -202,19 +224,23 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+window.addEventListener('blur', () => {
+  input.clear();
+  if (skater) { skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0; }
+});
 setExploreView('overview', true);
 loadGame();
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 1 / 20);
+  const dt = Math.min(clock.getDelta(), 0.1);
   const elapsed = clock.elapsedTime;
 
-  if (loaded && mode === 'skate') {
+  if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     skater.update(dt, state, elapsed);
     followCamera.update(skater, dt);
     updateHud();
-    input.endFrame(state);
+    if (state.reset) followCamera.snap(skater);
   } else {
     if (tween) {
       const t = Math.min((performance.now() - tween.start) / 1100, 1);
@@ -223,7 +249,7 @@ renderer.setAnimationLoop(() => {
       controls.target.lerpVectors(tween.targetFrom, tween.targetTo, smooth);
       if (t === 1) tween = null;
     }
-    controls.update();
+    if (mode === 'explore') controls.update();
   }
 
   renderer.render(scene, camera);
