@@ -1,7 +1,7 @@
 """Original, parameterized park reconstruction. Run with Blender 4.4 --background --python.
 Units: metres, Blender Z up; GLB exports Y up. The reference scan is never imported.
 """
-import bpy, bmesh, math, json, random, hashlib
+import bpy, bmesh, math, json, random, hashlib, sys
 from pathlib import Path
 from mathutils import Vector
 import numpy as np
@@ -22,6 +22,7 @@ collisions = bpy.data.collections.new('COLLISION / skateable surfaces')
 scene.collection.children.link(collisions)
 collisions.hide_render = True
 rails = []
+RAMP_SCALE = 1.3
 
 def move_collection(o, col=park):
     for c in list(o.users_collection): c.objects.unlink(o)
@@ -67,7 +68,7 @@ lightmat=material('Lamp / diffuser',(.92,.93,.85),.3)
 lightmat.node_tree.nodes.get('Principled BSDF').inputs['Emission Color'].default_value=(.8,.85,.67,1)
 lightmat.node_tree.nodes.get('Principled BSDF').inputs['Emission Strength'].default_value=.5
 
-def mesh(name, verts, faces, mat, skate=False, smooth=False, uvs=None):
+def mesh(name, verts, faces, mat, skate=False, smooth=False, uvs=None, solid=False, rail_id=None):
     me=bpy.data.meshes.new(name); me.from_pydata(verts,[],faces); me.update()
     o=bpy.data.objects.new(name,me); park.objects.link(o); me.materials.append(mat)
     uv=me.uv_layers.new(name='UVMap')
@@ -82,39 +83,40 @@ def mesh(name, verts, faces, mat, skate=False, smooth=False, uvs=None):
             else: co=(v.x/4,v.z/4)
             uv.data[li].uv=co
     o['surface']='skateable' if skate else 'decoration'
-    if skate:
+    if skate or solid:
         c=bpy.data.objects.new('COL_'+name,me.copy()); collisions.objects.link(c)
-        c.hide_render=True; c.hide_set(True); c['surface']='skateable'
+        c.hide_render=True; c.hide_set(True); c['surface']='skateable' if skate else 'solid'
+        if rail_id: c['railId']=rail_id
     return o
 
-def box(name, loc, size, mat, bevel=0, skate=False):
+def box(name, loc, size, mat, bevel=0, skate=False, solid=False, rail_id=None):
     x,y,z=loc; a,b,c=[s/2 for s in size]
     vs=[(x+sx*a,y+sy*b,z+sz*c) for sx,sy,sz in [(-1,-1,-1),(1,-1,-1),(1,1,-1),(-1,1,-1),(-1,-1,1),(1,-1,1),(1,1,1),(-1,1,1)]]
-    o=mesh(name,vs,[(0,3,2,1),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7),(4,5,6,7)],mat,skate)
+    o=mesh(name,vs,[(0,3,2,1),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7),(4,5,6,7)],mat,skate,solid=solid,rail_id=rail_id)
     if bevel:
         mod=o.modifiers.new('Small edge highlights','BEVEL'); mod.width=bevel; mod.segments=2
         mod=o.modifiers.new('Weighted corner normals','WEIGHTED_NORMAL')
     return o
 
-def tube(name,a,b,r=.045,mat=steel,sides=8):
+def tube(name,a,b,r=.045,mat=steel,sides=8,solid=False,rail_id=None):
     a,b=Vector(a),Vector(b); d=(b-a).normalized()
     tangent=d.cross(Vector((0,0,1)) if abs(d.z)<.9 else Vector((0,1,0))).normalized()
     bitangent=d.cross(tangent)
     vertices=[p+r*(tangent*math.cos(i*2*math.pi/sides)+bitangent*math.sin(i*2*math.pi/sides)) for p in (a,b) for i in range(sides)]
     faces=[(i,(i+1)%sides,(i+1)%sides+sides,i+sides) for i in range(sides)]
     faces.extend([tuple(reversed(range(sides))),tuple(range(sides,sides*2))])
-    o=mesh(name,vertices,faces,mat)
+    o=mesh(name,vertices,faces,mat,solid=solid,rail_id=rail_id)
     for p in o.data.polygons:p.use_smooth=len(p.vertices)==4
     return o
 
 def rail(name, a,b, height=.7, mat=steel, grind=True):
     a,b=Vector(a),Vector(b)
     topa=a+Vector((0,0,height)); topb=b+Vector((0,0,height))
-    tube(name+' / grind bar',topa,topb,.055,mat,10)
+    tube(name+' / grind bar',topa,topb,.055,mat,10,solid=True,rail_id=name)
     length=(b-a).length
     for i in range(max(2,math.ceil(length/2.5))+1):
         t=i/max(2,math.ceil(length/2.5)); p=a.lerp(b,t)
-        tube(name+' / support',p,p+Vector((0,0,height-.03)),.037,mat)
+        tube(name+' / support',p,p+Vector((0,0,height-.03)),.037,mat,solid=True,rail_id=name)
         box(name+' / foot',p+Vector((0,0,.025)),(.23,.23,.05),side,.01)
     if grind: rails.append({'name':name,'points':[[p.x,p.z,-p.y] for p in (topa,topb)],'radius':.055})
 
@@ -123,7 +125,12 @@ def transform(p,x,y,rot):
     return (x+a*c-b*s,y+a*s+b*c,z)
 
 def quarter(name,x,y,width=9,run=3.5,height=3,rot=0,deck=1.7):
-    tf=lambda p:transform(p,x,y,rot)
+    original_run=run
+    run*=RAMP_SCALE; height*=RAMP_SCALE
+    # Keep coping/deck footprints while extending each named transition inward.
+    # Apply this before batching, never by guessing ownership of individual vertices.
+    extra=run-original_run
+    tf=lambda p:transform((p[0],p[1]-extra,p[2]),x,y,rot)
     steps=22
     profile=[(run*math.sin(i/steps*math.pi/2),height*(1-math.cos(i/steps*math.pi/2))) for i in range(steps+1)]
     profile.append((run+deck,height))
@@ -134,16 +141,16 @@ def quarter(name,x,y,width=9,run=3.5,height=3,rot=0,deck=1.7):
     for xx in (-width/2,width/2):
         cap=[tf((xx,0,0)),tf((xx,run+deck,0))]+[tf((xx,yy,zz)) for yy,zz in reversed(profile[1:])]
         face=tuple(range(len(cap)))
-        mesh(name+' / side frame',cap,[tuple(reversed(face)) if xx<0 else face],side)
+        mesh(name+' / side frame',cap,[tuple(reversed(face)) if xx<0 else face],side,solid=True)
         for j in range(1,4):
             yy=(run+deck)*j/4
             rib_height=max(.12,height*(1-math.sqrt(max(0,1-min(yy/run,1)**2))))
             tube(name+' / rib',tf((xx,yy,0)),tf((xx,yy,rib_height)),.045,steel)
-    mesh(name+' / rear', [tf((-width/2,run+deck,0)),tf((width/2,run+deck,0)),tf((width/2,run+deck,height)),tf((-width/2,run+deck,height))],[(0,1,2,3)],side)
+    mesh(name+' / rear', [tf((-width/2,run+deck,0)),tf((width/2,run+deck,0)),tf((width/2,run+deck,height)),tf((-width/2,run+deck,height))],[(0,1,2,3)],side,solid=True)
     tube(name+' / coping',tf((-width/2,run,height+.025)),tf((width/2,run,height+.025)),.06,steel,12)
     rails.append({'name':name+' coping','points':[[p[0],p[2],-p[1]] for p in [tf((-width/2,run,height+.025)),tf((width/2,run,height+.025))]],'radius':.06})
     rail(name+' / safety railing',tf((-width/2,run+deck-.12,height)),tf((width/2,run+deck-.12,height)),.95,steel,False)
-    tube(name+' / lower guard',tf((-width/2,run+deck-.12,height+.45)),tf((width/2,run+deck-.12,height+.45)),.027,steel)
+    tube(name+' / lower guard',tf((-width/2,run+deck-.12,height+.45)),tf((width/2,run+deck-.12,height+.45)),.027,steel,solid=True)
     # Panel joins run continuously down the curved surface.
     for xx in np.arange(-width/2+1.5,width/2,1.5):
         for (yy,zz),(yy2,zz2) in zip(profile,profile[1:]):
@@ -196,7 +203,7 @@ box('00 / foundation underside',(0,0,-3.10),(68,46,.1),side)
 quarter('02 / western vert wall',-27,-1,12,4.3,3.6,math.pi/2,1.8)
 quarter('03 / rear mini north',-22,12.3,11,2.5,1.8,0,1.5)
 quarter('03 / rear mini south',-22,9.2,11,2.5,1.8,math.pi,1.5)
-box('03 / mini flat',(-22,10.75,.035),(11,3.1,.07),deckmat,skate=True)
+box('03 / mini flat',(-22,10.75,-.024),(11,3.1-2*2.5*(RAMP_SCALE-1),.072),deckmat,skate=True)
 quarter('04 / eastern quarter',29,-3.5,8,2.3,1.8,-math.pi/2,1.7)
 
 def funbox(name,x,y,w,d,h,topw,topd):
@@ -253,26 +260,26 @@ for y in [-22,-16,-10,-4,2]:
 # Edge markings and low curbs replace the grass perimeter.
 for x in [-33.4,33.4]: box('Perimeter / painted line',(x,0,.005),(.10,44,.01),white)
 for y in [-22.4,22.4]: box('Perimeter / painted line',(0,y,.005),(66.8,.10,.01),white)
-for x in [-33.8,33.8]: box('Perimeter / curb',(x,0,.1),(.38,46,.2),concrete,.035)
-for y in [-22.8,22.8]: box('Perimeter / curb',(0,y,.1),(68,.38,.2),concrete,.035)
+for x in [-33.8,33.8]: box('Perimeter / curb',(x,0,.1),(.38,46,.2),concrete,.035,skate=True)
+for y in [-22.8,22.8]: box('Perimeter / curb',(0,y,.1),(68,.38,.2),concrete,.035,skate=True)
 
 # Restrained industrial detail: lamps, benches, edge guards and drain grates.
 for x,y in [(-31,-15),(-31,19),(0,21),(31,20),(31,-11),(8,-21)]:
-    box('Lighting / plinth',(x,y,.15),(.52,.52,.3),concrete,.035)
-    tube('Lighting / mast',(x,y,.3),(x,y,7.8),.065,side,10)
+    box('Lighting / plinth',(x,y,.15),(.52,.52,.3),concrete,.035,skate=True)
+    tube('Lighting / mast',(x,y,.3),(x,y,7.8),.065,side,10,solid=True)
     tube('Lighting / crossbar',(x-.9,y,7.8),(x+.9,y,7.8),.045,side)
     for dx in [-.72,.72]:
         box('Lighting / flood housing',(x+dx,y,7.82),(.60,.35,.20),side,.04)
         box('Lighting / lens',(x+dx,y,7.71),(.50,.27,.015),lightmat,.01)
 for x in [-15,-7,3]:
-    for yy in [-.24,0,.24]: box('Furniture / bench slat',(x,21+yy,.48),(2,.19,.085),side,.025)
-    for dx in [-.72,.72]: box('Furniture / bench leg',(x+dx,21,.23),(.09,.65,.46),steel,.012)
+    for yy in [-.24,0,.24]: box('Furniture / bench slat',(x,21+yy,.48),(2,.19,.085),side,.025,skate=True)
+    for dx in [-.72,.72]: box('Furniture / bench leg',(x+dx,21,.23),(.09,.65,.46),steel,.012,solid=True)
 for x,y in [(-29,-11),(24,1),(1,-15),(-4,20)]:
     box('Drain / rim',(x,y,.004),(.65,1.1,.008),steel,.012)
     for dy in np.arange(-.45,.5,.11):box('Drain / slots',(x,y+dy,.01),(.48,.035,.008),dark)
 for xa,xb,y in [(-30,-15,22),(-1,31,22)]:
     rail('Perimeter / guard',(xa,y,0),(xb,y,0),1.1,side,False)
-    tube('Perimeter / middle rail',(xa,y,.52),(xb,y,.52),.025,side)
+    tube('Perimeter / middle rail',(xa,y,.52),(xb,y,.52),.025,side,solid=True)
 
 # Named spawn and spatial data for future gameplay integration.
 spawn=bpy.data.objects.new('Spawn / plaza',None); park.objects.link(spawn); spawn.location=(-13,-12,.15)
@@ -318,10 +325,14 @@ stats={'name':'Insanity-inspired StreetSkate Park','units':'metres','sizeMetres'
        'source':'Original procedural reconstruction from the user-supplied reference image; no scan meshes or textures included.',
        'scaleNote':'Dimensions estimated for gameplay, not surveyed measurements.',
        'exclusions':['building','grass','photogrammetry textures'],
-       'spawn':[-13,.15,12],'rails':rails}
+       'spawn':[-13,.15,12],'rails':rails,'transitionScale':RAMP_SCALE,
+       'collisionVersion':2,'rampScaleBaked':True}
 for filename in ['insanity-inspired-park.glb','park-collision.glb']:
     data=(OUT/filename).read_bytes();stats[filename]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
 (OUT/'park-manifest.json').write_text(json.dumps(stats,indent=2))
+if '--assets-only' in sys.argv:
+    print('PARK_ASSETS_COMPLETE '+json.dumps({k:v for k,v in stats.items() if k!='rails'}),flush=True)
+    sys.exit(0)
 
 # Presentation scene; excluded from exported game asset.
 world=bpy.data.worlds.new('Soft blue daylight');scene.world=world;world.use_nodes=True

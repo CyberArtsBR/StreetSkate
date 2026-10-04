@@ -27,8 +27,7 @@ export class StreetSkater extends StreetPhysics {
   update(delta, input, elapsed) {
     this.advance(delta, input);
     this.root.position.copy(this.position);
-    const surfaceUp = this.grounded ? this.normal : this.transitionAir
-      ? this.transitions.presentationNormal(this.transitionAir, this.velocity.y) : new THREE.Vector3(0, 1, 0);
+    const surfaceUp = this.bodyUp();
     this.presentationNormal.lerp(surfaceUp,
       1 - Math.exp(-18 * Math.max(delta, 1 / 120))).normalize();
     const forward = new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading))

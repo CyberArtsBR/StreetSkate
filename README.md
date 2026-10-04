@@ -16,17 +16,26 @@ Simulation pauses when the page loses focus. Explore mode pauses the rider.
 
 | Action | Keyboard | Standard gamepad |
 | --- | --- | --- |
-| Push | W / Up | Left stick forward |
-| Turn | A, D / Left, Right | Left stick sideways |
-| Brake | S / Down / Shift | B / Circle or stick back |
+| Push | W | Left stick / D-pad forward |
+| Turn / air spin | A, D | Left stick / D-pad sideways |
+| Brake | S / Shift | Left stick / D-pad back |
 | Charge ollie / pop | Hold / release Space | Hold / release A / Cross |
-| Kickflip in air | Q | X / Square |
-| Grab in air | E | Y / Triangle |
-| Reset | R | Start / Options |
+| Directional flip | Left arrow + WASD direction | X / Square + direction |
+| Directional grab | Right arrow + WASD direction | B / Circle + direction |
+| Grind / wall ride | Hold Up arrow near a rail / wall | Hold Y / Triangle |
+| Additional air spin | Q / E | LB / RB or L1 / R1 |
+| Exit vert after apex | Left Ctrl | LT / L2 |
+| Switch stance | Right Ctrl | RT / R2 |
+| Manual / nose manual | W then S / S then W | Forward then back / back then forward |
+| Camera | Drag with left mouse button | Right stick |
+| Pause | Esc | Start / Options |
+| Reset | R | — |
 
 The toolbar switches between Skate and Explore. Aerial steering rotates the rider without redirecting momentum. Land aligned with the travel direction (or switch); unfinished flips and sideways landings cause a bail.
 
-Bowl and quarter-pipe lips launch vertically at every approach speed. Speed controls airtime and height; the rider returns on the same line unless W / stick forward is held after the apex. That input releases the line and carries the rider forward over the coping. Ordinary banks and flat-ground ollies keep their normal momentum.
+Bowl and quarter-pipe lips launch into a locked vertical air. Speed controls airtime and height; Left Ctrl / LT / L2 after the apex deliberately releases the return line and carries the rider over the coping. Holding forward alone keeps the return line. Ordinary banks and flat-ground ollies keep their normal momentum.
+
+Hold grind while descending close to a rail to catch it; release an ollie to jump off. A short cooldown prevents immediate recapture. Direction + flip, grab, or grind selects the trick. Quick pairs of trick buttons during a manual select flatland variations.
 
 ## Build and deploy
 
@@ -41,9 +50,11 @@ All four runtime GLBs are ordinary Git binary files in `public/assets`; no chunk
 ## Integration
 
 - 120 Hz fixed movement step with acceleration, braking, gravity on slopes, chargeable ollies, short coyote time, and jump buffering.
-- Ground, wall, and camera probes against the separate collision mesh.
+- Board-contact ground/landing sweeps plus subdivided capsule movement for the rider and grounded skateboard. Obstacle contacts slide along barriers without rolling back the entire move.
+- Solid ramp sides/backs, rails and supports, guards, lamp posts, bench legs, and curbs in the separate collision mesh. The active grind rail is excluded from body blocking while grinding.
 - Left/right steering corrected for the local -Z forward convention.
-- Real 38,544-triangle park and 4,852-triangle collision mesh.
+- Real 38,544-triangle park and 8,296-triangle collision mesh.
+- Quarter-pipe transitions and heights enlarged 30% in the asset generator, before batching, with matching visual/collision geometry and coping paths. Bowl dimensions are unchanged.
 - Single Unreal-style 61-bone character; procedural limb posing and foot placement because the supplied GLB has no animation clips.
 - Skateboard resized to 1.05 m with deck-centered flip rotation.
 - Follow camera tracks momentum during aerial spins.
@@ -54,6 +65,12 @@ The park follows the broad layout of the supplied reference without the building
 It is an original low-poly reconstruction, not the photogrammetry scan.
 Dimensions are estimated for gameplay. See `public/assets/park/park-manifest.json` for provenance, counts, and rail paths.
 
-This is a movement prototype. Grinding, manuals, a full combo system, authored animation clips, and dedicated transition pumping are still future work. Gameplay tests and benchmarks were not run for this integration at the user's request.
+This is a movement prototype with directional tricks, rail grinds, manuals, flatland variations, wall rides/plants, and combo scoring. Authored animation clips and dedicated transition pumping remain future work. Gameplay tests and benchmarks were not run for this integration at the user's request.
 
-`tools/build_park.py` is the editable Blender source. The ignored `references/` folder is research material, not application source; Tony Hawk source code is not shipped.
+`tools/build_park.py` is the editable Blender source. Regenerate the embedded-texture GLBs and manifest without rendering a preview:
+
+```sh
+blender --background --factory-startup --python tools/build_park.py -- --assets-only
+```
+
+The ignored `references/` folder is research material, not application source; Tony Hawk source code is not shipped.

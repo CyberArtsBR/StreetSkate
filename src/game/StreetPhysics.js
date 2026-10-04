@@ -3,6 +3,7 @@ import { ParkCollision } from './ParkCollision.js';
 import { TransitionGuide } from './TransitionGuide.js';
 import { RailNetwork } from './RailNetwork.js';
 import { SkateTricks } from './SkateTricks.js';
+import { directionKey, grindFor } from './TrickCatalog.js';
 
 export const PHYSICS = Object.freeze({
   step: 1 / 120, push: 6.8, maxSpeed: 11.5, gravity: 20, brake: 13,
@@ -52,6 +53,7 @@ export class StreetPhysics {
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
+    this.contactCooldown = 0; this.grindIntentTime = 0;
     this.tricks.reset();
     this.groundDirection();
   }
@@ -62,6 +64,41 @@ export class StreetPhysics {
 
   airDirection() {
     this.forward.set(-Math.sin(this.heading), 0, -Math.cos(this.heading)).normalize();
+  }
+
+  bodyUp() {
+    if (this.wallRide) return this.wallRide.normal.clone();
+    if (this.grounded) return this.normal.clone();
+    return this.transitionAir ? this.transitions.presentationNormal(this.transitionAir, this.velocity.y).clone() : UP.clone();
+  }
+
+  resolveMotion(before, beforeUp, input = {}) {
+    const result = this.surface.move(before, this.position, this.velocity, {
+      fromUp: beforeUp, toUp: this.bodyUp(), grounded: this.grounded,
+      forward: this.forward,
+      ignoreRail: this.grind?.rail.name || null,
+    });
+    this.position.copy(result.position);
+    const wall = result.contacts.find(hit => !hit.railId && Math.abs(hit.normal.y) < 0.3);
+    if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0) {
+      if (input.olliePressed) this.wallPlant(wall, this.position.clone());
+      else if (input.grindHeld) this.startWallRide(wall, this.position.clone());
+    }
+    if (this.grounded) {
+      const support = this.surface.ground(this.position, 0.12, 0.2);
+      if (support) {
+        const sign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
+        const speed = this.velocity.length() * sign;
+        if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
+          // Preserve motion along a barrier instead of steering the clipped
+          // velocity straight back into it on every simulation step.
+          this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
+        }
+        this.position.y = support.point.y + 0.015;
+        this.normal.copy(support.normal); this.groundDirection();
+        this.velocity.copy(this.forward).multiplyScalar(speed);
+      } else this.takeoff();
+    }
   }
 
   releaseJump() {
@@ -133,7 +170,9 @@ export class StreetPhysics {
       this.grabState = { ...events.grab };
       this.recordTrick(events.grab.name, events.grab.points);
     }
-    if (events.grind && !this.grounded && !this.grind) this.pendingGrindTrick = events.grind;
+    if (events.grind && !this.grounded && !this.grind) {
+      this.pendingGrindTrick = events.grind; this.grindIntentTime = 0.18;
+    }
     if (events.grindChange && this.grind) {
       this.grind.trick = events.grindChange;
       this.recordTrick(events.grindChange.name, events.grindChange.points);
@@ -148,6 +187,10 @@ export class StreetPhysics {
       speed: Math.abs(this.speed), airborne: !this.grounded,
     };
     this.handleEvents(this.tricks.resolve(input, context));
+    if (input.grindHeld && !this.grind) {
+      this.pendingGrindTrick ||= { ...grindFor(directionKey(input.steer, input.drive)) };
+      this.grindIntentTime = 0.18;
+    }
 
     if (input.ollieReleased) {
       if (this.grind) this.exitGrind(true);
@@ -165,7 +208,7 @@ export class StreetPhysics {
         grindPressed: firstStep && input.grindPressed,
       });
       firstStep = false;
-      this.accumulator -= PHYSICS.step;
+      this.accumulator = Math.max(0, this.accumulator - PHYSICS.step);
     }
     this.speed = this.grind ? this.grind.speed : this.grounded ? this.velocity.dot(this.forward) : Math.hypot(this.velocity.x, this.velocity.z);
   }
@@ -178,13 +221,16 @@ export class StreetPhysics {
 
     if (this.bailTime > 0) {
       this.bailTime -= dt;
-      if (this.bailTime <= 0) this.reset();
+      if (this.bailTime <= 0) { const score = this.score; this.reset(); this.score = score; }
       return;
     }
 
     if (input.ollieHeld) this.charge = Math.min(1, this.charge + dt / PHYSICS.chargeTime);
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.coyote = Math.max(0, this.coyote - dt);
+    this.contactCooldown = Math.max(0, this.contactCooldown - dt);
+    this.grindIntentTime = Math.max(0, this.grindIntentTime - dt);
+    if (!this.grindIntentTime) this.pendingGrindTrick = null;
     this.vertJumpTimer = Math.max(0, this.vertJumpTimer - dt);
     if (this.vertJumpTimer <= 0) this.vertJumpPending = 0;
 
@@ -212,29 +258,11 @@ export class StreetPhysics {
     }
 
     const before = this.position.clone();
+    const beforeUp = this.bodyUp();
     if (this.grounded) this.stepGround(dt, input, drive);
     else this.stepAir(dt, input, drive, before);
 
-    const wall = this.surface.wall(before, this.position, this.normal, this.grounded);
-    if (wall) {
-      if (!this.grounded && input.olliePressed) this.wallPlant(wall, before);
-      else if (!this.grounded && input.grindPressed) this.startWallRide(wall, before);
-      else {
-        this.position.copy(before);
-        this.velocity.addScaledVector(wall.normal, -Math.min(0, this.velocity.dot(wall.normal)));
-        if (this.grounded) this.velocity.multiplyScalar(0.25);
-      }
-    }
-
-    if (!this.grind && !this.transitionAir) {
-      const railHit = this.railNetwork.blockingContact(before, this.position, !this.grounded);
-      if (railHit) {
-        this.position.copy(before);
-        const into = this.velocity.dot(railHit.normal);
-        if (into < 0) this.velocity.addScaledVector(railHit.normal, -into);
-        this.velocity.multiplyScalar(this.grounded ? 0.28 : 0.68);
-      }
-    }
+    if (!this.bailTime) this.resolveMotion(before, beforeUp, input);
 
     this.distance += this.position.distanceTo(before);
     this.finishStep(dt);
@@ -254,11 +282,13 @@ export class StreetPhysics {
     this.position.addScaledVector(this.velocity, dt);
 
     const transition = this.transitions.launchAt(this.position, this.normal, this.velocity);
-    const support = this.surface.ground(this.position, 0.28, 0.42);
+    // Do not snap upward onto a stair/ledge simply because a high ray sees it.
+    const support = this.surface.ground(this.position, this.normal.y < 0.5 ? 0.32 : 0.12, 0.2);
     if (transition) {
       const vertBoost = this.vertJumpTimer > 0 ? this.vertJumpPending : 0;
       this.takeoff(vertBoost, transition);
-    } else if (support && this.position.y - support.point.y < 0.27) {
+    } else if (support && this.position.y - support.point.y < 0.2
+      && (support.point.y - this.position.y < 0.12 || (this.normal.y < 0.5 && support.normal.dot(this.normal) > 0.9))) {
       this.position.y = support.point.y + 0.015;
       this.normal.copy(support.normal);
       this.groundDirection();
@@ -286,19 +316,17 @@ export class StreetPhysics {
       if (this.flipState.progress >= 1) this.flipState = null;
     }
 
-    if (this.pendingGrindTrick) {
+    if (this.pendingGrindTrick && this.contactCooldown <= 0 && !this.flipState) {
       if (this.enterGrind(this.pendingGrindTrick)) { this.pendingGrindTrick = null; return; }
-      if (!input.grindPressed) this.pendingGrindTrick = null;
     }
 
-    const support = this.surface.ground(this.position, Math.max(0.15, before.y - this.position.y + 0.04), 0.4);
-    if (support && this.velocity.dot(support.normal) < 0 && before.y >= support.point.y - 0.04 && this.position.y <= support.point.y + 0.015) {
-      this.land(support);
-    }
+    // Sweep the board against riding faces, including sloped landings and seams.
+    const support = this.surface.landing(before, this.position);
+    if (support) this.land(support);
   }
 
   land(support) {
-    this.position.y = support.point.y + 0.015;
+    this.position.copy(support.point).addScaledVector(UP, 0.015);
     this.normal.copy(support.normal);
     this.groundDirection();
     const planar = this.velocity.clone().projectOnPlane(this.normal);
@@ -324,7 +352,7 @@ export class StreetPhysics {
   }
 
   enterGrind(trick) {
-    const capture = this.railNetwork.capture(this.position, this.velocity, 0.92);
+    const capture = this.railNetwork.capture(this.position, this.velocity, 0.42, this.forward);
     if (!capture) return false;
     const sample = this.railNetwork.sample(capture.rail, capture.s);
     if (!sample) return false;
@@ -348,12 +376,15 @@ export class StreetPhysics {
     const sample = this.railNetwork.sample(this.grind.rail, this.grind.s);
     if (!sample) { this.exitGrind(false); return; }
     const before = this.position.clone();
+    const beforeUp = this.bodyUp();
     this.position.copy(sample.point);
     const travel = sample.tangent.multiplyScalar(this.grind.direction);
     this.velocity.copy(travel).multiplyScalar(this.grind.speed);
     this.heading = headingFrom(travel, this.heading);
     this.airHeading = this.heading;
     this.airDirection();
+    this.resolveMotion(before, beforeUp, input);
+    if (this.position.distanceTo(sample.point) > 0.16) this.exitGrind(false);
     this.distance += this.position.distanceTo(before);
     this.stableGroundTime = 0;
   }
@@ -365,6 +396,7 @@ export class StreetPhysics {
     const travel = tangent.multiplyScalar(this.grind.direction);
     this.velocity.copy(travel).multiplyScalar(this.grind.speed);
     this.grind = null;
+    this.contactCooldown = 0.25; this.grindIntentTime = 0; this.pendingGrindTrick = null;
     this.grounded = false;
     this.transitionAir = null;
     this.airHeading = headingFrom(travel, this.heading);
@@ -382,6 +414,7 @@ export class StreetPhysics {
     const tangent = this.velocity.clone().projectOnPlane(wall.normal);
     if (tangent.lengthSq() < 2) return;
     this.position.copy(before);
+    this.contactCooldown = 0.2;
     tangent.y = Math.max(tangent.y, 1.2);
     this.velocity.copy(tangent);
     this.wallRide = { normal: wall.normal.clone(), time: 0, duration: 0.95 };
@@ -398,6 +431,7 @@ export class StreetPhysics {
       this.velocity.projectOnPlane(normal).addScaledVector(normal, 4.2);
       this.velocity.y = Math.max(this.velocity.y, 4.8);
       this.wallRide = null;
+      this.contactCooldown = 0.3;
       this.airHeading = headingFrom(this.velocity, this.heading);
       this.heading = this.airHeading;
       this.recordTrick('Wallie', 300);
@@ -409,22 +443,28 @@ export class StreetPhysics {
     this.velocity.projectOnPlane(normal);
     this.velocity.y -= PHYSICS.gravity * 0.34 * dt;
     const candidate = this.position.clone().addScaledVector(this.velocity, dt);
+    const floor = this.surface.landing(this.position, candidate);
+    if (floor) { this.land(floor); this.contactCooldown = 0.3; return; }
     const contact = this.surface.wallContact(candidate, normal, 0.62);
     if (!contact || this.wallRide.time > this.wallRide.duration) {
       this.wallRide = null;
+      this.contactCooldown = 0.3;
       return;
     }
+    const before = this.position.clone();
     this.position.copy(candidate);
     this.position.x = contact.point.x + normal.x * 0.13;
     this.position.z = contact.point.z + normal.z * 0.13;
     this.heading = headingFrom(this.velocity, this.heading);
     this.airHeading = this.heading;
     this.airDirection();
+    this.resolveMotion(before, normal, input);
     this.stableGroundTime = 0;
   }
 
   wallPlant(wall, before) {
     this.position.copy(before);
+    this.contactCooldown = 0.3;
     const incoming = Math.min(0, this.velocity.dot(wall.normal));
     this.velocity.addScaledVector(wall.normal, Math.max(4.3, -incoming * 1.8));
     this.velocity.y = Math.max(4.6, Math.abs(this.velocity.y) * 0.45 + 3.2);

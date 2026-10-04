@@ -5,7 +5,6 @@ import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { tuneQuarterPipes } from './park/RampTuning.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -172,7 +171,7 @@ async function loadGame() {
     manifest = parkManifest;
     park = parkFile.scene;
     collision = collisionFile.scene;
-    const rampTuning = tuneQuarterPipes(park, collision, manifest, 1.3);
+    const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
       object.castShadow = true;

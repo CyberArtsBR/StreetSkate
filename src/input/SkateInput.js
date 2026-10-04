@@ -104,6 +104,7 @@ export class SkateInput {
       grabPressed: just('ArrowRight') || edge('grab'),
       grabHeld: held('ArrowRight') || buttons.grab,
       grindPressed: just('ArrowUp') || edge('grind'),
+      grindHeld: held('ArrowUp') || buttons.grind,
       spin: (Number(held('KeyE')) + Number(buttons.spinRight)) - (Number(held('KeyQ')) + Number(buttons.spinLeft)),
       vertExit: held('ControlLeft') || buttons.vertExit,
       switchStancePressed: just('ControlRight') || edge('switchStance'),

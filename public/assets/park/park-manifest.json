@@ -7,7 +7,7 @@
   ],
   "referenceTriangles": 1377312,
   "visualTriangles": 38544,
-  "collisionTriangles": 4852,
+  "collisionTriangles": 8296,
   "visualObjects": 9,
   "materials": 11,
   "source": "Original procedural reconstruction from the user-supplied reference image; no scan meshes or textures included.",
@@ -599,12 +599,12 @@
       "points": [
         [
           -31.3,
-          3.625,
+          4.705000000000001,
           7.0
         ],
         [
           -31.3,
-          3.625,
+          4.705000000000001,
           -5.0
         ]
       ],
@@ -615,12 +615,12 @@
       "points": [
         [
           -27.5,
-          1.825,
+          2.365,
           -14.8
         ],
         [
           -16.5,
-          1.825,
+          2.365,
           -14.8
         ]
       ],
@@ -631,12 +631,12 @@
       "points": [
         [
           -16.5,
-          1.825,
+          2.365,
           -6.699999999999999
         ],
         [
           -27.5,
-          1.825,
+          2.365,
           -6.699999999999999
         ]
       ],
@@ -647,12 +647,12 @@
       "points": [
         [
           31.3,
-          1.825,
+          2.365,
           -0.5000000000000001
         ],
         [
           31.3,
-          1.825,
+          2.365,
           7.5
         ]
       ],
@@ -755,12 +755,15 @@
       "radius": 0.055
     }
   ],
+  "transitionScale": 1.3,
+  "collisionVersion": 2,
+  "rampScaleBaked": true,
   "insanity-inspired-park.glb": {
-    "bytes": 3646920,
-    "sha256": "ea45dc75bca06a00f04f14b36a47e82f66c22eb9241b64ca41af6779e3dbd6b0"
+    "bytes": 3646620,
+    "sha256": "337b118d9e848c11d1f31aa13d9cc8beba698d4842af54dd1def9e68b3e417cc"
   },
   "park-collision.glb": {
-    "bytes": 234552,
-    "sha256": "063b38d5e5893ab2fb21f7abc51af99ce3597538470202525a52cc142b07e3a3"
+    "bytes": 560644,
+    "sha256": "182741570561d93726f7601d1a7cfe3369020165342fc50a84fe0bb0f6722cad"
   }
 }
