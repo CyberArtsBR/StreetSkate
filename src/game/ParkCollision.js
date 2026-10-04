@@ -6,6 +6,8 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 const RADIUS = 0.23;
 const SKIN = 0.003;
+const WHEELBASE = 0.64;
+const WHEEL_TRACK = 0.2;
 
 export class ParkCollision {
   constructor(root) {
@@ -63,6 +65,89 @@ export class ParkCollision {
       if (normal.y > 0.035 && motion.dot(normal) < -1e-7) return { point: hit.point, normal };
     }
     return null;
+  }
+
+  /**
+   * Four independent wheel probes in the candidate surface-normal direction.
+   * Returns a support centre only when front and rear trucks both have support.
+   */
+  wheelSupport(center, forward, surfaceNormal, { rise = 0.24, drop = 0.42 } = {}) {
+    const normal = surfaceNormal.clone().normalize();
+    const boardForward = forward.clone().projectOnPlane(normal);
+    if (boardForward.lengthSq() < 1e-7) return null;
+    boardForward.normalize();
+    const right = boardForward.clone().cross(normal).normalize();
+    const offsets = [
+      { longitudinal: WHEELBASE * 0.5, lateral: -WHEEL_TRACK * 0.5, truck: 'front' },
+      { longitudinal: WHEELBASE * 0.5, lateral: WHEEL_TRACK * 0.5, truck: 'front' },
+      { longitudinal: -WHEELBASE * 0.5, lateral: -WHEEL_TRACK * 0.5, truck: 'rear' },
+      { longitudinal: -WHEELBASE * 0.5, lateral: WHEEL_TRACK * 0.5, truck: 'rear' },
+    ];
+    const wheels = [];
+    for (const offset of offsets) {
+      const planar = boardForward.clone().multiplyScalar(offset.longitudinal)
+        .addScaledVector(right, offset.lateral);
+      const expected = center.clone().add(planar);
+      const origin = expected.clone().addScaledVector(normal, rise);
+      this.ray.set(origin, normal.clone().negate());
+      this.ray.far = rise + drop;
+      let wheelHit = null;
+      for (const hit of this.ray.intersectObjects(this.ridingMeshes, false)) {
+        const hitNormal = this.normal(hit);
+        if (hitNormal.dot(normal) < 0.32) continue;
+        wheelHit = {
+          point: hit.point.clone(),
+          normal: hitNormal,
+          truck: offset.truck,
+          longitudinal: offset.longitudinal,
+          lateral: offset.lateral,
+          centerEstimate: hit.point.clone().sub(planar),
+          gap: hit.distance - rise,
+        };
+        break;
+      }
+      if (wheelHit) wheels.push(wheelHit);
+    }
+
+    const front = wheels.filter(w => w.truck === 'front').length;
+    const rear = wheels.filter(w => w.truck === 'rear').length;
+    if (wheels.length < 2 || front < 1 || rear < 1) return null;
+
+    const point = new THREE.Vector3();
+    const averagedNormal = new THREE.Vector3();
+    let maxGap = 0;
+    for (const wheel of wheels) {
+      point.add(wheel.centerEstimate);
+      averagedNormal.add(wheel.normal);
+      maxGap = Math.max(maxGap, Math.abs(wheel.gap));
+    }
+    point.multiplyScalar(1 / wheels.length);
+    averagedNormal.normalize();
+    return {
+      point,
+      normal: averagedNormal,
+      wheels,
+      wheelCount: wheels.length,
+      frontSupported: front,
+      rearSupported: rear,
+      maxWheelGap: maxGap,
+      boardForward,
+    };
+  }
+
+  /** Broad-phase sweep followed by four-wheel transition support. */
+  boardLanding(from, to, forward) {
+    const centerHit = this.landing(from, to);
+    if (!centerHit) return null;
+    const tangentForward = forward.clone().projectOnPlane(centerHit.normal);
+    if (tangentForward.lengthSq() < 1e-7) {
+      tangentForward.copy(to).sub(from).projectOnPlane(centerHit.normal);
+    }
+    if (tangentForward.lengthSq() < 1e-7) return null;
+    tangentForward.normalize();
+    const support = this.wheelSupport(centerHit.point, tangentForward, centerHit.normal);
+    if (!support) return null;
+    return { ...centerHit, ...support, centerHit: centerHit.point.clone() };
   }
 
   /** Swept, finite-height body with sliding and overlap recovery. No velocity damping. */

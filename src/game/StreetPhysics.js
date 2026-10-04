@@ -5,9 +5,20 @@ import { RailNetwork } from './RailNetwork.js';
 import { SkateTricks } from './SkateTricks.js';
 import { directionKey, grindFor } from './TrickCatalog.js';
 
+export const MOVEMENT_STATE = Object.freeze({
+  GROUND: 'GROUND',
+  AIR: 'AIR',
+  VERT_AIR: 'VERT_AIR',
+  GRIND: 'GRIND',
+  MANUAL: 'MANUAL',
+  WALLRIDE: 'WALLRIDE',
+  BAIL: 'BAIL',
+});
+
 export const PHYSICS = Object.freeze({
   step: 1 / 120, push: 6.8, maxSpeed: 11.5, gravity: 20, brake: 13,
   minJump: 4.5, maxJump: 7.6, chargeTime: 0.6, coyoteTime: 0.09, jumpBuffer: 0.12,
+  vertOllieBuffer: 0.9, maxLandingCorrection: 0.22,
 });
 const UP = new THREE.Vector3(0, 1, 0);
 const GRAVITY = new THREE.Vector3(0, -PHYSICS.gravity, 0);
@@ -36,6 +47,11 @@ export class StreetPhysics {
     this.reset();
   }
 
+  setMovementState(next) {
+    this.movementState = next;
+    this.grounded = next === MOVEMENT_STATE.GROUND || next === MOVEMENT_STATE.MANUAL;
+  }
+
   reset(position = this.spawn, heading = 0) {
     this.position.copy(position);
     const support = this.surface.ground(this.position, 5, 10);
@@ -44,7 +60,7 @@ export class StreetPhysics {
     this.velocity.set(0, 0, 0);
     this.heading = heading;
     this.airHeading = heading;
-    this.grounded = Boolean(support);
+    this.setMovementState(support ? MOVEMENT_STATE.GROUND : MOVEMENT_STATE.AIR);
     this.speed = 0; this.charge = 0; this.airSpin = 0;
     this.flipState = null; this.grabState = null; this.manual = null; this.flatland = null;
     this.grind = null; this.wallRide = null; this.stance = 1;
@@ -54,6 +70,7 @@ export class StreetPhysics {
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
     this.contactCooldown = 0; this.grindIntentTime = 0;
+    this.lastWheelSupport = null;
     this.tricks.reset();
     this.groundDirection();
   }
@@ -67,9 +84,10 @@ export class StreetPhysics {
   }
 
   bodyUp() {
-    if (this.wallRide) return this.wallRide.normal.clone();
+    if (this.movementState === MOVEMENT_STATE.WALLRIDE && this.wallRide) return this.wallRide.normal.clone();
     if (this.grounded) return this.normal.clone();
-    return this.transitionAir ? this.transitions.presentationNormal(this.transitionAir, this.velocity.y).clone() : UP.clone();
+    return this.movementState === MOVEMENT_STATE.VERT_AIR && this.transitionAir
+      ? this.transitions.presentationNormal(this.transitionAir, this.velocity.y).clone() : UP.clone();
   }
 
   resolveMotion(before, beforeUp, input = {}) {
@@ -80,7 +98,8 @@ export class StreetPhysics {
     });
     this.position.copy(result.position);
     const wall = result.contacts.find(hit => !hit.railId && Math.abs(hit.normal.y) < 0.3);
-    if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0) {
+    if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0
+      && this.movementState !== MOVEMENT_STATE.VERT_AIR) {
       if (input.olliePressed) this.wallPlant(wall, this.position.clone());
       else if (input.grindHeld) this.startWallRide(wall, this.position.clone());
     }
@@ -109,14 +128,23 @@ export class StreetPhysics {
 
   takeoff(impulse = 0, transition = null) {
     const onSurface = this.grounded;
-    this.grounded = false;
     this.manual = null;
     this.flatland = null;
-    this.velocity.y += impulse;
-    if (onSurface) {
-      const edge = transition || this.transitions.launchAt(this.position, this.normal, this.velocity);
-      this.transitionAir = edge ? this.transitions.begin(this.position, this.velocity, edge) : null;
+    let edge = null;
+    if (onSurface) edge = transition || this.transitions.launchAt(this.position, this.normal, this.velocity);
+
+    if (edge) {
+      this.transitionAir = this.transitions.begin(this.position, this.velocity, edge, {
+        boardForward: this.forward,
+        launchBoost: impulse,
+      });
+      this.setMovementState(MOVEMENT_STATE.VERT_AIR);
+    } else {
+      this.transitionAir = null;
+      this.velocity.y += impulse;
+      this.setMovementState(MOVEMENT_STATE.AIR);
     }
+
     this.airSpin = 0; this.airTime = 0; this.grabState = null;
     this.jumpBuffer = 0; this.coyote = impulse || this.transitionAir ? 0 : PHYSICS.coyoteTime;
     this.airHeading = this.heading;
@@ -147,6 +175,7 @@ export class StreetPhysics {
     if (events.manual && this.grounded && !this.grind && !this.bailTime) {
       this.manual = events.manual;
       this.flatland = null;
+      this.setMovementState(MOVEMENT_STATE.MANUAL);
       const info = this.tricks.manualInfo(events.manual);
       this.recordTrick(info?.name || 'Manual', info?.points || 100);
       this.stableGroundTime = 0;
@@ -183,7 +212,8 @@ export class StreetPhysics {
     if (input.reset) { this.reset(); return; }
     this.tricks.tick(delta);
     const context = {
-      grounded: this.grounded, grinding: Boolean(this.grind), manual: this.manual,
+      grounded: this.grounded, grinding: this.movementState === MOVEMENT_STATE.GRIND,
+      manual: this.movementState === MOVEMENT_STATE.MANUAL ? this.manual : null,
       speed: Math.abs(this.speed), airborne: !this.grounded,
     };
     this.handleEvents(this.tricks.resolve(input, context));
@@ -219,7 +249,7 @@ export class StreetPhysics {
     this.steer += (steer - this.steer) * (1 - Math.exp(-12 * dt));
     this.feedbackTime = Math.max(0, this.feedbackTime - dt);
 
-    if (this.bailTime > 0) {
+    if (this.movementState === MOVEMENT_STATE.BAIL || this.bailTime > 0) {
       this.bailTime -= dt;
       if (this.bailTime <= 0) { const score = this.score; this.reset(); this.score = score; }
       return;
@@ -234,12 +264,12 @@ export class StreetPhysics {
     this.vertJumpTimer = Math.max(0, this.vertJumpTimer - dt);
     if (this.vertJumpTimer <= 0) this.vertJumpPending = 0;
 
-    if (this.grind) {
+    if (this.movementState === MOVEMENT_STATE.GRIND && this.grind) {
       this.stepGrind(dt, input, drive);
       this.finishStep(dt);
       return;
     }
-    if (this.wallRide) {
+    if (this.movementState === MOVEMENT_STATE.WALLRIDE && this.wallRide) {
       this.stepWallRide(dt, input);
       this.finishStep(dt);
       return;
@@ -250,7 +280,7 @@ export class StreetPhysics {
       const vertApproach = this.grounded ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
       if (vertApproach) {
         this.vertJumpPending = Math.max(this.vertJumpPending, impulse);
-        this.vertJumpTimer = 0.72;
+        this.vertJumpTimer = PHYSICS.vertOllieBuffer;
         this.jumpBuffer = 0;
       } else {
         this.takeoff(impulse);
@@ -293,7 +323,9 @@ export class StreetPhysics {
       this.normal.copy(support.normal);
       this.groundDirection();
       this.velocity.copy(this.forward).multiplyScalar(speed);
-      if (this.manual && Math.abs(speed) < 0.55) { this.manual = null; this.flatland = null; }
+      if (this.manual && Math.abs(speed) < 0.55) {
+        this.manual = null; this.flatland = null; this.setMovementState(MOVEMENT_STATE.GROUND);
+      }
     } else {
       const armedVert = this.vertJumpTimer > 0 ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
       if (armedVert) this.takeoff(this.vertJumpPending, armedVert);
@@ -308,7 +340,9 @@ export class StreetPhysics {
     this.heading = this.airHeading + this.airSpin;
     this.airDirection();
     this.velocity.y -= PHYSICS.gravity * dt;
-    if (this.transitionAir) this.transitions.advance(this.transitionAir, this.position, this.velocity, input.vertExit, dt);
+    if (this.movementState === MOVEMENT_STATE.VERT_AIR && this.transitionAir) {
+      this.transitions.advance(this.transitionAir, this.position, this.velocity, input, dt);
+    }
     this.position.addScaledVector(this.velocity, dt);
 
     if (this.flipState) {
@@ -320,35 +354,55 @@ export class StreetPhysics {
       if (this.enterGrind(this.pendingGrindTrick)) { this.pendingGrindTrick = null; return; }
     }
 
-    // Sweep the board against riding faces, including sloped landings and seams.
-    const support = this.surface.landing(before, this.position);
+    // Broad sweep finds the transition, then all four wheels confirm final support.
+    const support = this.surface.boardLanding(before, this.position, this.forward);
     if (support) this.land(support);
   }
 
   land(support) {
-    this.position.copy(support.point).addScaledVector(UP, 0.015);
-    this.normal.copy(support.normal);
-    this.groundDirection();
-    const planar = this.velocity.clone().projectOnPlane(this.normal);
-    const alignment = planar.length() > 1 ? this.forward.dot(planar.clone().normalize()) : 1;
+    if ((support.wheelCount || 0) < 2 || !support.frontSupported || !support.rearSupported) return false;
+    const target = support.point.clone().addScaledVector(support.normal, 0.018);
+    const correction = target.clone().sub(this.position);
+    if (correction.length() > PHYSICS.maxLandingCorrection) return false;
+
+    const boardForward = this.forward.clone().projectOnPlane(support.normal);
+    const planar = this.velocity.clone().projectOnPlane(support.normal);
+    if (boardForward.lengthSq() < 1e-7 || planar.lengthSq() < 1e-7) return false;
+    boardForward.normalize();
+    const transitionTangent = planar.clone().normalize();
+    const alignment = boardForward.dot(transitionTangent);
     const unfinishedFlip = this.flipState && this.flipState.progress > 0.12 && this.flipState.progress < 0.88;
     if (Math.abs(alignment) < 0.44 || unfinishedFlip) {
       this.bail('BAIL · align your board before landing');
-      return;
+      return false;
     }
+
+    // The sweep already crossed the surface; apply only the small measured contact correction.
+    this.position.add(correction);
+    this.normal.copy(support.normal);
+    this.heading = headingFrom(boardForward, this.heading);
+    this.groundDirection();
 
     const spin = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180) * 180;
     if (spin >= 180) this.recordTrick(`${spin}°`, spin);
-    this.grounded = true;
+    this.setMovementState(MOVEMENT_STATE.GROUND);
     this.coyote = 0;
     this.justLanded = true;
     this.transitionAir = null;
     this.wallRide = null;
+    this.lastWheelSupport = {
+      wheelCount: support.wheelCount,
+      frontSupported: support.frontSupported,
+      rearSupported: support.rearSupported,
+      maxWheelGap: support.maxWheelGap,
+      correction: correction.length(),
+    };
     this.velocity.copy(this.forward).multiplyScalar(planar.length() * Math.sign(alignment || 1));
     this.flipState = null;
     this.grabState = null;
     this.airSpin = 0;
     this.stableGroundTime = 0;
+    return true;
   }
 
   enterGrind(trick) {
@@ -357,7 +411,7 @@ export class StreetPhysics {
     const sample = this.railNetwork.sample(capture.rail, capture.s);
     if (!sample) return false;
     this.grind = { ...capture, trick, speed: Math.max(2.8, capture.speed) };
-    this.grounded = false;
+    this.setMovementState(MOVEMENT_STATE.GRIND);
     this.manual = null; this.flatland = null; this.transitionAir = null; this.wallRide = null;
     this.position.copy(sample.point);
     const travel = sample.tangent.multiplyScalar(this.grind.direction);
@@ -397,7 +451,7 @@ export class StreetPhysics {
     this.velocity.copy(travel).multiplyScalar(this.grind.speed);
     this.grind = null;
     this.contactCooldown = 0.25; this.grindIntentTime = 0; this.pendingGrindTrick = null;
-    this.grounded = false;
+    this.setMovementState(MOVEMENT_STATE.AIR);
     this.transitionAir = null;
     this.airHeading = headingFrom(travel, this.heading);
     this.heading = this.airHeading;
@@ -419,6 +473,7 @@ export class StreetPhysics {
     this.velocity.copy(tangent);
     this.wallRide = { normal: wall.normal.clone(), time: 0, duration: 0.95 };
     this.transitionAir = null;
+    this.setMovementState(MOVEMENT_STATE.WALLRIDE);
     this.heading = headingFrom(tangent, this.heading);
     this.airHeading = this.heading;
     this.recordTrick('Wall Ride', 250);
@@ -431,6 +486,7 @@ export class StreetPhysics {
       this.velocity.projectOnPlane(normal).addScaledVector(normal, 4.2);
       this.velocity.y = Math.max(this.velocity.y, 4.8);
       this.wallRide = null;
+      this.setMovementState(MOVEMENT_STATE.AIR);
       this.contactCooldown = 0.3;
       this.airHeading = headingFrom(this.velocity, this.heading);
       this.heading = this.airHeading;
@@ -443,11 +499,12 @@ export class StreetPhysics {
     this.velocity.projectOnPlane(normal);
     this.velocity.y -= PHYSICS.gravity * 0.34 * dt;
     const candidate = this.position.clone().addScaledVector(this.velocity, dt);
-    const floor = this.surface.landing(this.position, candidate);
+    const floor = this.surface.boardLanding(this.position, candidate, this.forward);
     if (floor) { this.land(floor); this.contactCooldown = 0.3; return; }
     const contact = this.surface.wallContact(candidate, normal, 0.62);
     if (!contact || this.wallRide.time > this.wallRide.duration) {
       this.wallRide = null;
+      this.setMovementState(MOVEMENT_STATE.AIR);
       this.contactCooldown = 0.3;
       return;
     }
@@ -470,6 +527,7 @@ export class StreetPhysics {
     this.velocity.y = Math.max(4.6, Math.abs(this.velocity.y) * 0.45 + 3.2);
     this.transitionAir = null;
     this.wallRide = null;
+    this.setMovementState(MOVEMENT_STATE.AIR);
     this.airHeading = headingFrom(this.velocity, this.heading);
     this.heading = this.airHeading;
     this.recordTrick('Wall Plant', 300);
@@ -486,12 +544,14 @@ export class StreetPhysics {
       this.stableGroundTime += dt;
       if (this.stableGroundTime > 0.38 && this.tricks.combo.length) this.settleCombo();
     } else this.stableGroundTime = 0;
-    if (this.position.y < -6 || !Number.isFinite(this.position.lengthSq())) this.reset();
+    const finite = Number.isFinite(this.position.lengthSq()) && Number.isFinite(this.velocity.lengthSq()) && Number.isFinite(this.heading);
+    if (this.position.y < -6 || !finite) this.reset();
   }
 
   bail(message) {
     this.velocity.set(0, 0, 0); this.bailTime = 0.9;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
+    this.setMovementState(MOVEMENT_STATE.BAIL);
     this.tricks.combo = []; this.tricks.comboBase = 0; this.tricks.comboMultiplier = 0;
     this.feedback = message; this.feedbackTime = 2;
   }

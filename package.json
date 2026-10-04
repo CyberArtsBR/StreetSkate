@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "npm test && npm run test:vert && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:vert": "node tools/verify-vert.mjs"
   },
   "dependencies": { "three": "0.180.0" },
   "devDependencies": { "vite": "7.3.5" }

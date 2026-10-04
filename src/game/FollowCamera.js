@@ -10,8 +10,9 @@ export class FollowCamera {
     this.yawOffset = 0;
     this.pitchOffset = 0;
     this.lookIdle = 0;
+    this.vertBlend = 0;
   }
-  snap(player) { this.initialized = false; this.update(player, 1, {}); }
+  snap(player) { this.initialized = false; this.vertBlend = player.movementState === 'VERT_AIR' ? 1 : 0; this.update(player, 1, {}); }
   update(player, dt, input = {}) {
     const manualLook = Math.abs(input.cameraX || 0) + Math.abs(input.cameraY || 0) + Math.abs(input.mouseDX || 0) + Math.abs(input.mouseDY || 0);
     if (manualLook > 0.001) {
@@ -26,23 +27,45 @@ export class FollowCamera {
       }
     }
 
-    const forward = player.grounded ? player.forward.clone() : player.velocity.clone();
+    const vertActive = player.movementState === 'VERT_AIR' && player.transitionAir && !player.transitionAir.transferring;
+    const blendRate = vertActive ? 5.5 : 7.5;
+    const vertTarget = vertActive ? 1 : 0;
+    this.vertBlend += (vertTarget - this.vertBlend) * (1 - Math.exp(-blendRate * dt));
+
+    let forward = player.grounded ? player.forward.clone() : player.velocity.clone();
     forward.y = 0;
+    if (vertActive) {
+      // View from the ramp side toward coping. This frame is stable through 180/360 board spins.
+      const lipForward = player.transitionAir.frame.deckOutward.clone();
+      lipForward.y = 0;
+      if (lipForward.lengthSq() > 0.001) forward.copy(lipForward);
+    }
     if (forward.lengthSq() < 0.1) forward.copy(this.direction);
     forward.normalize();
-    const orbit = forward.clone().applyAxisAngle(UP, this.yawOffset);
+    const orbit = forward.clone().applyAxisAngle(UP, this.yawOffset * (1 - this.vertBlend * 0.45));
     const ratio = Math.min(Math.abs(player.speed) / player.config.maxSpeed, 1);
     if (!this.initialized) this.direction.copy(orbit);
-    this.direction.lerp(orbit, 1 - Math.exp(-4 * dt)).normalize();
-    const anchor = player.position.clone().addScaledVector(UP, 1.15);
-    const distance = 5.1 + ratio * 1.5;
-    const height = 2.1 + this.pitchOffset * 4.1;
+    this.direction.lerp(orbit, 1 - Math.exp(-(vertActive ? 5.8 : 4) * dt)).normalize();
+
+    const frame = player.transitionAir?.frame;
+    const heightAboveLip = frame ? Math.max(0, player.position.y - frame.lipPoint.y) : 0;
+    const anchor = player.position.clone().addScaledVector(UP, 1.15 + this.vertBlend * 0.32);
+    const distance = 5.1 + ratio * 1.5 + this.vertBlend * 1.65;
+    const height = 2.1 + this.pitchOffset * 4.1 + this.vertBlend * (1.1 + Math.min(1.4, heightAboveLip * 0.22));
     const desired = anchor.clone().addScaledVector(this.direction, -distance).addScaledVector(UP, height);
-    const look = anchor.clone().addScaledVector(this.direction, 1.4).addScaledVector(UP, -this.pitchOffset * 0.85);
+
+    const normalLook = anchor.clone().addScaledVector(this.direction, 1.4).addScaledVector(UP, -this.pitchOffset * 0.85);
+    let look = normalLook;
+    if (frame) {
+      const contextLook = player.position.clone().lerp(frame.lipPoint, 0.28)
+        .addScaledVector(UP, 0.95 + Math.min(0.8, heightAboveLip * 0.15));
+      look = normalLook.clone().lerp(contextLook, this.vertBlend);
+    }
+
     if (!this.initialized) {
       this.position.copy(desired); this.target.copy(look); this.initialized = true;
     }
-    this.position.lerp(desired, 1 - Math.exp(-7 * dt));
+    this.position.lerp(desired, 1 - Math.exp(-(vertActive ? 5.5 : 7) * dt));
     this.target.lerp(look, 1 - Math.exp(-10 * dt));
     this.camera.position.copy(player.surface.camera(anchor, this.position));
     this.camera.lookAt(this.target);
