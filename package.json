@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "test:vert": "node tools/verify-vert.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": { "three": "0.180.0" },
