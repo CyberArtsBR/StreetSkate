@@ -5,6 +5,7 @@ import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { tuneQuarterPipes } from './park/RampTuning.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -51,7 +52,10 @@ sun.shadow.normalBias = 0.07;
 sun.shadow.radius = 2;
 scene.add(sun);
 
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), new THREE.MeshStandardMaterial({ color: '#31454b', roughness: 1 }));
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(2000, 2000),
+  new THREE.MeshStandardMaterial({ color: '#31454b', roughness: 1 }),
+);
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -3.18;
 floor.receiveShadow = true;
@@ -64,8 +68,16 @@ const views = {
   top: { position: [0, 100, 0.01], target: [0, 0, 0], caption: 'Every obstacle. Every possible line.', index: '—' },
 };
 
-let tween = null, park = null, collision = null, manifest = null, skater = null, followCamera = null;
-let dusk = false, mode = 'skate', loaded = false, paused = false;
+let tween = null;
+let park = null;
+let collision = null;
+let manifest = null;
+let skater = null;
+let followCamera = null;
+let dusk = false;
+let mode = 'skate';
+let loaded = false;
+let paused = false;
 const input = new SkateInput(renderer.domElement);
 const clock = new THREE.Clock();
 
@@ -81,9 +93,15 @@ function setExploreView(name, instant = false) {
   const position = new THREE.Vector3(...view.position);
   if (innerWidth < 620 && name === 'overview') position.multiplyScalar(1.32);
   if (instant) {
-    camera.position.copy(position); controls.target.set(...view.target); controls.update(); tween = null;
+    camera.position.copy(position);
+    controls.target.set(...view.target);
+    controls.update();
+    tween = null;
   } else {
-    tween = { start: performance.now(), from: camera.position.clone(), to: position, targetFrom: controls.target.clone(), targetTo: new THREE.Vector3(...view.target) };
+    tween = {
+      start: performance.now(), from: camera.position.clone(), to: position,
+      targetFrom: controls.target.clone(), targetTo: new THREE.Vector3(...view.target),
+    };
   }
 }
 
@@ -103,12 +121,16 @@ function setMode(nextMode) {
   setPaused(false);
   input.clear();
   input.enabled = skating;
-  skater.charge = 0; skater.jumpBuffer = 0;
+  skater.charge = 0;
+  skater.jumpBuffer = 0;
   document.querySelector('#mode-toggle').classList.toggle('active', skating);
   document.querySelector('#mode-toggle').setAttribute('aria-pressed', String(skating));
   document.querySelector('#mode-toggle').setAttribute('aria-label', skating ? 'Switch to park explore mode' : 'Start skating');
   document.querySelector('#mode-label').textContent = skating ? 'SKATING' : 'EXPLORE';
-  if (skating) { tween = null; followCamera?.snap(skater); } else setExploreView('overview');
+  if (skating) {
+    tween = null;
+    followCamera?.snap(skater);
+  } else setExploreView('overview');
 }
 
 function updateHud() {
@@ -142,57 +164,106 @@ async function loadGame() {
     const [parkFile, collisionFile, parkManifest] = await Promise.all([
       loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
       loader.loadAsync('/assets/park/park-collision.glb'),
-      fetch('/assets/park/park-manifest.json').then(r => { if (!r.ok) throw new Error('Park manifest unavailable'); return r.json(); }),
+      fetch('/assets/park/park-manifest.json').then(r => {
+        if (!r.ok) throw new Error('Park manifest unavailable');
+        return r.json();
+      }),
     ]);
-    manifest = parkManifest; park = parkFile.scene; collision = collisionFile.scene;
+    manifest = parkManifest;
+    park = parkFile.scene;
+    collision = collisionFile.scene;
+    const rampTuning = tuneQuarterPipes(park, collision, manifest, 1.3);
     park.traverse(object => {
       if (!object.isMesh) return;
-      object.castShadow = true; object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      object.castShadow = true;
+      object.receiveShadow = true;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (material.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      }
     });
     scene.add(park);
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
+
     skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
     scene.add(skater.root);
-    followCamera = new FollowCamera(camera); followCamera.snap(skater);
+    followCamera = new FollowCamera(camera);
+    followCamera.snap(skater);
+
     document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
     document.querySelector('#loading').classList.add('done');
-    loaded = true; setMode('skate');
-    window.streetSkate = { ready: true, scene, renderer, camera, manifest, park, collision, skater, setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1' };
+    loaded = true;
+    setMode('skate');
+    window.streetSkate = {
+      ready: true, scene, renderer, camera, manifest, park, collision, skater,
+      setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1', rampTuning,
+    };
   } catch (error) { showError(error); }
 }
 
 controls.addEventListener('start', () => { tween = null; });
-document.querySelectorAll('button[data-view]').forEach((button) => button.addEventListener('click', () => { if (mode !== 'explore') setMode('explore'); setExploreView(button.dataset.view); }));
-document.querySelector('#reset').onclick = () => { if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); setPaused(false); } else setExploreView('overview'); };
-document.querySelector('#topview').onclick = () => { if (mode !== 'explore') setMode('explore'); setExploreView('top'); };
+document.querySelectorAll('button[data-view]').forEach((button) => button.addEventListener('click', () => {
+  if (mode !== 'explore') setMode('explore');
+  setExploreView(button.dataset.view);
+}));
+document.querySelector('#reset').onclick = () => {
+  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); setPaused(false); }
+  else setExploreView('overview');
+};
+document.querySelector('#topview').onclick = () => {
+  if (mode !== 'explore') setMode('explore');
+  setExploreView('top');
+};
 document.querySelector('#mode-toggle').onclick = () => setMode(mode === 'skate' ? 'explore' : 'skate');
 document.querySelector('#wireframe').onclick = (event) => {
   const enabled = event.currentTarget.getAttribute('aria-pressed') !== 'true';
   event.currentTarget.setAttribute('aria-pressed', String(enabled));
-  park?.traverse((object) => { if (!object.isMesh) return; for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.wireframe = enabled; });
+  park?.traverse((object) => {
+    if (!object.isMesh) return;
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.wireframe = enabled;
+  });
 };
 document.querySelector('#lighting').onclick = (event) => {
-  dusk = !dusk; sun.intensity = dusk ? 0.65 : 2.8; sun.color.set(dusk ? '#86b5ff' : '#fff1d9'); ambient.intensity = dusk ? 0.8 : 1.3;
-  scene.background.set(dusk ? '#141f32' : '#25363d'); scene.fog.color.copy(scene.background);
+  dusk = !dusk;
+  sun.intensity = dusk ? 0.65 : 2.8;
+  sun.color.set(dusk ? '#86b5ff' : '#fff1d9');
+  ambient.intensity = dusk ? 0.8 : 1.3;
+  scene.background.set(dusk ? '#141f32' : '#25363d');
+  scene.fog.color.copy(scene.background);
   event.currentTarget.setAttribute('aria-label', dusk ? 'Switch to afternoon' : 'Switch to blue hour');
 };
 
-window.addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-window.addEventListener('blur', () => { input.clear(); if (skater) { skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0; } });
-setExploreView('overview', true); loadGame();
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+window.addEventListener('blur', () => {
+  input.clear();
+  if (skater) { skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0; }
+});
+setExploreView('overview', true);
+loadGame();
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1), elapsed = clock.elapsedTime;
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const elapsed = clock.elapsedTime;
+
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     if (state.pausePressed) setPaused(!paused);
-    if (!paused) { skater.update(dt, state, elapsed); followCamera.update(skater, dt, state); if (state.reset) followCamera.snap(skater); }
+    if (!paused) {
+      skater.update(dt, state, elapsed);
+      followCamera.update(skater, dt, state);
+      if (state.reset) followCamera.snap(skater);
+    }
     updateHud();
   } else {
     if (tween) {
-      const t = Math.min((performance.now() - tween.start) / 1100, 1), smooth = t * t * (3 - 2 * t);
-      camera.position.lerpVectors(tween.from, tween.to, smooth); controls.target.lerpVectors(tween.targetFrom, tween.targetTo, smooth); if (t === 1) tween = null;
+      const t = Math.min((performance.now() - tween.start) / 1100, 1);
+      const smooth = t * t * (3 - 2 * t);
+      camera.position.lerpVectors(tween.from, tween.to, smooth);
+      controls.target.lerpVectors(tween.targetFrom, tween.targetTo, smooth);
+      if (t === 1) tween = null;
     }
     if (mode === 'explore') controls.update();
   }

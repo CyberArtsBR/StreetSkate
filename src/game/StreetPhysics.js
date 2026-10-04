@@ -51,6 +51,7 @@ export class StreetPhysics {
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
+    this.vertJumpPending = 0; this.vertJumpTimer = 0;
     this.tricks.reset();
     this.groundDirection();
   }
@@ -83,6 +84,7 @@ export class StreetPhysics {
     this.jumpBuffer = 0; this.coyote = impulse || this.transitionAir ? 0 : PHYSICS.coyoteTime;
     this.airHeading = this.heading;
     this.stableGroundTime = 0;
+    this.vertJumpPending = 0; this.vertJumpTimer = 0;
     if (impulse > 0.1) this.recordTrick('Ollie', 50);
   }
 
@@ -183,6 +185,8 @@ export class StreetPhysics {
     if (input.ollieHeld) this.charge = Math.min(1, this.charge + dt / PHYSICS.chargeTime);
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     this.coyote = Math.max(0, this.coyote - dt);
+    this.vertJumpTimer = Math.max(0, this.vertJumpTimer - dt);
+    if (this.vertJumpTimer <= 0) this.vertJumpPending = 0;
 
     if (this.grind) {
       this.stepGrind(dt, input, drive);
@@ -196,7 +200,15 @@ export class StreetPhysics {
     }
 
     if ((this.grounded || this.coyote > 0) && this.jumpBuffer > 0) {
-      this.takeoff(THREE.MathUtils.lerp(PHYSICS.minJump, PHYSICS.maxJump, this.jumpCharge));
+      const impulse = THREE.MathUtils.lerp(PHYSICS.minJump, PHYSICS.maxJump, this.jumpCharge);
+      const vertApproach = this.grounded ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
+      if (vertApproach) {
+        this.vertJumpPending = Math.max(this.vertJumpPending, impulse);
+        this.vertJumpTimer = 0.72;
+        this.jumpBuffer = 0;
+      } else {
+        this.takeoff(impulse);
+      }
     }
 
     const before = this.position.clone();
@@ -211,6 +223,16 @@ export class StreetPhysics {
         this.position.copy(before);
         this.velocity.addScaledVector(wall.normal, -Math.min(0, this.velocity.dot(wall.normal)));
         if (this.grounded) this.velocity.multiplyScalar(0.25);
+      }
+    }
+
+    if (!this.grind && !this.transitionAir) {
+      const railHit = this.railNetwork.blockingContact(before, this.position, !this.grounded);
+      if (railHit) {
+        this.position.copy(before);
+        const into = this.velocity.dot(railHit.normal);
+        if (into < 0) this.velocity.addScaledVector(railHit.normal, -into);
+        this.velocity.multiplyScalar(this.grounded ? 0.28 : 0.68);
       }
     }
 
@@ -232,16 +254,21 @@ export class StreetPhysics {
     this.position.addScaledVector(this.velocity, dt);
 
     const transition = this.transitions.launchAt(this.position, this.normal, this.velocity);
-    const support = this.surface.ground(this.position, 0.22, 0.3);
+    const support = this.surface.ground(this.position, 0.28, 0.42);
     if (transition) {
-      this.takeoff(0, transition);
+      const vertBoost = this.vertJumpTimer > 0 ? this.vertJumpPending : 0;
+      this.takeoff(vertBoost, transition);
     } else if (support && this.position.y - support.point.y < 0.27) {
       this.position.y = support.point.y + 0.015;
       this.normal.copy(support.normal);
       this.groundDirection();
       this.velocity.copy(this.forward).multiplyScalar(speed);
       if (this.manual && Math.abs(speed) < 0.55) { this.manual = null; this.flatland = null; }
-    } else this.takeoff();
+    } else {
+      const armedVert = this.vertJumpTimer > 0 ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
+      if (armedVert) this.takeoff(this.vertJumpPending, armedVert);
+      else this.takeoff();
+    }
   }
 
   stepAir(dt, input, drive, before) {
