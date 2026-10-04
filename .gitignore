@@ -1,0 +1,8 @@
+node_modules/
+dist/
+references/
+*.blend1
+artifacts/verification/
+.DS_Store
+__pycache__/
+*.log
