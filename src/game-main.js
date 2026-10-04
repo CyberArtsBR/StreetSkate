@@ -171,7 +171,7 @@ async function loadGame() {
     scene.add(park);
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
-    skater = await new StreetSkater({ collision, spawn: manifest.spawn }).load();
+    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);

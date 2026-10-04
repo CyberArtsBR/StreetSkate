@@ -26,6 +26,8 @@ Simulation pauses when the page loses focus. Explore mode pauses the rider.
 
 The toolbar switches between Skate and Explore. Aerial steering rotates the rider without redirecting momentum. Land aligned with the travel direction (or switch); unfinished flips and sideways landings cause a bail.
 
+Bowl and quarter-pipe lips launch vertically at every approach speed. Speed controls airtime and height; the rider returns on the same line unless W / stick forward is held after the apex. That input releases the line and carries the rider forward over the coping. Ordinary banks and flat-ground ollies keep their normal momentum.
+
 ## Build and deploy
 
 ```sh
@@ -45,6 +47,8 @@ All four runtime GLBs are ordinary Git binary files in `public/assets`; no chunk
 - Single Unreal-style 61-bone character; procedural limb posing and foot placement because the supplied GLB has no animation clips.
 - Skateboard resized to 1.05 m with deck-centered flip rotation.
 - Follow camera tracks momentum during aerial spins.
+- Vertical transition launches use the authored coping paths, with a locked return line and intentional forward exits after the apex.
+- Arm poses respect the authored elbow bend planes, spread forearm/wrist roll, and distribute the gaze across the torso, neck, and head.
 
 The park follows the broad layout of the supplied reference without the building or grass.
 It is an original low-poly reconstruction, not the photogrammetry scan.

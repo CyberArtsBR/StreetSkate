@@ -27,7 +27,9 @@ export class StreetSkater extends StreetPhysics {
   update(delta, input, elapsed) {
     this.advance(delta, input);
     this.root.position.copy(this.position);
-    this.presentationNormal.lerp(this.grounded ? this.normal : new THREE.Vector3(0, 1, 0),
+    const surfaceUp = this.grounded ? this.normal : this.transitionAir
+      ? this.transitions.presentationNormal(this.transitionAir, this.velocity.y) : new THREE.Vector3(0, 1, 0);
+    this.presentationNormal.lerp(surfaceUp,
       1 - Math.exp(-18 * Math.max(delta, 1 / 120))).normalize();
     const forward = new THREE.Vector3(-Math.sin(this.heading), 0, -Math.cos(this.heading))
       .projectOnPlane(this.presentationNormal).normalize();
@@ -38,7 +40,7 @@ export class StreetSkater extends StreetPhysics {
     this.board?.update({ distance: this.distance, flip: this.flipActive ? this.flipProgress : 0,
       airborne: !this.grounded, grab: !this.grounded && input.grab });
     this.rider?.update({ speedRatio, crouch: this.charge, airborne: !this.grounded,
-      steer: this.steer, grab: !this.grounded && input.grab, time: elapsed, bail: this.bailTime > 0 });
+      steer: this.steer, grab: !this.grounded && input.grab, time: elapsed, dt: delta, bail: this.bailTime > 0 });
     return { speedRatio };
   }
 }

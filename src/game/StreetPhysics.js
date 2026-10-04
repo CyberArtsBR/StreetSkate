@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ParkCollision } from './ParkCollision.js';
+import { TransitionGuide } from './TransitionGuide.js';
 
 export const PHYSICS = Object.freeze({ step: 1 / 120, push: 6.8, maxSpeed: 11.5, gravity: 20,
   brake: 13, minJump: 4.5, maxJump: 7.6, chargeTime: 0.6, coyoteTime: 0.09, jumpBuffer: 0.12 });
@@ -9,8 +10,9 @@ const clamp = THREE.MathUtils.clamp;
 
 /** Metres, seconds, Y up, local -Z travel. Presentation never changes trajectory. */
 export class StreetPhysics {
-  constructor({ collision, spawn }) {
+  constructor({ collision, spawn, rails = [] }) {
     this.surface = new ParkCollision(collision);
+    this.transitions = new TransitionGuide(rails);
     this.spawn = new THREE.Vector3(...spawn);
     this.position = new THREE.Vector3();
     this.velocity = new THREE.Vector3();
@@ -33,6 +35,7 @@ export class StreetPhysics {
     this.accumulator = 0; this.coyote = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0;
+    this.transitionAir = null;
     this.groundDirection();
   }
 
@@ -46,12 +49,17 @@ export class StreetPhysics {
     this.charge = 0;
   }
 
-  takeoff(impulse = 0) {
+  takeoff(impulse = 0, transition = null) {
+    const onSurface = this.grounded;
     this.grounded = false;
     // Tangential ramp velocity is already in velocity; add jump impulse once.
     this.velocity.y += impulse;
+    if (onSurface) {
+      const edge = transition || this.transitions.launchAt(this.position, this.normal, this.velocity);
+      this.transitionAir = edge ? this.transitions.begin(this.position, this.velocity, edge) : null;
+    }
     this.airSpin = 0; this.airTime = 0; this.airFlips = 0; this.grabbed = false;
-    this.jumpBuffer = 0; this.coyote = impulse ? 0 : PHYSICS.coyoteTime;
+    this.jumpBuffer = 0; this.coyote = impulse || this.transitionAir ? 0 : PHYSICS.coyoteTime;
     this.airHeading = this.heading;
   }
 
@@ -102,8 +110,11 @@ export class StreetPhysics {
       this.velocity.copy(this.forward).multiplyScalar(speed);
       this.position.addScaledVector(this.velocity, dt);
 
+      const transition = this.transitions.launchAt(this.position, this.normal, this.velocity);
       const support = this.surface.ground(this.position, 0.22, 0.3);
-      if (support && this.position.y - support.point.y < 0.27) {
+      if (transition) {
+        this.takeoff(0, transition);
+      } else if (support && this.position.y - support.point.y < 0.27) {
         // Preserve speed as the tangent changes instead of adding artificial energy.
         this.position.y = support.point.y + 0.015;
         this.normal.copy(support.normal);
@@ -115,6 +126,7 @@ export class StreetPhysics {
       this.airSpin -= this.steer * 3.8 * dt;
       this.heading = this.airHeading + this.airSpin;
       this.velocity.y -= PHYSICS.gravity * dt;
+      if (this.transitionAir) this.transitions.advance(this.transitionAir, this.position, this.velocity, drive, dt);
       this.position.addScaledVector(this.velocity, dt);
       if (input.grab) this.grabbed = true;
       if (this.flipActive) {
@@ -133,6 +145,7 @@ export class StreetPhysics {
           this.bail('BAIL · align your board before landing');
         } else {
           this.grounded = true; this.coyote = 0; this.justLanded = true;
+          this.transitionAir = null;
           this.velocity.copy(this.forward).multiplyScalar(planar.length() * Math.sign(alignment));
           this.flipActive = false; this.flipProgress = 0;
           if (this.airTime > 0.15) {
@@ -166,6 +179,7 @@ export class StreetPhysics {
 
   bail(message) {
     this.velocity.set(0, 0, 0); this.bailTime = 0.9;
+    this.transitionAir = null;
     this.feedback = message; this.feedbackTime = 2;
   }
 }
