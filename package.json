@@ -10,7 +10,8 @@
     "test": "node --test tests/*.test.mjs",
     "test:vert": "node tools/verify-vert.mjs",
     "test:pump": "node tools/verify-pumping.mjs",
-    "verify:physics": "npm run test:vert && npm run test:pump"
+    "verify:board": "node tools/verify-board.mjs",
+    "verify:physics": "npm run verify:board && npm run test:vert && npm run test:pump"
   },
   "dependencies": { "three": "0.180.0" },
   "devDependencies": { "vite": "7.3.5" }

@@ -71,6 +71,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     ]);
     this.visual.add(this.board.root, this.rider.root);
     this.rider.deckHeight = this.board.deckHeight;
+    this.setBoardContactRig(this.board.contactRig);
     this.balanceHud = ensureBalanceHud();
     this.update(0, {}, 0);
     return this;

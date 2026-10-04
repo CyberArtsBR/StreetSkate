@@ -1,12 +1,12 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { SkillStreetPhysics } from './SkillStreetPhysics.js';
+import { BoardContactSkillStreetPhysics } from './BoardContactSkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * SkillStreetPhysics predates explicit states and still owns grind/manual flags,
- * so the bridge derives one authoritative state before and after every fixed step.
+ * BoardContactSkillStreetPhysics owns rideable terrain support while the state
+ * bridge derives one authoritative gameplay state before and after each fixed step.
  */
-export class StatefulSkillStreetPhysics extends SkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends BoardContactSkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
