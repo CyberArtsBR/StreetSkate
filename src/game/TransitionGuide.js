@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
-/** Only curved bowl/quarter-pipe coping paths use the half-pipe air rule. */
+/** Curved bowl/quarter-pipe coping paths use a vertical-air rule. */
 export class TransitionGuide {
   constructor(rails = []) {
     this.edges = [];
@@ -15,7 +15,6 @@ export class TransitionGuide {
   }
 
   launchAt(position, normal, velocity) {
-    // No speed threshold changes the launch angle. Height still follows energy.
     if (velocity.y <= 0 || normal.y > 0.5) return null;
     const outward = normal.clone().setY(0).normalize().negate();
     const horizontal = velocity.clone().setY(0);
@@ -26,7 +25,6 @@ export class TransitionGuide {
       const t = THREE.MathUtils.clamp(position.clone().sub(a).setY(0).dot(edge) / Math.max(edge.lengthSq(), 1e-8), 0, 1);
       const lip = a.clone().lerp(b, t);
       const gap = position.clone().sub(lip).setY(0).length();
-      // Coping centre is 2.5 cm above the riding surface.
       const height = lip.y - 0.025;
       if (gap >= distance || position.y < height - 0.18 || position.y > height + 0.25) continue;
       closest = { lip, outward, normal: normal.clone() };
@@ -38,7 +36,6 @@ export class TransitionGuide {
   begin(position, velocity, edge) {
     const speed = Math.max(3.6, Math.min(20, velocity.length()));
     const anchor = position.clone();
-    // Keep the return line on the inside of the lip, including a skipped edge step.
     const outside = anchor.clone().sub(edge.lip).dot(edge.outward);
     if (outside > -0.04) anchor.addScaledVector(edge.outward, -0.04 - outside);
     position.x = anchor.x; position.z = anchor.z;
@@ -46,16 +43,15 @@ export class TransitionGuide {
     return { anchor, direction: edge.outward, normal: edge.normal, speed, apexPassed: false, transferring: false };
   }
 
-  advance(air, position, velocity, drive, dt) {
+  advance(air, position, velocity, breakOut, dt) {
     if (velocity.y <= 0) air.apexPassed = true;
-    if (air.apexPassed && drive > 0 && !air.transferring) {
+    if (air.apexPassed && breakOut && !air.transferring) {
       air.transferring = true;
-      // Intentional forward input after the apex clears the coping.
       velocity.x = air.direction.x * 3;
       velocity.z = air.direction.z * 3;
     }
     if (air.transferring) {
-      const speed = Math.min(9, Math.hypot(velocity.x, velocity.z) + Math.max(0, drive) * 9 * dt);
+      const speed = Math.min(9, Math.hypot(velocity.x, velocity.z) + 9 * dt);
       velocity.x = air.direction.x * speed;
       velocity.z = air.direction.z * speed;
     } else {
