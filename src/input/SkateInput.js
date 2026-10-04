@@ -1,8 +1,17 @@
 const PREVENT_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
 export class SkateInput {
-  constructor() {
-    this.keys = new Set(); this.pressed = new Set(); this.released = new Set();
-    this.enabled = false; this.padPrevious = {};
+  constructor(element = window) {
+    this.element = element;
+    this.keys = new Set();
+    this.pressed = new Set();
+    this.released = new Set();
+    this.enabled = false;
+    this.padPrevious = {};
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.pointerLook = false;
+
     this._down = e => {
       if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
       if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
@@ -15,33 +24,100 @@ export class SkateInput {
       this.keys.delete(e.code);
     };
     this._blur = () => this.clear();
-    window.addEventListener('keydown', this._down);
-    window.addEventListener('keyup', this._up);
+    this._pointerDown = e => {
+      if (!this.enabled || e.button !== 0) return;
+      this.pointerLook = true;
+      this.element?.setPointerCapture?.(e.pointerId);
+    };
+    this._pointerUp = e => {
+      if (e.button !== 0) return;
+      this.pointerLook = false;
+      this.element?.releasePointerCapture?.(e.pointerId);
+    };
+    this._pointerMove = e => {
+      if (!this.enabled || !this.pointerLook) return;
+      this.mouseDX += e.movementX || 0;
+      this.mouseDY += e.movementY || 0;
+    };
+
+    window.addEventListener('keydown', this._down, { passive: false });
+    window.addEventListener('keyup', this._up, { passive: false });
     window.addEventListener('blur', this._blur);
+    this.element?.addEventListener?.('pointerdown', this._pointerDown);
+    this.element?.addEventListener?.('pointerup', this._pointerUp);
+    this.element?.addEventListener?.('pointercancel', this._pointerUp);
+    this.element?.addEventListener?.('pointermove', this._pointerMove);
   }
 
   clear() {
     this.keys.clear(); this.pressed.clear(); this.released.clear();
     this.padPrevious = {};
+    this.mouseDX = 0; this.mouseDY = 0; this.pointerLook = false;
   }
 
   read() {
     const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
     const axis = v => Math.abs(v || 0) < 0.16 ? 0 : Math.sign(v) * (Math.abs(v) - 0.16) / 0.84;
     const held = (...codes) => codes.some(code => this.keys.has(code));
-    const buttons = { ollie: !!pad?.buttons[0]?.pressed, flip: !!pad?.buttons[2]?.pressed, reset: !!pad?.buttons[9]?.pressed };
-    const steer = Number(held('KeyD', 'ArrowRight')) - Number(held('KeyA', 'ArrowLeft'));
-    const drive = Number(held('KeyW', 'ArrowUp')) - Number(held('KeyS', 'ArrowDown'));
-    const state = {
-      steer: steer || axis(pad?.axes[0]), drive: drive || -axis(pad?.axes[1]),
-      brake: held('ShiftLeft', 'ShiftRight') || !!pad?.buttons[1]?.pressed,
-      ollieHeld: held('Space') || buttons.ollie,
-      ollieReleased: this.released.has('Space') || (!buttons.ollie && this.padPrevious.ollie && !!pad),
-      flip: this.pressed.has('KeyQ') || (buttons.flip && !this.padPrevious.flip),
-      grab: held('KeyE') || !!pad?.buttons[3]?.pressed,
-      reset: this.pressed.has('KeyR') || (buttons.reset && !this.padPrevious.reset),
+    const just = (...codes) => codes.some(code => this.pressed.has(code));
+
+    const buttons = {
+      ollie: !!pad?.buttons[0]?.pressed,
+      grab: !!pad?.buttons[1]?.pressed,
+      flip: !!pad?.buttons[2]?.pressed,
+      grind: !!pad?.buttons[3]?.pressed,
+      spinLeft: !!pad?.buttons[4]?.pressed,
+      spinRight: !!pad?.buttons[5]?.pressed,
+      vertExit: !!pad?.buttons[6]?.pressed,
+      switchStance: !!pad?.buttons[7]?.pressed,
+      pause: !!pad?.buttons[9]?.pressed,
+      dpadUp: !!pad?.buttons[12]?.pressed,
+      dpadDown: !!pad?.buttons[13]?.pressed,
+      dpadLeft: !!pad?.buttons[14]?.pressed,
+      dpadRight: !!pad?.buttons[15]?.pressed,
     };
+    const edge = key => buttons[key] && !this.padPrevious[key];
+    const release = key => !buttons[key] && this.padPrevious[key] && !!pad;
+
+    const keyboardSteer = Number(held('KeyD')) - Number(held('KeyA'));
+    const dpadSteer = Number(buttons.dpadRight) - Number(buttons.dpadLeft);
+    const keyboardDrive = Number(held('KeyW')) - Number(held('KeyS'));
+    const dpadDrive = Number(buttons.dpadUp) - Number(buttons.dpadDown);
+    const steer = keyboardSteer || dpadSteer || axis(pad?.axes[0]);
+    const drive = keyboardDrive || dpadDrive || -axis(pad?.axes[1]);
+
+    const directionTaps = [];
+    if (just('KeyW') || edge('dpadUp')) directionTaps.push('up');
+    if (just('KeyS') || edge('dpadDown')) directionTaps.push('down');
+    if (just('KeyA') || edge('dpadLeft')) directionTaps.push('left');
+    if (just('KeyD') || edge('dpadRight')) directionTaps.push('right');
+
+    const state = {
+      steer,
+      drive,
+      directionTaps,
+      brake: held('ShiftLeft', 'ShiftRight'),
+      ollieHeld: held('Space') || buttons.ollie,
+      olliePressed: just('Space') || edge('ollie'),
+      ollieReleased: this.released.has('Space') || release('ollie'),
+      flipPressed: just('ArrowLeft') || edge('flip'),
+      grabPressed: just('ArrowRight') || edge('grab'),
+      grabHeld: held('ArrowRight') || buttons.grab,
+      grindPressed: just('ArrowUp') || edge('grind'),
+      spin: (Number(held('KeyE')) + Number(buttons.spinRight)) - (Number(held('KeyQ')) + Number(buttons.spinLeft)),
+      vertExit: held('ControlLeft') || buttons.vertExit,
+      switchStancePressed: just('ControlRight') || edge('switchStance'),
+      pausePressed: just('Escape') || edge('pause'),
+      reset: just('KeyR'),
+      cameraX: axis(pad?.axes[2]),
+      cameraY: axis(pad?.axes[3]),
+      mouseDX: this.mouseDX,
+      mouseDY: this.mouseDY,
+      cameraActive: this.pointerLook || Math.abs(axis(pad?.axes[2])) > 0 || Math.abs(axis(pad?.axes[3])) > 0,
+    };
+
     this.padPrevious = buttons;
+    this.mouseDX = 0; this.mouseDY = 0;
     this.pressed.clear(); this.released.clear();
     return state;
   }
@@ -50,5 +126,9 @@ export class SkateInput {
     window.removeEventListener('keydown', this._down);
     window.removeEventListener('keyup', this._up);
     window.removeEventListener('blur', this._blur);
+    this.element?.removeEventListener?.('pointerdown', this._pointerDown);
+    this.element?.removeEventListener?.('pointerup', this._pointerUp);
+    this.element?.removeEventListener?.('pointercancel', this._pointerUp);
+    this.element?.removeEventListener?.('pointermove', this._pointerMove);
   }
 }
