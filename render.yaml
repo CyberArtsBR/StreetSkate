@@ -2,6 +2,6 @@ services:
   - type: web
     name: streetskate
     runtime: static
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci && npm run test:vert && npm run build
     staticPublishPath: ./dist
     autoDeploy: true
