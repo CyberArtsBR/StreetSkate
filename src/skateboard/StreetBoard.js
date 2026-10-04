@@ -26,9 +26,21 @@ export class StreetBoard {
     return this;
   }
 
-  update({ airborne = false, flip = 0, grab = false }) {
-    // Rotate around the deck, so a kickflip does not orbit the wheels.
-    this.root.position.y = this.deckHeight + (airborne ? 0.025 : 0);
-    this.root.rotation.set(grab ? -0.12 : 0, 0, flip * Math.PI * 2);
+  update({ airborne = false, flipState = null, grab = false, manual = null, grinding = false, wallRide = false }) {
+    this.root.position.y = this.deckHeight + (airborne || grinding ? 0.025 : 0);
+    let x = grab ? -0.12 : 0;
+    let y = 0;
+    let z = 0;
+    if (flipState) {
+      const p = THREE.MathUtils.clamp(flipState.progress, 0, 1);
+      x += p * Math.PI * 2 * (flipState.pitch || 0);
+      y += p * Math.PI * 2 * (flipState.yaw || 0);
+      z += p * Math.PI * 2 * (flipState.roll || 0);
+    }
+    if (manual === 'manual') x -= 0.16;
+    if (manual === 'noseManual') x += 0.16;
+    if (grinding) z += 0.035;
+    if (wallRide) z += 0.22;
+    this.root.rotation.set(x, y, z);
   }
 }
