@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SkillStreetPhysics } from './SkillStreetPhysics.js';
+import { StatefulSkillStreetPhysics } from './StatefulSkillStreetPhysics.js';
 import { UnrealRider } from '../character/UnrealRider.js';
 import { StreetBoard } from '../skateboard/StreetBoard.js';
 import { ensureBalanceHud } from './BalanceHud.js';
@@ -7,7 +7,7 @@ import { flipPhaseFor, physicsMovementState, resolvePresentationState } from '..
 
 const clamp = THREE.MathUtils.clamp;
 
-export class StreetSkater extends SkillStreetPhysics {
+export class StreetSkater extends StatefulSkillStreetPhysics {
   constructor(options) {
     super(options);
     this.root = new THREE.Group();
