@@ -192,7 +192,10 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       return;
     }
 
-    const sign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
+    const measuredSign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
+    const sign = Number.isFinite(this.rollingSign) && this.rollingSign !== 0
+      ? (this.rollingSign < 0 ? -1 : 1)
+      : measuredSign;
     const speed = this.velocity.length() * sign;
     if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
       this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
@@ -212,11 +215,17 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
   stepGround(dt, input, drive) {
     let speed = this.velocity.dot(this.forward);
+    const persistentSign = Number.isFinite(this.rollingSign) && this.rollingSign !== 0
+      ? (this.rollingSign < 0 ? -1 : 1)
+      : 0;
+    if (persistentSign && Math.abs(speed) > 1e-5) speed = Math.abs(speed) * persistentSign;
+
     if (this.manual) this.updateManualBalance(dt, input, speed);
     if (this.bailTime) return;
 
     const rate = THREE.MathUtils.lerp(2.7, 1.2, clamp(Math.abs(speed) / 12, 0, 1));
-    this.heading -= this.steer * rate * (speed < -0.15 ? -1 : 1) * dt;
+    const steeringSign = persistentSign || (speed < -0.15 ? -1 : 1);
+    this.heading -= this.steer * rate * steeringSign * dt;
     this.groundDirection();
     speed += (-PHYSICS.gravity * this.forward.y) * dt;
 
