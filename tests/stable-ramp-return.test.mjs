@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
-  lerpHeading,
   naturalRampReturnProgress,
   rampReturnFacing,
   rampReturnFakie,
@@ -10,50 +9,37 @@ import {
   transitionAirSpinInput,
 } from '../src/game/StableRampReturnSkillStreetPhysics.js';
 
-test('straight same-wall return faces down-ramp without becoming a trick 180', () => {
+test('straight same-wall return preserves takeoff facing with no automatic yaw', () => {
   const takeoff = new THREE.Vector3(0, 0, -1);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: 0 });
-  assert.ok(returned.dot(takeoff) < -0.999999);
+  assert.ok(returned.dot(takeoff) > 0.999999);
   assert.equal(rampReturnHalfTurns(0), 0);
   assert.equal(rampReturnFakie(false, 0), false);
 });
 
-test('natural ramp turnaround starts near apex and finishes before touchdown', () => {
-  const launchVertical = 8;
-  const early = naturalRampReturnProgress({ verticalSpeed: 5, launchVertical });
-  const apex = naturalRampReturnProgress({ verticalSpeed: 0, launchVertical });
-  const descent = naturalRampReturnProgress({ verticalSpeed: -6, launchVertical });
-  assert.ok(early < 0.02, `early progress should be near zero: ${early}`);
-  assert.ok(apex > 0.15 && apex < 0.65, `apex should already be turning: ${apex}`);
-  assert.ok(descent > 0.95, `descent should be nearly fully aligned: ${descent}`);
+test('passive ramp return has zero automatic turnaround progress at every phase', () => {
+  assert.equal(naturalRampReturnProgress({ verticalSpeed: 6, launchVertical: 8 }), 0);
+  assert.equal(naturalRampReturnProgress({ verticalSpeed: 0, launchVertical: 8 }), 0);
+  assert.equal(naturalRampReturnProgress({ verticalSpeed: -7, launchVertical: 8 }), 0);
 });
 
-test('natural turnaround is smooth rather than a one-frame contact snap', () => {
-  const start = 0;
-  const target = Math.PI;
-  const quarter = lerpHeading(start, target, 0.25);
-  const half = lerpHeading(start, target, 0.5);
-  assert.ok(Math.abs(quarter) > 0.5 && Math.abs(quarter) < 1.1);
-  assert.ok(Math.abs(Math.abs(half) - Math.PI / 2) < 1e-6);
-});
-
-test('passive ramp return preserves existing fakie state instead of toggling it', () => {
+test('passive ramp return preserves existing fakie presentation instead of toggling it', () => {
   assert.equal(rampReturnFakie(false, 0), false);
   assert.equal(rampReturnFakie(true, 0), true);
 });
 
-test('real explicit 180 is added on top of natural turnaround and toggles fakie', () => {
+test('real explicit 180 alone reverses facing and toggles fakie', () => {
   const takeoff = new THREE.Vector3(0, 0, -1);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: Math.PI });
-  assert.ok(returned.dot(takeoff) > 0.999999);
+  assert.ok(returned.dot(takeoff) < -0.999999);
   assert.equal(rampReturnFakie(false, Math.PI), true);
   assert.equal(rampReturnHalfTurns(Math.PI), 1);
 });
 
-test('explicit 360 returns regular after the natural turnaround', () => {
+test('explicit 360 preserves takeoff facing and regular presentation', () => {
   const takeoff = new THREE.Vector3(1, 0, 0);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: Math.PI * 2 });
-  assert.ok(returned.dot(takeoff) < -0.999999);
+  assert.ok(returned.dot(takeoff) > 0.999999);
   assert.equal(rampReturnFakie(false, Math.PI * 2), false);
   assert.equal(rampReturnHalfTurns(Math.PI * 2), 2);
 });
