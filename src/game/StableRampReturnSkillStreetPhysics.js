@@ -9,6 +9,7 @@ import {
 } from './SafeCopingExitSkillStreetPhysics.js';
 
 const EPSILON = 1e-8;
+const clamp = THREE.MathUtils.clamp;
 
 function horizontal(source, fallback = null) {
   const out = source?.clone?.() || new THREE.Vector3();
@@ -38,6 +39,16 @@ export function rampReturnHalfTurns(airSpin = 0) {
 }
 
 /**
+ * Vert rotation is an explicit trick command. Ground steering/analog drift is
+ * deliberately excluded: the underlying air solver historically added
+ * `this.steer` to `input.spin`, which could accumulate a fake 180 during a long
+ * ramp air even when the player never pressed Q/E/L1/R1.
+ */
+export function transitionAirSpinInput(input = {}) {
+  return clamp(Number(input.spin) || 0, -1, 1);
+}
+
+/**
  * Preserve the deck's horizontal takeoff facing on a straight vert return.
  * Physics may reverse world travel down the ramp, but facing only changes when
  * the player actually performs an odd number of 180-degree rotations.
@@ -59,6 +70,7 @@ export function rampReturnFakie(previousFakie = false, airSpin = 0) {
  * Final ramp-return semantics:
  * - straight up / straight back does NOT visually snap 180;
  * - passive reversal down a quarter does NOT by itself toggle fakie mode;
+ * - steering input cannot accumulate vert spin; only explicit spin input can;
  * - a real player 180 still flips facing/fakie;
  * - 360 preserves facing/fakie;
  * - the validated coping, anti-tunnelling, rail magnet, ramp-air and tight-carve
@@ -74,13 +86,35 @@ export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillS
   takeoff(impulse = 0, transition = null) {
     const takeoffFacing = horizontal(this.forward, this.travelDirection);
     const takeoffFakie = Boolean(this.fakie);
+    const takeoffStance = Number(this.stance) || 1;
     const result = super.takeoff(impulse, transition);
 
     if (this.transitionAir?.frame) {
       this.transitionAir.frame.takeoffFacing = takeoffFacing.clone();
       this.transitionAir.frame.takeoffFakie = takeoffFakie;
+      this.transitionAir.frame.takeoffStance = takeoffStance;
     }
     return result;
+  }
+
+  /**
+   * The parent vert solver uses `this.steer + input.spin` for airborne rotation.
+   * That makes residual steering/controller drift a trick command. During an
+   * authored transition air, neutralize only the steering contribution while
+   * preserving explicit spin. Normal ground carving and all other air systems
+   * keep their existing behavior.
+   */
+  stepAir(dt, input = {}, drive, before) {
+    if (!this.transitionAir) return super.stepAir(dt, input, drive, before);
+
+    const originalSteer = this.steer;
+    const explicitSpin = transitionAirSpinInput(input);
+    this.steer = 0;
+    try {
+      return super.stepAir(dt, { ...input, spin: explicitSpin }, drive, before);
+    } finally {
+      this.steer = originalSteer;
+    }
   }
 
   autoAlignOriginalTransition(support, air) {
@@ -101,16 +135,19 @@ export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillS
   land(support) {
     const activeAir = this.transitionAir;
     const previousFakie = activeAir?.frame?.takeoffFakie ?? Boolean(this.fakie);
+    const takeoffStance = activeAir?.frame?.takeoffStance ?? (Number(this.stance) || 1);
     const landingSpin = Number(this.airSpin) || 0;
+    const halfTurns = rampReturnHalfTurns(landingSpin);
     const wasTransitionAir = Boolean(activeAir);
 
     const landed = super.land(support);
     if (!landed) return false;
 
     if (wasTransitionAir) {
-      // Keep locomotion sign free to represent the actual direction down the ramp,
-      // but do not call passive reversal a fakie trick/state change.
+      // Passive reversal is travel, not a trick. Explicit odd half-turns are the
+      // only reason to change the rider's regular/switch presentation state.
       this.fakie = rampReturnFakie(previousFakie, landingSpin);
+      this.stance = halfTurns % 2 === 1 ? -takeoffStance : takeoffStance;
       this.rampReentrySteerLock = Math.max(
         this.rampReentrySteerLock || 0,
         ARCADE_PARK_MOBILITY.rampReentrySteerLock,
