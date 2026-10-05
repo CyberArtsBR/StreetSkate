@@ -34,11 +34,7 @@ export function lerpHeading(from, to, t) {
   return from + angleDelta(from, to) * clamp(t, 0, 1);
 }
 
-/**
- * Kept for backwards compatibility with older test/import surfaces. Automatic
- * same-wall turnaround has intentionally been REMOVED: without explicit spin
- * input there is no presentation yaw at all while airborne.
- */
+/** Backwards-compatible helper: passive ramp turnaround is intentionally zero. */
 export function naturalRampReturnProgress() {
   return 0;
 }
@@ -49,15 +45,12 @@ export function rampReturnHalfTurns(airSpin = 0) {
   return Math.floor((degrees + 25) / 180);
 }
 
-/** Vert rotation comes only from Q/E/L1/R1 (explicit spin). */
+/** Air rotation comes only from the explicit spin channel. */
 export function transitionAirSpinInput(input = {}) {
   return clamp(Number(input.spin) || 0, -1, 1);
 }
 
-/**
- * Board facing is takeoff facing plus explicit trick spin only. Passive ramp
- * reversal does not rotate the character in the air and does not snap at contact.
- */
+/** Passive return preserves takeoff facing; only an explicit odd 180 reverses it. */
 export function rampReturnFacing({ takeoffFacing, airSpin = 0 } = {}) {
   const facing = horizontal(takeoffFacing);
   if (rampReturnHalfTurns(airSpin) % 2 === 1) facing.negate();
@@ -72,51 +65,66 @@ export function rampReturnFakie(previousFakie = false, airSpin = 0) {
 }
 
 /**
- * Authoritative ramp-return semantics:
- * - no input => NO automatic yaw in the air;
- * - no input => NO automatic heading snap on touchdown;
- * - passive return may roll backward relative to the deck, but that alone never
- *   changes stance/fakie presentation;
- * - explicit 180/360 still work normally through airSpin;
- * - robust broad-wall recovery lives directly underneath this layer.
+ * Final ramp-air authority:
+ * - steering input / analog smoothing NEVER becomes airborne yaw;
+ * - this applies to authored vert AND generic ramps/kickers/banks;
+ * - passive ramp air freezes the takeoff heading until explicit spin is pressed;
+ * - touchdown never auto-aligns heading; dedicated wall recovery is the only
+ *   automatic ~90-degree turn in the game.
  */
 export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
     this.rampTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
     this.rampTakeoffFacing.copy(horizontal(this.forward, this.travelDirection));
+    this.airTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
+    this.airTakeoffFacing.copy(this.rampTakeoffFacing);
+    this.airTakeoffHeading = heading;
+    this.airTakeoffFakie = Boolean(this.fakie);
+    this.airTakeoffStance = Number(this.stance) || 1;
+    this.airTakeoffFromRamp = false;
   }
 
   takeoff(impulse = 0, transition = null) {
+    const wasGrounded = Boolean(this.grounded);
+    const takeoffNormalY = Math.abs(this.normal?.y ?? 1);
     const takeoffFacing = horizontal(this.forward, this.travelDirection);
+    const takeoffHeading = headingFrom(takeoffFacing, this.heading);
     const takeoffFakie = Boolean(this.fakie);
     const takeoffStance = Number(this.stance) || 1;
+    const rampTakeoff = Boolean(transition) || (wasGrounded && takeoffNormalY < 0.995);
+
+    this.airTakeoffFacing.copy(takeoffFacing);
+    this.airTakeoffHeading = takeoffHeading;
+    this.airTakeoffFakie = takeoffFakie;
+    this.airTakeoffStance = takeoffStance;
+    this.airTakeoffFromRamp = rampTakeoff;
+
     const result = super.takeoff(impulse, transition);
 
     if (this.transitionAir?.frame) {
       this.transitionAir.frame.takeoffFacing = takeoffFacing.clone();
       this.transitionAir.frame.takeoffFakie = takeoffFakie;
       this.transitionAir.frame.takeoffStance = takeoffStance;
-      this.transitionAir.frame.takeoffHeading = headingFrom(takeoffFacing, this.airHeading);
+      this.transitionAir.frame.takeoffHeading = takeoffHeading;
     }
     return result;
   }
 
   /**
-   * Do not allow ground steering/drift to become airborne spin. More importantly,
-   * keep airHeading frozen at takeoff heading for a passive vert return. The only
-   * yaw applied by the parent is explicit airSpin.
+   * Neutralize steering for EVERY airborne state. The parent air solver historically
+   * used `this.steer + input.spin`; that meant generic ramp AIR still rotated even
+   * after authored VERT_AIR had been fixed. Explicit spin remains fully functional.
    */
   stepAir(dt, input = {}, drive, before) {
-    if (!this.transitionAir) return super.stepAir(dt, input, drive, before);
-
-    const air = this.transitionAir;
     const originalSteer = this.steer;
     const explicitSpin = transitionAirSpinInput(input);
-    const takeoffHeading = Number.isFinite(air.frame?.takeoffHeading)
-      ? air.frame.takeoffHeading
-      : this.airHeading;
+    const frameHeading = this.transitionAir?.frame?.takeoffHeading;
+    const takeoffHeading = Number.isFinite(frameHeading)
+      ? frameHeading
+      : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
 
+    // Freeze the non-trick baseline heading. Parent applies airSpin on top of it.
     this.airHeading = takeoffHeading;
     this.steer = 0;
     try {
@@ -126,29 +134,26 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     }
   }
 
-  /**
-   * Disable every lower-layer automatic transition alignment. Current heading is
-   * already the player's takeoff facing plus explicit spin; landing must preserve it.
-   */
+  /** Disable every lower-layer automatic transition alignment. */
   autoAlignOriginalTransition() {}
 
   land(support) {
     const activeAir = this.transitionAir;
-    const previousFakie = activeAir?.frame?.takeoffFakie ?? Boolean(this.fakie);
-    const takeoffStance = activeAir?.frame?.takeoffStance ?? (Number(this.stance) || 1);
+    const wasRampAir = Boolean(activeAir) || Boolean(this.airTakeoffFromRamp);
+    const previousFakie = activeAir?.frame?.takeoffFakie ?? this.airTakeoffFakie ?? Boolean(this.fakie);
+    const takeoffStance = activeAir?.frame?.takeoffStance ?? this.airTakeoffStance ?? (Number(this.stance) || 1);
     const landingSpin = Number(this.airSpin) || 0;
     const halfTurns = rampReturnHalfTurns(landingSpin);
-    const wasTransitionAir = Boolean(activeAir);
 
     const landed = super.land(support);
     if (!landed) return false;
 
-    if (wasTransitionAir) {
-      // Do not label a passive backward roll down the same ramp as a fakie trick.
-      // rollingSign remains physical (velocity relative to deck) so momentum keeps
-      // going down the ramp without flipping heading on the next frame.
+    if (wasRampAir) {
       this.fakie = rampReturnFakie(previousFakie, landingSpin);
       this.stance = halfTurns % 2 === 1 ? -takeoffStance : takeoffStance;
+
+      // rollingSign remains physical so the board can descend backwards relative
+      // to its nose without visually rotating or relabelling the rider as fakie.
       const signedSpeed = this.velocity.dot(this.forward);
       if (Math.abs(signedSpeed) > 0.18) this.rollingSign = signedSpeed < 0 ? -1 : 1;
 
@@ -157,6 +162,8 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
         ARCADE_PARK_MOBILITY.rampReentrySteerLock,
       );
     }
+
+    this.airTakeoffFromRamp = false;
     return true;
   }
 
