@@ -5,6 +5,8 @@ const CAPTURE_SCALE = 1.3;
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
 
+export const RAMP_EXIT_INPUT_THRESHOLD = 0.35;
+
 function horizontal(vector) {
   return vector.clone().setY(0);
 }
@@ -19,6 +21,19 @@ function accelerateToward(current, target, maxDelta) {
   const length = correction.length();
   if (length <= maxDelta || length < EPSILON) return target.clone();
   return current.clone().addScaledVector(correction, maxDelta / length);
+}
+
+/**
+ * THPS-style contextual Up: forward is not a skating throttle, but on a
+ * transition it means "leave the lip". A direction tap also counts so keyboard,
+ * D-pad and analog all get the same deterministic behavior.
+ */
+export function wantsRampExit(input = {}) {
+  return Boolean(
+    input.vertExit
+    || (Number(input.drive) || 0) > RAMP_EXIT_INPUT_THRESHOLD
+    || input.directionTaps?.includes?.('up')
+  );
 }
 
 /**
@@ -91,15 +106,21 @@ export class TransitionGuide {
     });
   }
 
-  /** Tight lip capture used for actual vert takeoff. */
+  /**
+   * Lip capture used for actual vert takeoff. The old y<=0.70 requirement was
+   * too strict for averaged four-wheel normals on triangulated park meshes. Since
+   * this search only considers authored coping guides, a wider slope window is
+   * safe and prevents legitimate quarter/mini lips from falling through to a
+   * generic unsupported takeoff.
+   */
   launchAt(position, normal, velocity) {
     if (velocity.y <= -0.05) return null;
     return this.candidate(position, normal, velocity, {
-      maxGap: 0.52 * CAPTURE_SCALE,
-      below: 0.3 * CAPTURE_SCALE,
-      above: 0.32 * CAPTURE_SCALE,
-      maxNormalY: 0.7,
-      minAlignment: 0.12,
+      maxGap: 0.62 * CAPTURE_SCALE,
+      below: 0.48 * CAPTURE_SCALE,
+      above: 0.34 * CAPTURE_SCALE,
+      maxNormalY: 0.84,
+      minAlignment: 0.05,
     });
   }
 
@@ -113,20 +134,31 @@ export class TransitionGuide {
     const nonLateralSpeed = Math.sqrt(Math.max(0, incomingSpeed * incomingSpeed - tangentSpeed * tangentSpeed));
     const baseVertical = Math.max(Math.max(0, incomingVelocity.y), nonLateralSpeed * geometryConversion);
     const boost = clamp(launchBoost || 0, 0, 8.5);
-    // Treat the ollie as extra launch energy rather than replacing momentum with a huge Y constant.
-    const launchVertical = clamp(Math.sqrt(baseVertical * baseVertical + Math.pow(boost * 0.72, 2)), 2.5, 15.5);
+    let launchVertical = clamp(Math.sqrt(baseVertical * baseVertical + Math.pow(boost * 0.72, 2)), 2.5, 15.5);
     const lateralVelocity = clamp(tangentVelocity, -2.6, 2.6);
-    const inwardDrift = clamp(incomingSpeed * 0.055, 0.22, 0.85);
+    const exitRequested = Boolean(edge.exitRequested);
 
-    const launchHorizontal = edge.copingTangent.clone().multiplyScalar(lateralVelocity)
-      .addScaledVector(edge.rampInward, inwardDrift);
+    let launchHorizontal;
+    if (exitRequested) {
+      // If Up was already held before the lip, do not launch inward and then
+      // reverse later. Start outward on frame one, preserving useful entry energy
+      // and enough vertical component for tricks on small/medium transitions.
+      const exitSpeed = clamp(incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
+      const retainedLateral = edge.copingTangent.clone().multiplyScalar(lateralVelocity * 0.45);
+      launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
+      launchVertical = clamp(launchVertical * 0.80, 3.2, 11.8);
+    } else {
+      const inwardDrift = clamp(incomingSpeed * 0.055, 0.22, 0.85);
+      launchHorizontal = edge.copingTangent.clone().multiplyScalar(lateralVelocity)
+        .addScaledVector(edge.rampInward, inwardDrift);
+    }
     velocity.copy(launchHorizontal).addScaledVector(UP, launchVertical);
 
     const returnTarget = edge.lipPoint.clone().addScaledVector(edge.rampInward, 0.26);
     returnTarget.y = edge.lipPoint.y - 0.035;
 
     return {
-      mode: 'return',
+      mode: exitRequested ? 'transfer' : 'return',
       frame: {
         lipPoint: edge.lipPoint.clone(),
         copingTangent: edge.copingTangent.clone(),
@@ -143,8 +175,8 @@ export class TransitionGuide {
       launchHorizontal: launchHorizontal.clone(),
       lateralVelocity,
       apexPassed: false,
-      exitRequested: false,
-      transferring: false,
+      exitRequested,
+      transferring: exitRequested,
       age: 0,
       copingName: edge.name,
       returnError: horizontal(returnTarget.clone().sub(position)).length(),
@@ -154,9 +186,16 @@ export class TransitionGuide {
   advance(air, position, velocity, input = {}, dt) {
     air.age += dt;
     if (velocity.y <= 0) air.apexPassed = true;
-    if (input.vertExit) air.exitRequested = true;
 
-    const canTransfer = air.apexPassed || (air.age > 0.18 && velocity.y < air.launchVertical * 0.48);
+    const upExit = (Number(input.drive) || 0) > RAMP_EXIT_INPUT_THRESHOLD
+      || input.directionTaps?.includes?.('up');
+    if (input.vertExit || upExit) air.exitRequested = true;
+
+    // Up is the THPS contextual ramp-exit command and should react immediately.
+    // Ctrl/L2 remains a supported alternate transfer command with the old timing.
+    const canTransfer = upExit
+      ? air.age > 0.01
+      : air.apexPassed || (air.age > 0.18 && velocity.y < air.launchVertical * 0.48);
     if (air.exitRequested && canTransfer && !air.transferring) {
       air.mode = 'transfer';
       air.transferring = true;
@@ -165,14 +204,15 @@ export class TransitionGuide {
     const frame = air.frame;
     const currentHorizontal = horizontal(velocity);
     if (air.transferring) {
-      const exitSpeed = clamp(frame.incomingSpeed * 0.72 + 1.1, 3.8, 10.5);
-      const retainedLateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * 0.55);
+      const exitSpeed = clamp(frame.incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
+      const retainedLateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * 0.45);
       const desired = frame.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      const next = accelerateToward(currentHorizontal, desired, 18 * dt);
+      const next = accelerateToward(currentHorizontal, desired, (upExit ? 48 : 30) * dt);
       velocity.x = next.x;
       velocity.z = next.z;
     } else if (!air.apexPassed) {
-      // Small spatial drift is intentional: never freeze X/Z, but keep the rider on the ramp side.
+      // Normal vert (no Up): small spatial drift keeps the rider on the ramp side
+      // so airs return naturally to the same transition.
       const lateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * Math.exp(-1.25 * air.age));
       const inward = frame.rampInward.clone().multiplyScalar(clamp(frame.incomingSpeed * 0.045, 0.18, 0.68));
       const desired = inward.add(lateral);
