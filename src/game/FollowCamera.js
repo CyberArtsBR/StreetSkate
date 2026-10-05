@@ -9,10 +9,58 @@ export const THPS_CAMERA = Object.freeze({
   anchorHeight: 1.15,
   lookAhead: 1.6,
   targetHeight: 0.90,
-  directionFollowRate: 8.5,
+
+  // Classic skate cameras do not instantly orbit behind the rider every time a
+  // quarter pipe reverses world travel. Normal carving recenters deliberately;
+  // a near-180 travel reversal rotates much more slowly and stays readable.
+  directionFollowRate: 4.2,
+  reverseDirectionFollowRate: 0.82,
+  reverseDotThreshold: -0.18,
   positionFollowRate: 9.5,
   targetFollowRate: 12.0,
 });
+
+function wrapAngle(value) {
+  let result = (value + Math.PI) % (Math.PI * 2);
+  if (result < 0) result += Math.PI * 2;
+  return result - Math.PI;
+}
+
+/**
+ * Angular interpolation avoids the classic vector-lerp failure at a 180° change,
+ * where opposite vectors shrink toward zero and then suddenly flip. This is the
+ * key to keeping the camera on a Tony-Hawk-like side during vert reversals.
+ */
+export function smoothCameraDirection(current, target, dt, rate) {
+  const from = current?.clone?.() || new THREE.Vector3(0, 0, -1);
+  const to = target?.clone?.() || new THREE.Vector3(0, 0, -1);
+  from.y = 0;
+  to.y = 0;
+  if (from.lengthSq() < 1e-8) from.set(0, 0, -1);
+  if (to.lengthSq() < 1e-8) to.copy(from);
+  from.normalize();
+  to.normalize();
+
+  const fromYaw = Math.atan2(from.x, from.z);
+  const toYaw = Math.atan2(to.x, to.z);
+  const delta = wrapAngle(toYaw - fromYaw);
+  const alpha = 1 - Math.exp(-Math.max(0, Number(rate) || 0) * Math.max(0, Number(dt) || 0));
+  const yaw = fromYaw + delta * alpha;
+  return new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+}
+
+export function cameraDirectionRate(current, target, config = THPS_CAMERA) {
+  const from = current?.clone?.() || new THREE.Vector3(0, 0, -1);
+  const to = target?.clone?.() || new THREE.Vector3(0, 0, -1);
+  from.y = 0;
+  to.y = 0;
+  if (from.lengthSq() < 1e-8 || to.lengthSq() < 1e-8) return config.directionFollowRate;
+  from.normalize();
+  to.normalize();
+  return from.dot(to) < config.reverseDotThreshold
+    ? config.reverseDirectionFollowRate
+    : config.directionFollowRate;
+}
 
 /**
  * Third-person skate cameras follow the path through the park, not the deck nose.
@@ -45,7 +93,8 @@ export function resolveTravelFollowDirection(player, previousDirection = null, i
 
 /**
  * Deterministic fixed camera frame. Speed, stance, jump state and vert state do
- * not change the distance or pitch; only the world travel direction can rotate it.
+ * not change the distance or pitch; only the smoothed world travel direction can
+ * rotate it.
  */
 export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
   const travel = direction.clone();
@@ -86,12 +135,8 @@ export class FollowCamera {
     const followDirection = resolveTravelFollowDirection(player, this.direction, this.initialized);
     if (!this.initialized) this.direction.copy(followDirection);
     else {
-      this.direction.lerp(
-        followDirection,
-        1 - Math.exp(-THPS_CAMERA.directionFollowRate * dt),
-      );
-      if (this.direction.lengthSq() < 1e-8) this.direction.copy(followDirection);
-      this.direction.normalize();
+      const rate = cameraDirectionRate(this.direction, followDirection);
+      this.direction.copy(smoothCameraDirection(this.direction, followDirection, dt, rate));
     }
 
     const frame = fixedChaseFrame(player, this.direction);
