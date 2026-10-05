@@ -1,15 +1,15 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { ArcadeParkMobilitySkillStreetPhysics } from './ArcadeParkMobilitySkillStreetPhysics.js';
+import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * ArcadeParkMobilitySkillStreetPhysics owns momentum-first locomotion, curved
+ * StableRampReturnSkillStreetPhysics owns momentum-first locomotion, curved
  * transition touchdown handling, safe wall recovery, persistent regular/fakie
  * travel, board-footprint-safe coping exits, forgiving rail/handrail entry,
- * stronger ramp airtime and tighter carving while this bridge derives one
- * authoritative gameplay state before and after each fixed step.
+ * stronger ramp airtime, tighter carving and stance-safe ramp returns while this
+ * bridge derives one authoritative gameplay state before and after each fixed step.
  */
-export class StatefulSkillStreetPhysics extends ArcadeParkMobilitySkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
