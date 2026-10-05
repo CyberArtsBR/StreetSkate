@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import {
   ARCADE_PARK_MOBILITY,
   arcadeGrindEligibility,
   arcadeRampAirBoost,
   arcadeTurnGain,
+  rampReentrySteerScale,
+  transitionReturnBoardDirection,
 } from '../src/game/ArcadeParkMobilitySkillStreetPhysics.js';
 import { grindProfile } from '../src/game/SkateSystems.js';
 
@@ -56,4 +59,39 @@ test('park-speed steering gain produces a much tighter carve', () => {
   assert.ok(low >= 1.5);
   assert.ok(park >= 1.7, `park-speed gain too weak: ${park}`);
   assert.ok(park > low);
+});
+
+test('steep ramp return heading is locked to authored ramp axis, not tiny lateral drift', () => {
+  const direction = transitionReturnBoardDirection({
+    rampInward: new THREE.Vector3(0, 0, 1),
+    fallbackTravel: new THREE.Vector3(1, 0, 0.02),
+    rollingSign: 1,
+    airSpin: 0,
+  });
+  assert.ok(direction.z > 0.999, `expected ramp-axis return, got ${direction.toArray()}`);
+  assert.ok(Math.abs(direction.x) < 1e-6, `lateral drift leaked into heading: ${direction.x}`);
+});
+
+test('180 return keeps same ramp travel axis but reverses deck facing for fakie', () => {
+  const regular = transitionReturnBoardDirection({
+    rampInward: new THREE.Vector3(0, 0, 1),
+    rollingSign: 1,
+    airSpin: 0,
+  });
+  const oneEighty = transitionReturnBoardDirection({
+    rampInward: new THREE.Vector3(0, 0, 1),
+    rollingSign: 1,
+    airSpin: Math.PI,
+  });
+  assert.ok(regular.dot(oneEighty) < -0.999);
+});
+
+test('ramp re-entry hard-locks steering first, then blends tight carving back in', () => {
+  const total = ARCADE_PARK_MOBILITY.rampReentrySteerLock;
+  const early = rampReentrySteerScale(total - 0.03);
+  const middle = rampReentrySteerScale(total - 0.13);
+  const done = rampReentrySteerScale(0);
+  assert.equal(early, 0);
+  assert.ok(middle > 0 && middle < 1, `expected blend scale, got ${middle}`);
+  assert.equal(done, 1);
 });
