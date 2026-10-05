@@ -98,3 +98,39 @@ test('generic AIR from a ramp cannot rotate from residual steering', () => {
   assert.ok(Math.abs(p.heading - 0.35) < 1e-9,
     `generic ramp air changed heading without spin input: ${p.heading}`);
 });
+
+test('full runtime ramp touchdown keeps airborne yaw on a near-vertical transition', () => {
+  const p = new StatefulSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+
+  const takeoffHeading = THREE.MathUtils.degToRad(2);
+  p.position.set(0, 2, 0);
+  p.heading = takeoffHeading;
+  p.airHeading = takeoffHeading;
+  p.airTakeoffHeading = takeoffHeading;
+  p.airTakeoffFacing.set(-Math.sin(takeoffHeading), 0, -Math.cos(takeoffHeading));
+  p.airTakeoffFromRamp = true;
+  p.airTakeoffFakie = false;
+  p.airTakeoffStance = 1;
+  p.airSpin = 0;
+  p.airDirection();
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.grounded = false;
+  p.airTime = 0.30;
+  p.velocity.set(0, -0.10, 0);
+
+  const support = {
+    count: 4,
+    frontSupported: 2,
+    rearSupported: 2,
+    position: p.position.clone(),
+    normal: new THREE.Vector3(0, 0.05, 0.99875).normalize(),
+  };
+
+  assert.equal(p.land(support), true);
+  assert.ok(Math.abs(p.heading - takeoffHeading) < 1e-9,
+    `runtime ramp touchdown snapped yaw: expected=${takeoffHeading}, got=${p.heading}`);
+});
