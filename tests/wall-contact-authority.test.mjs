@@ -80,6 +80,16 @@ test('broad wall triggers the intended 90 degree automatic recovery', () => {
     `wall recovery should preserve useful tangent speed, x=${p.velocity.x}`);
 });
 
+test('real low skatepark wall/ledge side still triggers wall recovery', () => {
+  const p = physics(worldWithObstacle({ width: 5, height: 0.68 }));
+  const hit = p.detectGroundWallImpact(1 / 120);
+  assert.ok(hit?.broadWall,
+    '0.68m park wall must not be missed by an unrealistic torso-height probe');
+  assert.equal(p.applyWallRecovery(hit), true);
+  assert.ok(Math.abs(p.velocity.z) < 0.2);
+  assert.ok(Math.abs(p.velocity.x) > 2.5);
+});
+
 test('thin stair rail/post can collide but cannot trigger wall-turn recovery', () => {
   const p = physics(worldWithObstacle({ width: 0.12, height: 2.4 }));
   const hit = p.detectGroundWallImpact(1 / 120);
