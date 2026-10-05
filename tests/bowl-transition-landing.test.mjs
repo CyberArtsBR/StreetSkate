@@ -7,7 +7,6 @@ import {
   transitionFlipLandingMode,
   transitionAlignmentThreshold,
 } from '../src/game/BowlLandingSkillStreetPhysics.js';
-import { signedDriveAcceleration } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 
 function floorWorld() {
@@ -60,6 +59,18 @@ function armAirLanding(p, support, progress) {
   const tangent = new THREE.Vector3(0, 0, -1).projectOnPlane(support.normal).normalize();
   p.velocity.copy(tangent).multiplyScalar(5).addScaledVector(support.normal, -1.1);
   p.flipState = { name: 'Kickflip', progress, duration: 0.42, roll: 1, pitch: 0, yaw: 0 };
+}
+
+function arm180Landing(p, support, speed = 5) {
+  p.position.copy(support.position).addScaledVector(support.normal, 0.04);
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.airTime = 0.5;
+  p.airHeading = 0;
+  p.heading = Math.PI;
+  p.airSpin = Math.PI;
+  p.forward.set(0, 0, 1);
+  p.velocity.set(0, -1, -speed);
+  p.flipState = null;
 }
 
 test('curved bowl allows one-truck first touchdown', () => {
@@ -130,15 +141,7 @@ test('very early flip can still bail on bowl', () => {
 test('180 landing preserves world travel direction and toggles stance', () => {
   const p = physics();
   const support = flatSupport();
-  p.position.copy(support.position).addScaledVector(support.normal, 0.04);
-  p.setMovementState(MOVEMENT_STATE.AIR);
-  p.airTime = 0.5;
-  p.airHeading = 0;
-  p.heading = Math.PI;
-  p.airSpin = Math.PI;
-  p.forward.set(0, 0, 1);
-  p.velocity.set(0, -1, -5);
-  p.flipState = null;
+  arm180Landing(p, support, 5);
   const initialStance = p.stance;
 
   const landed = p.land(support);
@@ -146,19 +149,29 @@ test('180 landing preserves world travel direction and toggles stance', () => {
   assert.ok(p.velocity.z < -4.9, `180 rotated momentum instead of preserving it: ${p.velocity.z}`);
   assert.ok(p.velocity.dot(p.forward) < 0, 'after 180 the rider should roll fakie relative to deck forward');
   assert.equal(p.stance, -initialStance, 'odd 180 should swap regular/switch stance');
+  assert.equal(p.rollingSign, -1, '180 landing must latch fakie travel sign');
+  assert.equal(p.fakie, true, '180 landing must expose explicit fakie state');
+  assert.ok(p.travelDirection.z < -0.99, 'persistent travel direction must remain world-forward after the 180');
 });
 
-test('forward input accelerates existing fakie travel after a 180', () => {
-  assert.ok(signedDriveAcceleration(-5, 1) < 0, 'forward drive must accelerate negative signed/fakie speed');
-  assert.ok(signedDriveAcceleration(5, 1) > 0, 'forward drive must accelerate normal forward speed');
+test('neutral and forward input preserve the same fakie propulsion after a 180', () => {
+  const neutral = physics();
+  const forwardHeld = physics();
+  const support = flatSupport();
+  arm180Landing(neutral, support, 7);
+  arm180Landing(forwardHeld, support, 7);
+  assert.equal(neutral.land(support), true);
+  assert.equal(forwardHeld.land(support), true);
 
-  const p = physics();
-  p.normal.set(0, 1, 0);
-  p.heading = Math.PI;
-  p.groundDirection();
-  p.setMovementState(MOVEMENT_STATE.GROUND);
-  p.velocity.copy(p.forward).multiplyScalar(-5);
-  const beforeZ = p.velocity.z;
-  p.stepGround(1 / 120, { brake: false }, 1);
-  assert.ok(p.velocity.z < beforeZ, `forward input should keep accelerating world travel after 180: ${beforeZ} -> ${p.velocity.z}`);
+  for (let i = 0; i < 30; i++) {
+    neutral.stepGround(1 / 120, { brake: false }, 0);
+    forwardHeld.stepGround(1 / 120, { brake: false }, 1);
+  }
+
+  assert.ok(neutral.velocity.z < 0, 'neutral fakie must continue in the original world direction');
+  assert.ok(forwardHeld.velocity.z < 0, 'holding forward must not reverse fakie world travel');
+  assert.ok(Math.abs(neutral.velocity.length() - forwardHeld.velocity.length()) < 0.03,
+    'forward must not act as a fakie throttle');
+  assert.equal(neutral.rollingSign, -1);
+  assert.equal(forwardHeld.rollingSign, -1);
 });
