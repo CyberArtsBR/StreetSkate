@@ -20,6 +20,15 @@ export const MOMENTUM_ROLL = Object.freeze({
   uphillGravityScale: 0.38,
   downhillGravityScale: 1.0,
 
+  // Contextual THPS-style ramp exit. Up remains non-propulsive on flat ground;
+  // while climbing a transition it arms a short intent buffer that survives the
+  // final wheel/contact frames before the lip.
+  rampExitInputThreshold: 0.35,
+  rampExitBuffer: 0.32,
+  rampExitSlopeY: 0.992,
+  rampExitMinRise: 0.06,
+  rampLipBoost: 0.9,
+
   // Arcade wall recovery. The rider only reacts to a meaningful frontal hit,
   // then turns onto the wall tangent that preserves the most incoming momentum.
   wallImpactMinSpeed: 3.2,
@@ -75,6 +84,20 @@ export function transitionGravityScale({
   if (verticalTravel > 0.05) return config.uphillGravityScale;
   if (verticalTravel < -0.05) return config.downhillGravityScale;
   return 1;
+}
+
+/** Up is contextual ramp intent, never flat-ground throttle. */
+export function shouldBufferRampExit({
+  drive = 0,
+  tappedUp = false,
+  normalY = 1,
+  verticalSpeed = 0,
+  config = MOMENTUM_ROLL,
+} = {}) {
+  const up = tappedUp || drive > config.rampExitInputThreshold;
+  return Boolean(up
+    && Math.abs(normalY) < config.rampExitSlopeY
+    && verticalSpeed > config.rampExitMinRise);
 }
 
 function horizontalDirection(source, fallback = null) {
@@ -137,6 +160,7 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     this.travelDirection ||= new THREE.Vector3();
     this.travelDirection.copy(horizontalDirection(this.forward));
     this.autoPushActive = false;
+    this.rampExitIntentTime = 0;
     this.wallImpactTime = 0;
     this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
     this.wallImpactCooldown = 0;
@@ -155,6 +179,23 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     }
     this.fakie = this.rollingSign < 0;
     return this.travelDirection;
+  }
+
+  /**
+   * Preserve Up intent through the last contact frame. If this is an authored
+   * coping transition, tag the edge so TransitionGuide launches outward on frame
+   * one instead of first pulling inward and reversing later.
+   */
+  takeoff(impulse = 0, transition = null) {
+    const exitRequested = (this.rampExitIntentTime || 0) > 0;
+    let edge = transition;
+    if (exitRequested) {
+      edge ||= this.transitions.launchAt(this.position, this.normal, this.velocity);
+      if (edge) edge = { ...edge, exitRequested: true };
+    }
+    const result = super.takeoff(impulse, edge);
+    this.rampExitIntentTime = 0;
+    return result;
   }
 
   land(support) {
@@ -228,6 +269,16 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
   stepGround(dt, input = {}, drive = 0) {
     this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
     this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
+    this.rampExitIntentTime = Math.max(0, (this.rampExitIntentTime || 0) - dt);
+
+    if (shouldBufferRampExit({
+      drive,
+      tappedUp: input.directionTaps?.includes?.('up'),
+      normalY: this.normal.y,
+      verticalSpeed: this.velocity.y,
+    })) {
+      this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
+    }
 
     const wallHit = this.detectGroundWallImpact(dt);
     if (wallHit) this.applyWallRecovery(wallHit);
