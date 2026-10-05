@@ -194,4 +194,60 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     );
     this.pendingBoardTransition = this.transitions.launchAt(this.position, this.normal, this.velocity);
   }
+
+  /**
+   * Wheel sweeps may find the floor at effectively zero horizontal speed.
+   * That is still a valid landing. The old alignment guard rejected it, letting
+   * the board cross the floor and continue falling because there was no second
+   * surface crossing to recover from. Also ignore same-surface recapture during
+   * the first rising instants of an intentional ollie so flip presentation can start.
+   */
+  land(support) {
+    if (this.airTime < 0.075 && this.velocity.y > 0.05) return false;
+    if ((support.count || 0) < 2 || !support.frontSupported || !support.rearSupported) return false;
+
+    this.ensureBoardSafetyScratch();
+    const correction = this._supportCorrection.copy(support.position).sub(this.position);
+    if (correction.length() > PHYSICS.maxLandingCorrection) return false;
+
+    const boardForward = this._deckProbeDelta.copy(this.forward).projectOnPlane(support.normal);
+    if (boardForward.lengthSq() < 1e-7) return false;
+    boardForward.normalize();
+
+    const planar = this._deckProbeTo.copy(this.velocity).projectOnPlane(support.normal);
+    const planarSpeed = planar.length();
+    let alignment = 1;
+    if (planarSpeed > 0.18) {
+      const transitionTangent = this._deckProbeFrom.copy(planar).multiplyScalar(1 / planarSpeed);
+      alignment = boardForward.dot(transitionTangent);
+    }
+
+    const unfinishedFlip = this.flipState && this.flipState.progress > 0.12 && this.flipState.progress < 0.88;
+    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || unfinishedFlip) {
+      this.bail('BAIL · align your board before landing');
+      return false;
+    }
+
+    this.position.copy(support.position);
+    this.normal.copy(support.normal);
+    this.heading = headingFrom(boardForward, this.heading);
+    this.groundDirection();
+
+    const spin = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180) * 180;
+    if (spin >= 180) this.recordTrick(`${spin}°`, spin);
+    this.setMovementState(MOVEMENT_STATE.GROUND);
+    this.coyote = 0;
+    this.justLanded = true;
+    this.transitionAir = null;
+    this.wallRide = null;
+    this.lastWheelSupport = support;
+
+    const travelSign = planarSpeed > 0.18 && alignment < 0 ? -1 : 1;
+    this.velocity.copy(this.forward).multiplyScalar(planarSpeed * travelSign);
+    this.flipState = null;
+    this.grabState = null;
+    this.airSpin = 0;
+    this.stableGroundTime = 0;
+    return true;
+  }
 }
