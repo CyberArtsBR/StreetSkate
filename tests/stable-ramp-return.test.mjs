@@ -5,6 +5,7 @@ import {
   rampReturnFacing,
   rampReturnFakie,
   rampReturnHalfTurns,
+  transitionAirSpinInput,
 } from '../src/game/StableRampReturnSkillStreetPhysics.js';
 
 test('straight ramp return preserves takeoff facing instead of snapping 180', () => {
@@ -40,4 +41,15 @@ test('small steering noise cannot be mistaken for a 180', () => {
   assert.ok(returned.dot(takeoff) > 0.999999);
   assert.equal(rampReturnHalfTurns(THREE.MathUtils.degToRad(35)), 0);
   assert.equal(rampReturnFakie(false, THREE.MathUtils.degToRad(35)), false);
+});
+
+test('vert spin ignores steering drift when no explicit spin is pressed', () => {
+  assert.equal(transitionAirSpinInput({ steer: 1, spin: 0 }), 0);
+  assert.equal(transitionAirSpinInput({ steer: -1, spin: 0 }), 0);
+});
+
+test('explicit vert spin survives while steering remains independent', () => {
+  assert.equal(transitionAirSpinInput({ steer: 0.8, spin: 1 }), 1);
+  assert.equal(transitionAirSpinInput({ steer: -0.8, spin: -1 }), -1);
+  assert.equal(transitionAirSpinInput({ steer: 0.4, spin: 2 }), 1);
 });
