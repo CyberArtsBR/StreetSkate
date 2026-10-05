@@ -3,6 +3,7 @@ import { directionKey, flipFor, grabFor, grindFor, FLATLAND_TRICKS, MANUALS } fr
 const TAP_WINDOW = 0.46;
 const COMBO_WINDOW = 0.38;
 const LANDING_GRACE = 0.24;
+const AIR_FLIP_GRACE = 0.18;
 
 export class SkateTricks {
   constructor() { this.reset(); }
@@ -11,6 +12,7 @@ export class SkateTricks {
     this.time = 0;
     this.lastDirectionTap = null;
     this.pendingManual = null;
+    this.pendingAirFlip = null;
     this.buttonBuffer = [];
     this.combo = [];
     this.comboBase = 0;
@@ -25,6 +27,7 @@ export class SkateTricks {
     this.time += dt;
     this.buttonBuffer = this.buttonBuffer.filter(x => this.time - x.time <= COMBO_WINDOW);
     if (this.pendingManual && this.time > this.pendingManual.expires) this.pendingManual = null;
+    if (this.pendingAirFlip && this.time > this.pendingAirFlip.expires) this.pendingAirFlip = null;
     if (this.lastDirectionTap && this.time - this.lastDirectionTap.time > TAP_WINDOW) this.lastDirectionTap = null;
   }
 
@@ -52,10 +55,31 @@ export class SkateTricks {
       this.pendingManual = null;
     }
 
-    if (!context.grounded && !context.grinding && input.flipPressed) events.flip = { ...flipFor(direction) };
-    if (!context.grounded && !context.grinding && input.grabPressed) events.grab = { ...grabFor(direction) };
-    if (!context.grounded && !context.grinding && input.grindPressed) events.grind = { ...grindFor(direction, input.brake || input.vertExit) };
-    if (context.grinding && input.grindPressed) events.grindChange = { ...grindFor(direction, input.brake || input.vertExit) };
+    // A flip press can occur on the same render frame as an Ollie release.
+    // The fixed-step takeoff happens after input resolution, so retain that press
+    // briefly and consume it on the first airborne frame instead of dropping it.
+    if (context.grounded && !context.grinding && !context.manual && input.flipPressed) {
+      this.pendingAirFlip = {
+        trick: { ...flipFor(direction) },
+        expires: this.time + AIR_FLIP_GRACE,
+      };
+    }
+
+    if (!context.grounded && !context.grinding) {
+      if (input.flipPressed) {
+        events.flip = { ...flipFor(direction) };
+        this.pendingAirFlip = null;
+      } else if (this.pendingAirFlip && this.time <= this.pendingAirFlip.expires) {
+        events.flip = { ...this.pendingAirFlip.trick };
+        this.pendingAirFlip = null;
+      }
+      if (input.grabPressed) events.grab = { ...grabFor(direction) };
+      if (input.grindPressed) events.grind = { ...grindFor(direction, input.brake || input.vertExit) };
+    }
+    if (context.grinding) {
+      this.pendingAirFlip = null;
+      if (input.grindPressed) events.grindChange = { ...grindFor(direction, input.brake || input.vertExit) };
+    }
 
     if (context.manual) {
       for (const [token, pressed] of [['flip', input.flipPressed], ['grab', input.grabPressed], ['grind', input.grindPressed]]) {
