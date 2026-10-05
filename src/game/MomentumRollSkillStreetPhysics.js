@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 
+const UP = new THREE.Vector3(0, 1, 0);
+const clamp = THREE.MathUtils.clamp;
+
 export const MOMENTUM_ROLL = Object.freeze({
   // THPS-style park flow: reach useful park speed quickly without using forward
   // as a throttle. 12.5 m/s ~= 45 km/h and gives enough entry energy for small
@@ -16,6 +19,16 @@ export const MOMENTUM_ROLL = Object.freeze({
   transitionSurfaceY: 0.992,
   uphillGravityScale: 0.38,
   downhillGravityScale: 1.0,
+
+  // Arcade wall recovery. The rider only reacts to a meaningful frontal hit,
+  // then turns onto the wall tangent that preserves the most incoming momentum.
+  wallImpactMinSpeed: 3.2,
+  wallImpactMinApproach: 0.48,
+  wallRecoverySpeedScale: 0.72,
+  wallRecoveryMinSpeed: 3.0,
+  wallImpactDuration: 0.52,
+  wallImpactCooldown: 0.46,
+  wallProbePadding: 0.20,
 });
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
@@ -75,6 +88,36 @@ function horizontalDirection(source, fallback = null) {
   return result.set(0, 0, -1);
 }
 
+function headingFrom(direction, fallback = 0) {
+  const x = direction.x, z = direction.z;
+  if (x * x + z * z < 1e-8) return fallback;
+  return Math.atan2(-x, -z);
+}
+
+/**
+ * Pick one of the two directions parallel to a wall. The chosen tangent is the
+ * one that keeps the largest component of the incoming world-space travel. A
+ * perfectly head-on tie uses steering intent only as a tie breaker.
+ */
+export function chooseWallRecoveryDirection(velocity, wallNormal, steer = 0) {
+  const incoming = horizontalDirection(velocity);
+  const normal = horizontalDirection(wallNormal, new THREE.Vector3(1, 0, 0));
+  const a = new THREE.Vector3(normal.z, 0, -normal.x).normalize();
+  const b = a.clone().negate();
+  const scoreA = a.dot(incoming);
+  const scoreB = b.dot(incoming);
+  if (Math.abs(scoreA - scoreB) < 0.05 && Math.abs(steer) > 0.08) {
+    return steer > 0 ? a : b;
+  }
+  return scoreA >= scoreB ? a : b;
+}
+
+export function wallRecoverySpeed(speed, config = MOMENTUM_ROLL) {
+  const magnitude = Math.max(0, Number(speed) || 0);
+  if (magnitude <= 0) return 0;
+  return Math.min(magnitude, Math.max(config.wallRecoveryMinSpeed, magnitude * config.wallRecoverySpeedScale));
+}
+
 /**
  * Momentum-first skating with explicit travel/fakie state.
  *
@@ -83,8 +126,8 @@ function horizontalDirection(source, fallback = null) {
  *   travelDirection = where the board is actually moving in world space
  *
  * A 180 changes their relationship but must not rotate travelDirection. Camera
- * and fakie steering can therefore remain stable even if contact resolution
- * reconstructs the velocity vector for a frame.
+ * remains travel-oriented. Steering is ALSO travel/camera-oriented: pressing
+ * left always curves left on screen, whether the deck is regular or fakie.
  */
 export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
@@ -94,6 +137,10 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     this.travelDirection ||= new THREE.Vector3();
     this.travelDirection.copy(horizontalDirection(this.forward));
     this.autoPushActive = false;
+    this.wallImpactTime = 0;
+    this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
+    this.wallImpactCooldown = 0;
+    this.wallImpactSide = 0;
   }
 
   syncTravelDirection({ preserveIfSlow = true } = {}) {
@@ -125,41 +172,92 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     return true;
   }
 
+  detectGroundWallImpact(dt) {
+    if (!this.grounded || this.grind || this.wallRide || this.bailTime > 0 || this.wallImpactCooldown > 0) return null;
+
+    const horizontalVelocity = this.velocity.clone().setY(0);
+    const speed = horizontalVelocity.length();
+    if (speed < MOMENTUM_ROLL.wallImpactMinSpeed) return null;
+    const direction = horizontalVelocity.multiplyScalar(1 / speed);
+
+    // Probe from torso/board-center height. The distance is only the next fixed
+    // step plus body clearance, so this behaves like impact recovery rather than
+    // obstacle avoidance several metres in advance.
+    const origin = this.position.clone().addScaledVector(UP, 0.58).addScaledVector(direction, 0.04);
+    const reach = Math.max(0.24, speed * dt + MOMENTUM_ROLL.wallProbePadding);
+    const ray = this.surface.ray;
+    ray.set(origin, direction);
+    ray.far = reach;
+
+    for (const hit of ray.intersectObjects(this.surface.meshes, false)) {
+      if (hit.object?.userData?.railId) continue;
+      const normal = this.surface.normal(hit, new THREE.Vector3());
+      if (Math.abs(normal.y) > 0.30) continue;
+      if (normal.dot(direction) > 0) normal.negate();
+      const approach = -normal.dot(direction);
+      if (approach < MOMENTUM_ROLL.wallImpactMinApproach) continue;
+      return { point: hit.point.clone(), normal, approach, speed };
+    }
+    return null;
+  }
+
+  applyWallRecovery(hit) {
+    if (!hit) return false;
+    const incomingTravel = horizontalDirection(this.velocity, this.travelDirection);
+    const tangent = chooseWallRecoveryDirection(incomingTravel, hit.normal, this.steer);
+    const speed = wallRecoverySpeed(hit.speed);
+    const travelSign = this.rollingSign < 0 ? -1 : 1;
+    const deckForward = tangent.clone().multiplyScalar(travelSign);
+
+    this.heading = headingFrom(deckForward, this.heading);
+    this.groundDirection();
+    this.velocity.copy(this.forward).multiplyScalar(speed * travelSign);
+    this.travelDirection.copy(horizontalDirection(this.velocity, tangent));
+    this.fakie = travelSign < 0;
+
+    const crossY = incomingTravel.x * tangent.z - incomingTravel.z * tangent.x;
+    this.wallImpactSide = Math.sign(crossY) || 1;
+    this.wallImpactTime = MOMENTUM_ROLL.wallImpactDuration;
+    this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
+    this.wallImpactCooldown = MOMENTUM_ROLL.wallImpactCooldown;
+    this.manual = null;
+    this.flatland = null;
+    return true;
+  }
+
   stepGround(dt, input = {}, drive = 0) {
+    this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
+    this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
+
+    const wallHit = this.detectGroundWallImpact(dt);
+    if (wallHit) this.applyWallRecovery(wallHit);
+
     const threshold = MOMENTUM_ROLL.signMemoryThreshold;
     const measuredSigned = this.velocity.dot(this.forward);
-
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
       this.rollingSign = measuredSigned < -threshold ? -1 : 1;
     }
-
-    // rollingSign is deliberately latched. A contact-normal rebuild must never
-    // silently turn fakie back into regular. The next genuine air landing decides
-    // the new sign from board-vs-travel alignment.
     const travelSign = this.rollingSign < 0 ? -1 : 1;
     let speed = Math.max(Math.abs(measuredSigned), this.velocity.length()) * travelSign;
-    const braking = Boolean(input.brake || drive < -0.12);
-    const magnitude = Math.abs(speed);
 
-    // StableBoardContactSkillStreetPhysics still contains legacy rolling drag.
-    // Pre-compensate only that passive component; explicit brake remains strong.
-    if (magnitude > 1e-5) {
-      const legacyRolling = 0.26 + 0.012 * magnitude * magnitude;
-      const desiredRolling = passiveRollingResistance(magnitude);
-      const excess = Math.max(0, legacyRolling - desiredRolling);
-      speed += travelSign * excess * dt;
-    }
+    if (this.manual) this.updateManualBalance(dt, input, speed);
+    if (this.bailTime) return;
 
-    // Its ground step will also apply full projected gravity. Pre-compensate the
-    // excess uphill part so ramps preserve enough energy for useful airs.
-    const gravityDelta = -PHYSICS.gravity * this.forward.y * dt;
+    // Camera-relative steering: the same stick direction produces the same world
+    // travel curve in regular and fakie. Deck orientation may be reversed, but
+    // controls are never mirrored merely because the rider landed a 180.
+    const rate = THREE.MathUtils.lerp(2.7, 1.2, clamp(Math.abs(speed) / 12, 0, 1));
+    this.heading -= this.steer * rate * dt;
+    this.groundDirection();
+
     const gravityScale = transitionGravityScale({
       signedSpeed: speed,
       forwardY: this.forward.y,
       normalY: this.normal.y,
     });
-    speed += (gravityScale - 1) * gravityDelta;
+    speed += (-PHYSICS.gravity * this.forward.y) * gravityScale * dt;
 
+    const braking = Boolean(input.brake || drive < -0.12);
     const pushAccel = automaticPushAcceleration({
       speed,
       normalY: this.normal.y,
@@ -167,7 +265,6 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
       manual: Boolean(this.manual),
     });
     this.autoPushActive = pushAccel > 0;
-
     if (pushAccel > 0) {
       const nextMagnitude = Math.min(
         MOMENTUM_ROLL.autoPushTarget,
@@ -176,21 +273,30 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
       speed = travelSign * nextMagnitude;
     }
 
-    // Feed the lower contact solver a deterministic signed deck-relative speed.
-    // This makes its existing steering rule explicitly invert while fakie.
+    const resistance = passiveRollingResistance(speed)
+      + (braking ? PHYSICS.brake : 0);
+    speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - resistance * dt);
+    speed = clamp(speed, -17, 17);
     this.velocity.copy(this.forward).multiplyScalar(speed);
 
-    // Up/forward remains available to trick parsing but is not propulsion.
-    super.stepGround(dt, { ...input, brake: braking }, 0);
+    this._boardMoveStart.copy(this.position);
+    this.position.addScaledVector(this.velocity, dt);
+    this.resolveSharpDeckClearance(
+      this._boardMoveStart,
+      this.position,
+      this.velocity,
+      this.heading,
+      this.normal,
+    );
+    this.pendingBoardTransition = this.transitions.launchAt(this.position, this.normal, this.velocity);
+  }
 
-    const settledMagnitude = this.velocity.length();
-    if (settledMagnitude > threshold) {
-      // Contact resolution may alter direction, but not the latched regular/fakie
-      // relationship. Rebuild with the same sign before publishing travel state.
-      this.velocity.copy(this.forward).multiplyScalar(settledMagnitude * travelSign);
+  resolveMotion(before, beforeUp, input = {}) {
+    super.resolveMotion(before, beforeUp, input);
+    if (this.grounded) {
+      this.fakie = this.rollingSign < 0;
+      this.syncTravelDirection();
     }
-    this.fakie = travelSign < 0;
-    this.syncTravelDirection();
     if (!this.grounded) this.autoPushActive = false;
   }
 }
