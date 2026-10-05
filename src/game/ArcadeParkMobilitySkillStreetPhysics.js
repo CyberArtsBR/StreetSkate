@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { SafeCopingExitSkillStreetPhysics } from './SafeCopingExitSkillStreetPhysics.js';
+import {
+  SafeCopingExitSkillStreetPhysics,
+  canAutoAlignTransitionLanding,
+  supportMatchesOriginalTransition,
+} from './SafeCopingExitSkillStreetPhysics.js';
 import {
   GRIND_CAPTURE,
   contactLongitudinalOffsets,
@@ -30,6 +34,14 @@ export const ARCADE_PARK_MOBILITY = Object.freeze({
   turnGainFullSpeed: 12.5,
   manualTurnGain: 1.14,
 
+  // Re-entry steering protection. A steep transition has almost no horizontal
+  // tangent near vertical, so tiny lateral drift must never become a 90-degree
+  // heading snap on the first grounded frame. Lock steering/wall recovery very
+  // briefly, then blend the tighter carve back in.
+  rampReentrySteerLock: 0.20,
+  rampReentryHardLock: 0.08,
+  rampReentrySlopeY: 0.995,
+
   // Extra ramp energy conversion. Flat-ground ollies are unchanged; the bonus
   // only exists when the board is genuinely climbing a sloped rideable face.
   rampSlopeThresholdY: 0.992,
@@ -52,9 +64,45 @@ function horizontal(source, fallback = null) {
   return out.set(0, 0, -1);
 }
 
+function headingFrom(direction, fallback = 0) {
+  const flat = horizontal(direction);
+  if (flat.lengthSq() < 1e-8) return fallback;
+  return Math.atan2(-flat.x, -flat.z);
+}
+
 export function arcadeTurnGain(speed, config = ARCADE_PARK_MOBILITY) {
   const t = clamp(Math.abs(Number(speed) || 0) / config.turnGainFullSpeed, 0, 1);
   return THREE.MathUtils.lerp(config.turnGainLowSpeed, config.turnGainHighSpeed, t);
+}
+
+export function rampReentrySteerScale(remaining = 0, config = ARCADE_PARK_MOBILITY) {
+  const left = Math.max(0, Number(remaining) || 0);
+  if (left <= 0) return 1;
+  const elapsed = Math.max(0, config.rampReentrySteerLock - left);
+  if (elapsed <= config.rampReentryHardLock) return 0;
+  const blendDuration = Math.max(0.001,
+    config.rampReentrySteerLock - config.rampReentryHardLock);
+  return clamp((elapsed - config.rampReentryHardLock) / blendDuration, 0, 1);
+}
+
+/**
+ * Stable board-facing direction for vert return. Near the vertical section of a
+ * quarter/pool, projecting velocity onto the transition can leave almost zero XZ
+ * magnitude. Any tiny sideways drift then dominates and can rotate heading 90°.
+ * The authored local ramp axis is the authoritative horizontal reference; spins
+ * only decide whether the deck faces with or against that travel direction.
+ */
+export function transitionReturnBoardDirection({
+  rampInward = null,
+  fallbackTravel = null,
+  rollingSign = 1,
+  airSpin = 0,
+} = {}) {
+  const travel = horizontal(rampInward, fallbackTravel);
+  const halfTurns = Math.round((Math.abs(Number(airSpin) || 0) * 180 / Math.PI) / 180);
+  const initialDeckSign = rollingSign < 0 ? -1 : 1;
+  const spinSign = halfTurns % 2 === 1 ? -1 : 1;
+  return travel.multiplyScalar(initialDeckSign * spinSign);
 }
 
 export function arcadeRampAirBoost({
@@ -101,12 +149,52 @@ export function arcadeGrindEligibility({
  * THPS-like park mobility layer:
  * - explicit grind input gets a forgiving airborne rail/handrail magnet;
  * - sloped takeoffs convert more approach energy into airtime;
- * - steering gets a tighter carve radius at park speeds.
+ * - steering gets a tighter carve radius at park speeds;
+ * - transition re-entry keeps a stable ramp-axis heading and cannot trigger a
+ *   false 90-degree wall recovery immediately after touchdown.
  *
  * It deliberately sits ABOVE SafeCopingExit so the validated coping, vert return
  * and anti-tunnelling rules remain authoritative.
  */
 export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStreetPhysics {
+  reset(position = this.spawn, heading = 0) {
+    super.reset(position, heading);
+    this.rampReentrySteerLock = 0;
+  }
+
+  autoAlignOriginalTransition(support, air) {
+    if (!supportMatchesOriginalTransition(support, air)) return;
+    if (!canAutoAlignTransitionLanding(this.airSpin)) return;
+
+    const desiredBoard = transitionReturnBoardDirection({
+      rampInward: air.frame?.rampInward,
+      fallbackTravel: this.travelDirection || this.velocity,
+      rollingSign: this.rollingSign,
+      airSpin: this.airSpin,
+    });
+    this.heading = headingFrom(desiredBoard, this.heading);
+    this.airDirection();
+  }
+
+  land(support) {
+    const wasTransitionAir = Boolean(this.transitionAir);
+    const slopedTouchdown = Math.abs(support?.normal?.y ?? 1)
+      < ARCADE_PARK_MOBILITY.rampReentrySlopeY;
+    const landed = super.land(support);
+    if (landed && (wasTransitionAir || slopedTouchdown)) {
+      this.rampReentrySteerLock = ARCADE_PARK_MOBILITY.rampReentrySteerLock;
+    }
+    return landed;
+  }
+
+  detectGroundWallImpact(dt) {
+    // Wall recovery deliberately rotates ~90 degrees. Suppress it during the
+    // transition touchdown bridge so the ramp itself can never masquerade as a
+    // wall on the first grounded frame after returning from air.
+    if ((this.rampReentrySteerLock || 0) > 0) return null;
+    return super.detectGroundWallImpact(dt);
+  }
+
   magneticRailCapture(trick) {
     const profile = grindProfile(trick?.name);
     const flatForward = horizontal(this.forward, this.velocity);
@@ -134,9 +222,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
         profile,
       })) continue;
 
-      // Prefer rails the current ballistic path is converging toward. We do not
-      // hard-reject a nearly parallel handrail because THPS intentionally assists
-      // those catches when Grind is being held.
       const predictedContact = contact.clone().addScaledVector(
         this.velocity,
         ARCADE_PARK_MOBILITY.railPredictionTime,
@@ -173,8 +258,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
   }
 
   enterGrind(trick) {
-    // Keep the precise skill capture first. The magnetic fallback only widens the
-    // catch when the player explicitly asked to grind and the strict capture missed.
     if (super.enterGrind(trick)) return true;
 
     const capture = this.magneticRailCapture(trick);
@@ -233,12 +316,16 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
   }
 
   stepGround(dt, input = {}, drive = 0) {
+    this.rampReentrySteerLock = Math.max(0,
+      (this.rampReentrySteerLock || 0) - dt);
+
     const originalSteer = this.steer;
     const speed = this.velocity?.length?.() || 0;
     const gain = this.manual
       ? ARCADE_PARK_MOBILITY.manualTurnGain
       : arcadeTurnGain(speed);
-    this.steer = clamp(originalSteer * gain, -1.8, 1.8);
+    const reentryScale = rampReentrySteerScale(this.rampReentrySteerLock);
+    this.steer = clamp(originalSteer * gain * reentryScale, -1.8, 1.8);
     try {
       super.stepGround(dt, input, drive);
     } finally {
