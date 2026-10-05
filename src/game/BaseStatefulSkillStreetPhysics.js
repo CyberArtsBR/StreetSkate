@@ -1,13 +1,13 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.js';
+import { MomentumRollSkillStreetPhysics } from './MomentumRollSkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * BowlLandingSkillStreetPhysics owns rideable terrain support and curved-transition
- * touchdown handling while this bridge derives one authoritative gameplay state
- * before and after each fixed step.
+ * MomentumRollSkillStreetPhysics owns momentum-first locomotion, curved-transition
+ * touchdown handling and board contact while this bridge derives one authoritative
+ * gameplay state before and after each fixed step.
  */
-export class StatefulSkillStreetPhysics extends BowlLandingSkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends MomentumRollSkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
