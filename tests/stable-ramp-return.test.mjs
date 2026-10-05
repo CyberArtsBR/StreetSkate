@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
+import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 import {
   naturalRampReturnProgress,
   rampReturnFacing,
@@ -8,6 +10,18 @@ import {
   rampReturnHalfTurns,
   transitionAirSpinInput,
 } from '../src/game/StableRampReturnSkillStreetPhysics.js';
+
+function flatWorld() {
+  const root = new THREE.Group();
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(20, 0.1, 20),
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  floor.position.y = -0.05;
+  root.add(floor);
+  root.updateMatrixWorld(true);
+  return root;
+}
 
 test('straight same-wall return preserves takeoff facing with no automatic yaw', () => {
   const takeoff = new THREE.Vector3(0, 0, -1);
@@ -49,13 +63,38 @@ test('small steering noise cannot be mistaken for a 180', () => {
   assert.equal(rampReturnFakie(false, THREE.MathUtils.degToRad(35)), false);
 });
 
-test('vert spin ignores steering drift when no explicit spin is pressed', () => {
+test('air spin ignores steering drift when no explicit spin is pressed', () => {
   assert.equal(transitionAirSpinInput({ steer: 1, spin: 0 }), 0);
   assert.equal(transitionAirSpinInput({ steer: -1, spin: 0 }), 0);
 });
 
-test('explicit vert spin survives while steering remains independent', () => {
+test('explicit air spin survives while steering remains independent', () => {
   assert.equal(transitionAirSpinInput({ steer: 0.8, spin: 1 }), 1);
   assert.equal(transitionAirSpinInput({ steer: -0.8, spin: -1 }), -1);
   assert.equal(transitionAirSpinInput({ steer: 0.4, spin: 2 }), 1);
+});
+
+test('generic AIR from a ramp cannot rotate from residual steering', () => {
+  const p = new StatefulSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+  p.position.set(0, 4, 0);
+  p.heading = 0.35;
+  p.airHeading = 0.35;
+  p.airTakeoffHeading = 0.35;
+  p.airTakeoffFromRamp = true;
+  p.airSpin = 0;
+  p.steer = 1;
+  p.velocity.set(0, 2.5, -4);
+  p.transitionAir = null;
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.grounded = false;
+
+  const before = p.position.clone();
+  p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, before);
+  assert.ok(Math.abs(p.airSpin) < 1e-9, `residual steer created airSpin=${p.airSpin}`);
+  assert.ok(Math.abs(p.heading - 0.35) < 1e-9,
+    `generic ramp air changed heading without spin input: ${p.heading}`);
 });
