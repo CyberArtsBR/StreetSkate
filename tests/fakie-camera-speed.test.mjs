@@ -9,7 +9,9 @@ import {
 } from '../src/game/FollowCamera.js';
 import {
   MOMENTUM_ROLL,
+  chooseWallRecoveryDirection,
   transitionGravityScale,
+  wallRecoverySpeed,
 } from '../src/game/MomentumRollSkillStreetPhysics.js';
 import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 
@@ -41,7 +43,7 @@ function setRolling(p, heading, signedSpeed) {
 test('camera follows persistent world travel after 180 even if instantaneous velocity is rebuilt', () => {
   const player = {
     forward: new THREE.Vector3(0, 0, 1),
-    velocity: new THREE.Vector3(0, 0, 1), // bad one-frame contact rebuild
+    velocity: new THREE.Vector3(0, 0, 1),
     travelDirection: new THREE.Vector3(0, 0, -1),
     fakie: true,
   };
@@ -86,7 +88,7 @@ test('regular and fakie use the exact same camera frame for the same world trave
   assert.ok(regularFrame.target.distanceTo(fakieFrame.target) < 1e-9);
 });
 
-test('fakie steering stays inverted for many ground steps instead of reverting after contact updates', () => {
+test('fakie steering is camera-relative: left/right are not inverted after a 180', () => {
   const regular = physics();
   const fakie = physics();
   setRolling(regular, 0, 8.0);
@@ -104,10 +106,28 @@ test('fakie steering stays inverted for many ground steps instead of reverting a
 
   const regularDelta = regular.heading - regularHeading;
   const fakieDelta = fakie.heading - fakieHeading;
-  assert.ok(regularDelta * fakieDelta < 0,
-    `fakie steering must remain inverted: regular=${regularDelta}, fakie=${fakieDelta}`);
+  assert.ok(regularDelta * fakieDelta > 0,
+    `same stick direction must turn the same way: regular=${regularDelta}, fakie=${fakieDelta}`);
+  assert.ok(Math.abs(Math.abs(regularDelta) - Math.abs(fakieDelta)) < 0.03,
+    `regular/fakie steering magnitude diverged: ${regularDelta} vs ${fakieDelta}`);
   assert.equal(fakie.rollingSign, -1, 'fakie sign must remain latched');
   assert.equal(fakie.fakie, true, 'explicit fakie state must remain active');
+});
+
+test('wall recovery chooses the 90-degree tangent that preserves most momentum', () => {
+  const incoming = new THREE.Vector3(1.4, 0, -8);
+  const wallNormal = new THREE.Vector3(0, 0, 1);
+  const tangent = chooseWallRecoveryDirection(incoming, wallNormal, 0);
+  assert.ok(Math.abs(tangent.dot(wallNormal)) < 1e-8, 'recovery direction must run parallel to the wall');
+  assert.ok(tangent.x > 0.99, `favorable tangent should preserve incoming +X component, got ${tangent.x}`);
+  const angle = Math.acos(THREE.MathUtils.clamp(Math.abs(tangent.dot(wallNormal)), -1, 1)) * 180 / Math.PI;
+  assert.ok(Math.abs(angle - 90) < 0.001, `wall recovery should be 90 degrees to wall normal, got ${angle}`);
+});
+
+test('wall recovery sheds impact speed without stopping the rider', () => {
+  const recovered = wallRecoverySpeed(12);
+  assert.ok(recovered > 7.5 && recovered < 10, `12 m/s wall impact should keep useful but reduced speed, got ${recovered}`);
+  assert.ok(wallRecoverySpeed(4) <= 4, 'wall recovery must never create speed');
 });
 
 test('neutral flat skating reaches a real skatepark cruise without forward throttle', () => {
