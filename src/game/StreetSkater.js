@@ -19,6 +19,9 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._backVisual = new THREE.Vector3();
     this._rightVisual = new THREE.Vector3();
     this._basis = new THREE.Matrix4();
+    this._wallPoseQ = new THREE.Quaternion();
+    this._wallPoseAxisX = new THREE.Vector3(1, 0, 0);
+    this._wallPoseAxisZ = new THREE.Vector3(0, 0, 1);
     this.debugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
     this.debugElement = null;
     if (this.debugEnabled && typeof document !== 'undefined') this.initDebugViewer();
@@ -127,6 +130,33 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     return { speedRatio, vert };
   }
 
+  wallImpactPoseWeight() {
+    const duration = Math.max(0.001, Number(this.wallImpactDuration) || 0.52);
+    const remaining = clamp((Number(this.wallImpactTime) || 0) / duration, 0, 1);
+    if (remaining <= 0) return 0;
+    const phase = 1 - remaining;
+    return Math.pow(Math.sin(Math.PI * clamp(phase, 0, 1)), 0.72);
+  }
+
+  applyWallImpactPose(weight) {
+    if (!this.rider || weight <= 0.001) return;
+    const rootQ = this.rider.root.getWorldQuaternion(this._wallPoseQ);
+    const side = Math.sign(this.wallImpactSide || 1);
+
+    // Hands-up impact reaction: shoulders rise quickly, elbows open and the torso
+    // recoils slightly. This is presentation only; gameplay trajectory is already
+    // resolved by the wall-recovery physics layer.
+    this.rider.rotate('upperarm_l', this._wallPoseAxisZ, -1.18 * weight, rootQ);
+    this.rider.rotate('upperarm_r', this._wallPoseAxisZ, 1.18 * weight, rootQ);
+    this.rider.rotate('lowerarm_l', this._wallPoseAxisZ, -0.34 * weight, rootQ);
+    this.rider.rotate('lowerarm_r', this._wallPoseAxisZ, 0.34 * weight, rootQ);
+    this.rider.rotate('upperarm_l', this._wallPoseAxisX, -0.18 * weight, rootQ);
+    this.rider.rotate('upperarm_r', this._wallPoseAxisX, -0.18 * weight, rootQ);
+    this.rider.rotate('spine_02', this._wallPoseAxisX, 0.13 * weight, rootQ);
+    this.rider.rotate('spine_03', this._wallPoseAxisZ, side * 0.08 * weight, rootQ);
+    this.rider.root.updateWorldMatrix(true, true);
+  }
+
   update(delta, input, elapsed) {
     const before = { grounded: this.grounded, velocityY: this.velocity.y, airTime: this.airTime };
     this.advance(delta, input);
@@ -176,6 +206,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       landingSeverity: this.presentation.landingSeverity * clamp(this.presentation.landingTime / 0.28, 0, 1),
       pumpState: this.presentation.pumpState,
     });
+    this.applyWallImpactPose(this.wallImpactPoseWeight());
     this.balanceHud?.update(this.balanceMode(), this.balanceValue());
     this.updateDebugViewer();
     return { speedRatio: present.speedRatio };
