@@ -69,8 +69,8 @@ export function rampReturnFakie(previousFakie = false, airSpin = 0) {
  * - steering input / analog smoothing NEVER becomes airborne yaw;
  * - this applies to authored vert AND generic ramps/kickers/banks;
  * - passive ramp air freezes the takeoff heading until explicit spin is pressed;
- * - touchdown never auto-aligns heading; dedicated wall recovery is the only
- *   automatic ~90-degree turn in the game.
+ * - touchdown preserves that airborne facing exactly;
+ * - dedicated wall recovery is the only automatic ~90-degree turn in the game.
  */
 export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
@@ -124,7 +124,6 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
       ? frameHeading
       : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
 
-    // Freeze the non-trick baseline heading. Parent applies airSpin on top of it.
     this.airHeading = takeoffHeading;
     this.steer = 0;
     try {
@@ -140,23 +139,43 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
   land(support) {
     const activeAir = this.transitionAir;
     const wasRampAir = Boolean(activeAir) || Boolean(this.airTakeoffFromRamp);
-    const previousFakie = activeAir?.frame?.takeoffFakie ?? this.airTakeoffFakie ?? Boolean(this.fakie);
-    const takeoffStance = activeAir?.frame?.takeoffStance ?? this.airTakeoffStance ?? (Number(this.stance) || 1);
+    const takeoffFacing = activeAir?.frame?.takeoffFacing
+      || this.airTakeoffFacing
+      || this.forward;
+    const previousFakie = activeAir?.frame?.takeoffFakie
+      ?? this.airTakeoffFakie
+      ?? Boolean(this.fakie);
+    const takeoffStance = activeAir?.frame?.takeoffStance
+      ?? this.airTakeoffStance
+      ?? (Number(this.stance) || 1);
     const landingSpin = Number(this.airSpin) || 0;
     const halfTurns = rampReturnHalfTurns(landingSpin);
+
+    // Preserve the actual incoming tangent before lower layers settle contact.
+    // This is the travel reference; it must never be used to invent board yaw.
+    const incomingPlanar = this.velocity.clone().projectOnPlane(support.normal);
+    const incomingSpeed = incomingPlanar.length();
+    const desiredFacing = rampReturnFacing({ takeoffFacing, airSpin: landingSpin });
+    const desiredHeading = headingFrom(desiredFacing, this.heading);
 
     const landed = super.land(support);
     if (!landed) return false;
 
     if (wasRampAir) {
+      // Authoritative touchdown rule: board yaw is takeoff facing + explicit trick
+      // spin only. Surface projection may tilt the board in pitch/roll, but can
+      // NEVER rotate it sideways around world Y at contact.
+      this.heading = desiredHeading;
+      this.groundDirection();
+
+      if (incomingSpeed > 0.18 && this.forward.lengthSq() > EPSILON) {
+        const travelSign = incomingPlanar.dot(this.forward) < 0 ? -1 : 1;
+        this.velocity.copy(this.forward).multiplyScalar(incomingSpeed * travelSign);
+        this.rollingSign = travelSign;
+      }
+
       this.fakie = rampReturnFakie(previousFakie, landingSpin);
       this.stance = halfTurns % 2 === 1 ? -takeoffStance : takeoffStance;
-
-      // rollingSign remains physical so the board can descend backwards relative
-      // to its nose without visually rotating or relabelling the rider as fakie.
-      const signedSpeed = this.velocity.dot(this.forward);
-      if (Math.abs(signedSpeed) > 0.18) this.rollingSign = signedSpeed < 0 ? -1 : 1;
-
       this.rampReentrySteerLock = Math.max(
         this.rampReentrySteerLock || 0,
         ARCADE_PARK_MOBILITY.rampReentrySteerLock,
