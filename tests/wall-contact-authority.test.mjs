@@ -44,7 +44,7 @@ function physics(root) {
   return p;
 }
 
-test('triangulated or bevelled real wall normals are still eligible', () => {
+test('wall geometry can still be classified without authorizing yaw', () => {
   assert.equal(wallFaceContextAllows({
     groundNormalY: 1,
     verticalSpeed: 0.2,
@@ -54,65 +54,47 @@ test('triangulated or bevelled real wall normals are still eligible', () => {
     groundNormalY: 0.72,
     verticalSpeed: 4,
     hitNormalY: 0.02,
-  }), false, 'a steep ramp must never become a wall');
+  }), false);
 });
 
-test('wall authority requires vertical and lateral continuity', () => {
+test('wall continuity helper still rejects thin rails and posts', () => {
   assert.equal(wallFaceContinuityAllows({
     low: true, high: true, lateralLeft: true, lateralRight: false,
   }), true);
   assert.equal(wallFaceContinuityAllows({
     low: true, high: true, lateralLeft: false, lateralRight: false,
-  }), false, 'a narrow post/rail cannot trigger the 90 degree recovery');
+  }), false);
   assert.equal(wallFaceContinuityAllows({
     low: false, high: true, lateralLeft: true, lateralRight: true,
-  }), false, 'a floating handrail is not a full wall face');
+  }), false);
 });
 
-test('broad wall triggers the intended 90 degree automatic recovery', () => {
+test('final gameplay physics never requests automatic wall yaw', () => {
   const p = physics(worldWithObstacle({ width: 5, height: 2.4 }));
-  const hit = p.detectGroundWallImpact(1 / 120);
-  assert.ok(hit?.broadWall, 'broad wall should be classified as authoritative');
-  assert.equal(p.applyWallRecovery(hit), true);
-  assert.ok(Math.abs(p.velocity.z) < 0.2,
-    `head-on wall impact should turn onto wall tangent, z=${p.velocity.z}`);
-  assert.ok(Math.abs(p.velocity.x) > 2.5,
-    `wall recovery should preserve useful tangent speed, x=${p.velocity.x}`);
-});
-
-test('real low skatepark wall/ledge side still triggers wall recovery', () => {
-  const p = physics(worldWithObstacle({ width: 5, height: 0.68 }));
-  const hit = p.detectGroundWallImpact(1 / 120);
-  assert.ok(hit?.broadWall,
-    '0.68m park wall must not be missed by an unrealistic torso-height probe');
-  assert.equal(p.applyWallRecovery(hit), true);
-  assert.ok(Math.abs(p.velocity.z) < 0.2);
-  assert.ok(Math.abs(p.velocity.x) > 2.5);
-});
-
-test('thin stair rail/post can collide but cannot trigger wall-turn recovery', () => {
-  const p = physics(worldWithObstacle({ width: 0.12, height: 2.4 }));
-  const hit = p.detectGroundWallImpact(1 / 120);
-  assert.equal(hit, null,
-    'single narrow collision column must not be interpreted as a broad wall');
-});
-
-test('verified wall recovery restores body clearance before redirecting', () => {
-  assert.ok(wallClearanceCorrection(0.10) > 0.15);
-  assert.equal(wallClearanceCorrection(WALL_CONTACT_AUTHORITY.bodyClearance + 0.05), 0);
-
-  const p = physics(worldWithObstacle());
-  p.position.set(0, 0.015, 0.10);
-  p.travelDirection.set(0, 0, -1);
-  const hit = {
-    point: new THREE.Vector3(0, 0.30, 0),
+  assert.equal(p.detectGroundWallImpact(1 / 120), null);
+  const heading = p.heading;
+  assert.equal(p.applyWallRecovery({
+    point: new THREE.Vector3(0, 0.3, -0.3),
     normal: new THREE.Vector3(0, 0, 1),
     speed: 8,
-    approach: 1,
     broadWall: true,
-  };
-  p.applyWallRecovery(hit);
-  const separation = p.position.clone().sub(hit.point).dot(hit.normal);
-  assert.ok(separation >= WALL_CONTACT_AUTHORITY.bodyClearance - 1e-6,
-    `wall recovery must push capsule out before turn, separation=${separation}`);
+  }), false);
+  assert.equal(p.heading, heading, 'wall contact must never rotate yaw');
+});
+
+test('low wall and thin rail both have zero automatic yaw authority', () => {
+  for (const root of [
+    worldWithObstacle({ width: 5, height: 0.68 }),
+    worldWithObstacle({ width: 0.12, height: 2.4 }),
+  ]) {
+    const p = physics(root);
+    const heading = p.heading;
+    p.stepGround(1 / 120, { brake: false }, 0);
+    assert.equal(p.heading, heading, 'contact geometry cannot create a turn');
+  }
+});
+
+test('wall clearance math remains available for anti-clipping without yaw', () => {
+  assert.ok(wallClearanceCorrection(0.10) > 0.15);
+  assert.equal(wallClearanceCorrection(WALL_CONTACT_AUTHORITY.bodyClearance + 0.05), 0);
 });
