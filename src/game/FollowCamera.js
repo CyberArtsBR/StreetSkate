@@ -1,6 +1,19 @@
 import * as THREE from 'three';
 const UP = new THREE.Vector3(0, 1, 0);
 
+export const THPS_CAMERA = Object.freeze({
+  // High, wide, fixed-pitch chase view inspired by classic Tony Hawk games.
+  // The rig follows world travel, not the deck nose, so a 180 stays visually stable.
+  distance: 7.0,
+  height: 6.0,
+  anchorHeight: 1.15,
+  lookAhead: 1.6,
+  targetHeight: 0.90,
+  directionFollowRate: 8.5,
+  positionFollowRate: 9.5,
+  targetFollowRate: 12.0,
+});
+
 /**
  * Third-person skate cameras follow the path through the park, not the deck nose.
  * `travelDirection` is persistent gameplay state and therefore survives a 180,
@@ -30,6 +43,27 @@ export function resolveTravelFollowDirection(player, previousDirection = null, i
   return new THREE.Vector3(0, 0, -1);
 }
 
+/**
+ * Deterministic fixed camera frame. Speed, stance, jump state and vert state do
+ * not change the distance or pitch; only the world travel direction can rotate it.
+ */
+export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
+  const travel = direction.clone();
+  travel.y = 0;
+  if (travel.lengthSq() < 1e-8) travel.set(0, 0, -1);
+  travel.normalize();
+
+  const anchor = player.position.clone().addScaledVector(UP, config.anchorHeight);
+  const desired = anchor.clone()
+    .addScaledVector(travel, -config.distance)
+    .addScaledVector(UP, config.height);
+  const target = player.position.clone()
+    .addScaledVector(travel, config.lookAhead)
+    .addScaledVector(UP, config.targetHeight);
+
+  return { anchor, desired, target, travel };
+}
+
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
@@ -37,97 +71,48 @@ export class FollowCamera {
     this.target = new THREE.Vector3();
     this.direction = new THREE.Vector3(0, 0, -1);
     this.initialized = false;
-    this.yawOffset = 0;
-    this.pitchOffset = 0;
-    this.lookIdle = 0;
-    this.vertBlend = 0;
   }
 
   snap(player) {
     this.initialized = false;
-    this.vertBlend = player.movementState === 'VERT_AIR' ? 1 : 0;
     this.update(player, 1, {});
   }
 
   update(player, dt, input = {}) {
-    const manualLook = Math.abs(input.cameraX || 0) + Math.abs(input.cameraY || 0)
-      + Math.abs(input.mouseDX || 0) + Math.abs(input.mouseDY || 0);
-    if (manualLook > 0.001) {
-      this.yawOffset -= (input.cameraX || 0) * 2.35 * dt + (input.mouseDX || 0) * 0.0035;
-      this.pitchOffset = THREE.MathUtils.clamp(
-        this.pitchOffset + (input.cameraY || 0) * 1.5 * dt + (input.mouseDY || 0) * 0.0028,
-        -0.38,
-        0.5,
+    // Intentionally ignore manual camera orbit/pitch input. The gameplay camera
+    // owns one fixed aerial angle so spins, fakie and vert never reframe the rider.
+    void input;
+
+    const followDirection = resolveTravelFollowDirection(player, this.direction, this.initialized);
+    if (!this.initialized) this.direction.copy(followDirection);
+    else {
+      this.direction.lerp(
+        followDirection,
+        1 - Math.exp(-THPS_CAMERA.directionFollowRate * dt),
       );
-      this.lookIdle = 0;
-    } else {
-      this.lookIdle += dt;
-      if (this.lookIdle > 1.35) {
-        this.yawOffset *= Math.exp(-1.8 * dt);
-        this.pitchOffset *= Math.exp(-1.8 * dt);
-      }
+      if (this.direction.lengthSq() < 1e-8) this.direction.copy(followDirection);
+      this.direction.normalize();
     }
 
-    const vertActive = player.movementState === 'VERT_AIR'
-      && player.transitionAir
-      && !player.transitionAir.transferring;
-    const blendRate = vertActive ? 5.5 : 7.5;
-    const vertTarget = vertActive ? 1 : 0;
-    this.vertBlend += (vertTarget - this.vertBlend) * (1 - Math.exp(-blendRate * dt));
-
-    // Outside the special coping view, persistent world travel is the sole camera
-    // authority. A 180 changes deck heading/fakie but not this direction.
-    let followDirection = resolveTravelFollowDirection(player, this.direction, this.initialized);
-    if (vertActive) {
-      // Stable ramp-side view through board spins. It is based on ramp geometry,
-      // never on the rider/deck heading.
-      const lipForward = player.transitionAir.frame.deckOutward.clone();
-      lipForward.y = 0;
-      if (lipForward.lengthSq() > 0.001) followDirection.copy(lipForward).normalize();
-    }
-
-    const orbit = followDirection.clone().applyAxisAngle(
-      UP,
-      this.yawOffset * (1 - this.vertBlend * 0.45),
-    );
-    const ratio = Math.min(Math.abs(player.speed) / player.config.maxSpeed, 1);
-    if (!this.initialized) this.direction.copy(orbit);
-
-    // A travel lock should not visibly swing after an air spin. Normal turning is
-    // still followed smoothly because travelDirection itself curves with velocity.
-    const followRate = vertActive ? 5.8 : 7.2;
-    this.direction.lerp(orbit, 1 - Math.exp(-followRate * dt));
-    if (this.direction.lengthSq() < 1e-8) this.direction.copy(orbit);
-    this.direction.normalize();
-
-    const frame = player.transitionAir?.frame;
-    const heightAboveLip = frame ? Math.max(0, player.position.y - frame.lipPoint.y) : 0;
-    const anchor = player.position.clone().addScaledVector(UP, 1.15 + this.vertBlend * 0.32);
-    const distance = 5.1 + ratio * 1.5 + this.vertBlend * 1.65;
-    const height = 2.1 + this.pitchOffset * 4.1
-      + this.vertBlend * (1.1 + Math.min(1.4, heightAboveLip * 0.22));
-    const desired = anchor.clone()
-      .addScaledVector(this.direction, -distance)
-      .addScaledVector(UP, height);
-
-    const normalLook = anchor.clone()
-      .addScaledVector(this.direction, 1.4)
-      .addScaledVector(UP, -this.pitchOffset * 0.85);
-    let look = normalLook;
-    if (frame) {
-      const contextLook = player.position.clone().lerp(frame.lipPoint, 0.28)
-        .addScaledVector(UP, 0.95 + Math.min(0.8, heightAboveLip * 0.15));
-      look = normalLook.clone().lerp(contextLook, this.vertBlend);
-    }
-
+    const frame = fixedChaseFrame(player, this.direction);
     if (!this.initialized) {
-      this.position.copy(desired);
-      this.target.copy(look);
+      this.position.copy(frame.desired);
+      this.target.copy(frame.target);
       this.initialized = true;
+    } else {
+      this.position.lerp(
+        frame.desired,
+        1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt),
+      );
+      this.target.lerp(
+        frame.target,
+        1 - Math.exp(-THPS_CAMERA.targetFollowRate * dt),
+      );
     }
-    this.position.lerp(desired, 1 - Math.exp(-(vertActive ? 5.5 : 7) * dt));
-    this.target.lerp(look, 1 - Math.exp(-10 * dt));
-    this.camera.position.copy(player.surface.camera(anchor, this.position));
+
+    // Keep obstacle occlusion protection; outside of an obstruction the camera
+    // stays exactly on the fixed Tony-Hawk-style high chase rig.
+    this.camera.position.copy(player.surface.camera(frame.anchor, this.position));
     this.camera.lookAt(this.target);
   }
 }
