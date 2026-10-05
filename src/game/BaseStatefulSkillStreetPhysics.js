@@ -1,13 +1,14 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
+import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * RampWallSafetySkillStreetPhysics owns momentum-first locomotion, curved-transition
- * touchdown handling, safe wall recovery and bounded coping exits while this bridge
- * derives one authoritative gameplay state before and after each fixed step.
+ * IntegratedRampSafetySkillStreetPhysics owns momentum-first locomotion, curved
+ * transition touchdown handling, safe wall recovery, bounded coping exits and
+ * persistent regular/fakie travel while this bridge derives one authoritative
+ * gameplay state before and after each fixed step.
  */
-export class StatefulSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends IntegratedRampSafetySkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
