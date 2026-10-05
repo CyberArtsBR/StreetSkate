@@ -36,17 +36,13 @@ export function isUnsafeSupportDrop({
 }
 
 /**
- * THPS-style flip landing rule. A flip that is still in the early/mid rotation
- * can bail, but once the main rotation has been completed the rider auto-catches
- * the deck at contact. Banks/quarters get a little more catch grace because their
- * rising surface shortens airtime compared with a flat-ground ollie.
+ * Positive drive means "keep going" rather than "move toward the deck nose".
+ * This matters after a 180: the deck has reversed, but momentum should continue
+ * in the same world direction while the rider rolls fakie/switch.
  */
-export function flipLandingMode(progress, normalY = 1) {
-  if (!Number.isFinite(progress)) return 'clear';
-  if (progress <= 0.12 || progress >= 0.88) return 'clear';
-  const sloped = Math.abs(normalY) < 0.985;
-  const catchThreshold = sloped ? 0.62 : 0.72;
-  return progress >= catchThreshold ? 'autoCatch' : 'bail';
+export function signedDriveAcceleration(speed, drive, push = PHYSICS.push, maxSpeed = PHYSICS.maxSpeed) {
+  if (!(drive > 0) || Math.abs(speed) >= maxSpeed) return 0;
+  return drive * push * (speed < 0 ? -1 : 1);
 }
 
 /**
@@ -126,13 +122,35 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
     this.ensureBoardSafetyScratch();
     this._supportPreviousNormal.copy(this.normal);
-    const support = this.ensureBoardContact().solveGround(
+    const contact = this.ensureBoardContact();
+    let support = contact.solveGround(
       this.position,
       before,
       this.heading,
       this._supportPreviousNormal,
       true,
     );
+
+    const landingGrace = (this.transitionLandingGrace || 0) > 0;
+    if (!support.supported && landingGrace) {
+      // Real pool/park meshes can give one wheel first and briefly lose the other
+      // probes as the local normal turns. During the tiny touchdown bridge, widen
+      // the wheel search along the current transition normal rather than falling
+      // through the mesh before the next fixed step.
+      const oldRise = contact.probeRise;
+      const oldDrop = contact.probeDrop;
+      contact.probeRise = Math.max(oldRise, 0.16);
+      contact.probeDrop = Math.max(oldDrop, 0.34);
+      support = contact.solveGround(
+        this.position,
+        before,
+        this.heading,
+        this._supportPreviousNormal,
+        false,
+      );
+      contact.probeRise = oldRise;
+      contact.probeDrop = oldDrop;
+    }
 
     if (!support.supported) {
       this.lastWheelSupport = null;
@@ -150,7 +168,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       .dot(this._supportPreviousNormal);
     const normalContinuity = support.normal.dot(this._supportPreviousNormal);
 
-    if (isUnsafeSupportDrop({
+    if (!landingGrace && isUnsafeSupportDrop({
       contactCount: support.count || 0,
       maxWheelGap: support.maxWheelGap || 0,
       correctionAlongNormal,
@@ -190,7 +208,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     speed += (-PHYSICS.gravity * this.forward.y) * dt;
 
     const balanceDrive = Boolean(this.manual);
-    if (!balanceDrive && drive > 0 && speed < PHYSICS.maxSpeed) speed += drive * PHYSICS.push * dt;
+    if (!balanceDrive) speed += signedDriveAcceleration(speed, drive) * dt;
     const braking = input.brake || (!balanceDrive && drive < 0);
     const resistance = 0.26 + 0.012 * speed * speed + (braking ? PHYSICS.brake : 0);
     speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - resistance * dt);
@@ -236,12 +254,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       alignment = boardForward.dot(transitionTangent);
     }
 
-    const flipMode = this.flipState
-      ? flipLandingMode(this.flipState.progress, support.normal.y)
-      : 'clear';
-    if (flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
-
-    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || flipMode === 'bail') {
+    const unfinishedFlip = this.flipState && this.flipState.progress > 0.12 && this.flipState.progress < 0.88;
+    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || unfinishedFlip) {
       this.bail('BAIL · align your board before landing');
       return false;
     }
