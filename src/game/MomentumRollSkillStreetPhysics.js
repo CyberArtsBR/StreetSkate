@@ -1,12 +1,12 @@
 import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.js';
 
 export const MOMENTUM_ROLL = Object.freeze({
-  autoPushTarget: 6.0,
+  autoPushTarget: 8.8,
   autoPushSurfaceY: 0.965,
-  autoPushMinAccel: 1.15,
-  autoPushMaxAccel: 4.2,
-  rollingBase: 0.055,
-  rollingQuadratic: 0.0025,
+  autoPushMinAccel: 1.8,
+  autoPushMaxAccel: 6.4,
+  rollingBase: 0.04,
+  rollingQuadratic: 0.0017,
   signMemoryThreshold: 0.12,
 });
 
