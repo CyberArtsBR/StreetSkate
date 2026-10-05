@@ -169,10 +169,6 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
     const landingGrace = (this.transitionLandingGrace || 0) > 0;
     if (!support.supported && landingGrace) {
-      // Real pool/park meshes can give one wheel first and briefly lose the other
-      // probes as the local normal turns. During the tiny touchdown bridge, widen
-      // the wheel search along the current transition normal rather than falling
-      // through the mesh before the next fixed step.
       const oldRise = contact.probeRise;
       const oldDrop = contact.probeDrop;
       contact.probeRise = Math.max(oldRise, 0.16);
@@ -230,17 +226,17 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       rearSupported: support.rearSupported || 0,
       travelSign: sign,
     })) {
-      // Keep the current tangent velocity; do not snap the center back to the
-      // trailing wheels. Up adds only a small contextual lip lift, never throttle.
       this.lastWheelSupport = support;
       const lipBoost = (this.rampExitIntentTime || 0) > 0 ? 0.9 : 0;
       this.takeoff(lipBoost);
       return;
     }
 
-    if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
-      this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
-    }
+    // IMPORTANT: generic collision contacts are never allowed to rewrite heading.
+    // The previous code aligned the board to the clipped collision velocity here;
+    // a ramp touchdown or thin rail could therefore snap the rider ~90 degrees.
+    // Verified WallContactAuthority.applyWallRecovery() is now the ONLY automatic
+    // contact-driven yaw path. All other contacts only constrain position/velocity.
 
     this.position.copy(support.position);
     this.normal.copy(support.normal);
@@ -290,13 +286,6 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     this.pendingBoardTransition = this.transitions.launchAt(this.position, this.normal, this.velocity);
   }
 
-  /**
-   * Wheel sweeps may find the floor at effectively zero horizontal speed.
-   * That is still a valid landing. The old alignment guard rejected it, letting
-   * the board cross the floor and continue falling because there was no second
-   * surface crossing to recover from. Also ignore same-surface recapture during
-   * the first rising instants of an intentional ollie so flip presentation can start.
-   */
   land(support) {
     if (this.airTime < 0.075 && this.velocity.y > 0.05) return false;
     if ((support.count || 0) < 2 || !support.frontSupported || !support.rearSupported) return false;
