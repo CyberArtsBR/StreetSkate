@@ -5,29 +5,37 @@ import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
 const clamp = THREE.MathUtils.clamp;
 
 export const SAFE_COPING_EXIT = Object.freeze({
-  // The board is ~1.05 m long. When landing perpendicular to coping, the full
-  // board plus a little wheel/body safety margin must fit between coping and the
-  // back edge/guard rail. A center point alone is not enough.
   boardLength: PRODUCTION_BOARD_CONTACT_RIG.deckLength,
   edgeSafety: 0.18,
   minSafeDeckWidth: PRODUCTION_BOARD_CONTACT_RIG.deckLength + 0.36,
 
-  // If a transfer misses its verified deck, allow the original transition to
-  // catch the board again. Never reject the ramp itself just because transfer
-  // mode was active.
   recoveryOutwardMax: 0.34,
-  recoveryInwardMax: 3.8,
-  recoveryAboveLip: 0.36,
-  recoveryBelowLip: 4.2,
+  recoveryInwardMax: 5.4,
+  recoveryAboveLip: 0.42,
+  recoveryBelowLip: 5.6,
   recoveryNormalMinY: 0.035,
-  recoveryNormalMaxY: 0.975,
-  recoveryNormalAlignment: 0.20,
-  recoverySnapRise: 0.42,
-  recoverySnapDrop: 0.62,
+  recoveryNormalMaxY: 0.985,
+  recoveryNormalAlignment: 0.16,
+  recoverySnapRise: 0.46,
+  recoverySnapDrop: 0.72,
+
+  // Continuous transition re-entry. The main airborne wheel sweep is normally
+  // enough, but vert return needs a second pass oriented by the actual transition
+  // normal so the board cannot cross a quarter/bowl face between fixed steps.
+  continuousSweepExtra: 0.22,
+  continuousContactSkin: 0.018,
+  autoAlignSpinToleranceDeg: 38,
 });
 
 function horizontal(vector) {
   return vector.clone().setY(0);
+}
+
+function headingFromHorizontal(direction, fallback = 0) {
+  const flat = horizontal(direction);
+  if (flat.lengthSq() < 1e-8) return fallback;
+  flat.normalize();
+  return Math.atan2(-flat.x, -flat.z);
 }
 
 export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
@@ -67,12 +75,46 @@ export function supportMatchesOriginalTransition(support, air,
   return true;
 }
 
+export function transitionSpinAlignmentErrorDeg(airSpin = 0) {
+  const degrees = Math.abs(Number(airSpin) || 0) * 180 / Math.PI;
+  const remainder = degrees % 180;
+  return Math.min(remainder, 180 - remainder);
+}
+
+export function canAutoAlignTransitionLanding(airSpin = 0,
+  config = SAFE_COPING_EXIT) {
+  return transitionSpinAlignmentErrorDeg(airSpin) <= config.autoAlignSpinToleranceDeg;
+}
+
+export function originalTransitionSweep(surface, from, to, air,
+  config = SAFE_COPING_EXIT) {
+  if (!surface?.sweepRideable || !from || !to || !air?.frame) return null;
+  const point = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const hit = surface.sweepRideable(
+    from,
+    to,
+    point,
+    normal,
+    config.continuousSweepExtra,
+  );
+  if (!hit) return null;
+  const candidate = { position: point.clone(), normal: normal.clone() };
+  if (!supportMatchesOriginalTransition(candidate, air, config)) return null;
+  return {
+    point: point.clone(),
+    normal: normal.clone(),
+    fraction: hit.fraction ?? 1,
+  };
+}
+
 /**
- * Final coping safety layer based on the latest gameplay capture:
- *  - a narrow platform behind coping is not a valid straight-out landing unless
- *    the real 1.05 m skateboard actually fits;
- *  - failed/missed deck transfers may reconnect to the original quarter/bowl;
- *  - a one-frame landing miss cannot send the rider through the ramp mesh.
+ * Coping/transition safety layer based on captured gameplay:
+ *  - narrow decks must fit the real board before a straight-out transfer is allowed;
+ *  - missed transfers can reconnect to the original quarter/bowl;
+ *  - vert return is swept using the transition normal, not only world UP;
+ *  - 0/180/360-style returns auto-align to the tangent, while 90-degree landings
+ *    can still bail like a skate game should.
  */
 export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStreetPhysics {
   takeoff(impulse = 0, transition = null) {
@@ -84,9 +126,6 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
 
     if (deckCanFitBoard(control)) return;
 
-    // The scan may find a narrow strip, but a board pointing out of the ramp
-    // cannot physically fit there. Convert the requested Up exit to a safe same-
-    // transition air instead of landing on the strip and falling through/behind it.
     air.exitControl = {
       ...control,
       geometryAware: true,
@@ -105,24 +144,135 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     this.velocity.y = retainedVertical;
   }
 
+  autoAlignOriginalTransition(support, air) {
+    if (!supportMatchesOriginalTransition(support, air)) return;
+    if (!canAutoAlignTransitionLanding(this.airSpin)) return;
+
+    const travel = this.velocity.clone().projectOnPlane(support.normal);
+    if (travel.lengthSq() < 0.03) return;
+    travel.normalize();
+
+    const board = this.forward.clone().projectOnPlane(support.normal);
+    let travelSign = 1;
+    if (board.lengthSq() > 1e-8) {
+      board.normalize();
+      travelSign = board.dot(travel) < 0 ? -1 : 1;
+    }
+
+    const desiredBoard = travel.multiplyScalar(travelSign);
+    this.heading = headingFromHorizontal(desiredBoard, this.heading);
+    this.airDirection();
+  }
+
   land(support) {
     const air = this.transitionAir;
     const control = air?.exitControl;
+    const originalTransition = Boolean(air
+      && supportMatchesOriginalTransition(support, air));
 
-    // Deck-aware transfer normally rejects everything outside its target corridor.
-    // That is correct for lower/outer geometry, but not for the ORIGINAL ramp.
-    // If the board comes back onto that transition, let the validated transition
-    // landing rules handle it instead of allowing the rider to pass through.
-    if (control?.geometryAware && !control.abortToReturn
-      && supportMatchesOriginalTransition(support, air)) {
-      const wasGeometryAware = control.geometryAware;
-      control.geometryAware = false;
+    if (originalTransition) {
+      this.autoAlignOriginalTransition(support, air);
+
+      // Any verified contact with the original ramp outranks deck-transfer
+      // filtering. This applies to both normal transfers and abort-to-return.
+      const wasGeometryAware = control?.geometryAware;
+      const wasTransferring = air.transferring;
+      if (control?.geometryAware) control.geometryAware = false;
+      air.transferring = false;
       const landed = super.land(support);
-      if (!landed && this.transitionAir === air) control.geometryAware = wasGeometryAware;
+      if (!landed && this.transitionAir === air) {
+        if (control && wasGeometryAware !== undefined) control.geometryAware = wasGeometryAware;
+        air.transferring = wasTransferring;
+      }
       return landed;
     }
 
     return super.land(support);
+  }
+
+  makeEmergencyTransitionSupport(hit) {
+    const normal = hit.normal.clone().normalize();
+    const position = hit.point.clone().addScaledVector(
+      normal,
+      SAFE_COPING_EXIT.continuousContactSkin,
+    );
+    const leadingFront = this.velocity.dot(this.forward) >= 0;
+    return {
+      supported: true,
+      count: 1,
+      frontSupported: leadingFront ? 1 : 0,
+      rearSupported: leadingFront ? 0 : 1,
+      position,
+      supportPoint: hit.point.clone(),
+      normal,
+      maxWheelGap: 0,
+      contacts: [],
+    };
+  }
+
+  tryContinuousTransitionReentry(activeAir, before) {
+    if (!activeAir?.frame || this.grounded || this.transitionAir !== activeAir) return false;
+    if (!(activeAir.apexPassed || this.velocity.y <= 0.8)) return false;
+
+    const contact = this.ensureBoardContact();
+    const referenceNormal = activeAir.frame.surfaceNormal?.clone?.()
+      || this.normal.clone();
+    if (referenceNormal.lengthSq() < 1e-8) referenceNormal.set(0, 1, 0);
+    referenceNormal.normalize();
+
+    // First retry the real four-wheel landing with a transition-oriented basis.
+    const sweptSupport = contact.solveLanding(
+      before,
+      this.position,
+      this.heading,
+      referenceNormal,
+      this.velocity,
+    );
+    if (sweptSupport?.supported
+      && supportMatchesOriginalTransition(sweptSupport, activeAir)) {
+      if (this.land(sweptSupport)) return true;
+      if (this.bailTime > 0) {
+        this.position.copy(sweptSupport.position);
+        return true;
+      }
+    }
+
+    // If triangulation still prevents wheel support, center-sweep the original
+    // transition as a hard anti-tunnelling barrier. This is only accepted when
+    // the hit belongs to the same coping frame, so other ramps/floors cannot steal it.
+    const hit = originalTransitionSweep(this.surface, before, this.position, activeAir);
+    if (!hit) return false;
+
+    const candidate = hit.point.clone().addScaledVector(
+      hit.normal,
+      SAFE_COPING_EXIT.continuousContactSkin,
+    );
+    const resolved = contact.solveGround(
+      candidate,
+      before,
+      this.heading,
+      hit.normal,
+      false,
+    );
+
+    let support = resolved?.supported ? resolved : null;
+    if (!support || !supportMatchesOriginalTransition(support, activeAir)) {
+      support = this.makeEmergencyTransitionSupport(hit);
+    }
+
+    this.position.copy(candidate);
+    if (this.land(support)) return true;
+    if (this.bailTime > 0) {
+      this.position.copy(support.position);
+      return true;
+    }
+
+    // Final invariant: once the original transition has been swept, never allow
+    // the center to continue through it even if a future landing rule rejects.
+    this.position.copy(support.position);
+    const into = this.velocity.dot(support.normal);
+    if (into < 0) this.velocity.addScaledVector(support.normal, -into);
+    return true;
   }
 
   stepAir(dt, input, drive, before) {
@@ -130,12 +280,11 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     super.stepAir(dt, input, drive, before);
 
     if (!activeAir || this.grounded || this.transitionAir !== activeAir) return;
+    if (this.tryContinuousTransitionReentry(activeAir, before)) return;
+
     if (this.velocity.y > 0) return;
     if (!activeAir.exitControl?.geometryAware) return;
 
-    // The swept landing normally catches transition re-entry. This local probe is
-    // only a seam/high-speed fallback after apex and is accepted only when the
-    // support matches the original transition frame.
     const support = this.ensureBoardContact().snapToGround(
       this.position,
       this.heading,
@@ -143,11 +292,6 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       SAFE_COPING_EXIT.recoverySnapDrop,
     );
     if (!support?.supported || !supportMatchesOriginalTransition(support, activeAir)) return;
-
-    const control = activeAir.exitControl;
-    const wasGeometryAware = control.geometryAware;
-    control.geometryAware = false;
-    const landed = super.land(support);
-    if (!landed && this.transitionAir === activeAir) control.geometryAware = wasGeometryAware;
+    this.land(support);
   }
 }
