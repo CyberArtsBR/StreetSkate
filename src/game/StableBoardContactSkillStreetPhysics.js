@@ -36,6 +36,19 @@ export function isUnsafeSupportDrop({
 }
 
 /**
+ * Backward-compatible landing rule for the base stable solver. The dedicated
+ * transition subclass uses a more forgiving wheel/truck-first rule for bowls,
+ * pools and ramps; flat/base behavior stays unchanged for existing regressions.
+ */
+export function flipLandingMode(progress, normalY = 1) {
+  if (!Number.isFinite(progress)) return 'clear';
+  if (progress <= 0.12 || progress >= 0.88) return 'clear';
+  const sloped = Math.abs(normalY) < 0.985;
+  const catchThreshold = sloped ? 0.62 : 0.72;
+  return progress >= catchThreshold ? 'autoCatch' : 'bail';
+}
+
+/**
  * Positive drive means "keep going" rather than "move toward the deck nose".
  * This matters after a 180: the deck has reversed, but momentum should continue
  * in the same world direction while the rider rolls fakie/switch.
@@ -254,8 +267,12 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       alignment = boardForward.dot(transitionTangent);
     }
 
-    const unfinishedFlip = this.flipState && this.flipState.progress > 0.12 && this.flipState.progress < 0.88;
-    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || unfinishedFlip) {
+    const flipMode = this.flipState
+      ? flipLandingMode(this.flipState.progress, support.normal.y)
+      : 'clear';
+    if (flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
+
+    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || flipMode === 'bail') {
       this.bail('BAIL · align your board before landing');
       return false;
     }
