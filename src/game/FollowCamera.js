@@ -1,5 +1,28 @@
 import * as THREE from 'three';
 const UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Third-person skate cameras should follow world travel, not the deck nose.
+ * After a 180 the board faces the opposite way while momentum keeps travelling
+ * along the same line, so the camera must stay on the same travel side.
+ */
+export function resolveTravelFollowDirection(player, previousDirection = null, initialized = true) {
+  const travel = player?.velocity?.clone?.() || new THREE.Vector3();
+  travel.y = 0;
+  if (travel.lengthSq() > 0.16) return travel.normalize();
+
+  if (initialized && previousDirection?.lengthSq?.() > 1e-6) {
+    const previous = previousDirection.clone();
+    previous.y = 0;
+    if (previous.lengthSq() > 1e-6) return previous.normalize();
+  }
+
+  const deckForward = player?.forward?.clone?.() || new THREE.Vector3(0, 0, -1);
+  deckForward.y = 0;
+  if (deckForward.lengthSq() > 1e-6) return deckForward.normalize();
+  return new THREE.Vector3(0, 0, -1);
+}
+
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
@@ -32,16 +55,17 @@ export class FollowCamera {
     const vertTarget = vertActive ? 1 : 0;
     this.vertBlend += (vertTarget - this.vertBlend) * (1 - Math.exp(-blendRate * dt));
 
-    let forward = player.grounded ? player.forward.clone() : player.velocity.clone();
-    forward.y = 0;
+    // Momentum is the camera authority. This deliberately ignores deck heading
+    // while moving, which prevents the camera from orbiting 180 degrees when the
+    // rider lands switch/fakie.
+    let forward = resolveTravelFollowDirection(player, this.direction, this.initialized);
     if (vertActive) {
       // View from the ramp side toward coping. This frame is stable through 180/360 board spins.
       const lipForward = player.transitionAir.frame.deckOutward.clone();
       lipForward.y = 0;
-      if (lipForward.lengthSq() > 0.001) forward.copy(lipForward);
+      if (lipForward.lengthSq() > 0.001) forward.copy(lipForward).normalize();
     }
-    if (forward.lengthSq() < 0.1) forward.copy(this.direction);
-    forward.normalize();
+
     const orbit = forward.clone().applyAxisAngle(UP, this.yawOffset * (1 - this.vertBlend * 0.45));
     const ratio = Math.min(Math.abs(player.speed) / player.config.maxSpeed, 1);
     if (!this.initialized) this.direction.copy(orbit);
