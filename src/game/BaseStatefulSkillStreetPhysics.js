@@ -1,16 +1,13 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
+import { NoAutomaticYawSkillStreetPhysics } from './NoAutomaticYawSkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * UnifiedRampFeelSkillStreetPhysics owns momentum-first locomotion, curved
- * transition touchdown handling, safe wall recovery, persistent regular/fakie
- * travel, board-footprint-safe coping exits, forgiving rail/handrail entry,
- * strong consistent ramp airtime, tighter carving and stance-safe ramp returns
- * while this bridge derives one authoritative gameplay state before and after
- * each fixed step.
+ * NoAutomaticYawSkillStreetPhysics is the final gameplay authority: ramps, walls,
+ * rails and landing contacts may resolve support/velocity but can never rotate yaw
+ * automatically. Player steering and explicit spin inputs are the only yaw sources.
  */
-export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends NoAutomaticYawSkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
