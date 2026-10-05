@@ -4,12 +4,6 @@ import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const clamp = THREE.MathUtils.clamp;
 
-function headingFrom(direction, fallback = 0) {
-  const x = direction.x, z = direction.z;
-  if (x * x + z * z < 1e-8) return fallback;
-  return Math.atan2(-x, -z);
-}
-
 /**
  * Nose/tail clearance is only meant to stop sharp obstacle sides.
  * Curved rideable faces (banks/quarters/bowls) must stay wheel-owned.
@@ -232,12 +226,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       return;
     }
 
-    // IMPORTANT: generic collision contacts are never allowed to rewrite heading.
-    // The previous code aligned the board to the clipped collision velocity here;
-    // a ramp touchdown or thin rail could therefore snap the rider ~90 degrees.
-    // Verified WallContactAuthority.applyWallRecovery() is now the ONLY automatic
-    // contact-driven yaw path. All other contacts only constrain position/velocity.
-
+    // Generic contacts never rewrite yaw. Verified wall recovery is the only
+    // automatic contact-driven turn in the game.
     this.position.copy(support.position);
     this.normal.copy(support.normal);
     this.lastWheelSupport = support;
@@ -318,7 +308,13 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
     this.position.copy(support.position);
     this.normal.copy(support.normal);
-    this.heading = headingFrom(boardForward, this.heading);
+
+    // CRITICAL: never derive yaw from a tangent that was created by projecting
+    // the deck forward onto a steep touchdown normal. Near-vertical quarters can
+    // erase almost the entire longitudinal XZ component; tiny lateral numerical
+    // drift then becomes the dominant axis and causes an instantaneous ~90° snap.
+    // Heading already contains the deliberate airborne spin, so preserve it and
+    // only rebuild the 3D forward vector on the new support plane.
     this.groundDirection();
 
     const spin = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180) * 180;
