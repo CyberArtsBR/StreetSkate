@@ -9,7 +9,7 @@ export class StreetBoard {
     this.url = url;
     this.root = new THREE.Group();
     this.root.name = 'street-board';
-    this._rotation = new THREE.Vector3();
+    this._rotation = new THREE.Euler();
     this.contactRig = { ...PRODUCTION_BOARD_CONTACT_RIG };
   }
 
