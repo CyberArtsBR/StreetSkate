@@ -1,14 +1,14 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
+import { DeckAwareRampExitSkillStreetPhysics } from './DeckAwareRampExitSkillStreetPhysics.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
- * IntegratedRampSafetySkillStreetPhysics owns momentum-first locomotion, curved
- * transition touchdown handling, safe wall recovery, bounded coping exits and
- * persistent regular/fakie travel while this bridge derives one authoritative
- * gameplay state before and after each fixed step.
+ * DeckAwareRampExitSkillStreetPhysics owns momentum-first locomotion, curved
+ * transition touchdown handling, safe wall recovery, persistent regular/fakie
+ * travel and geometry-aware coping-to-deck exits while this bridge derives one
+ * authoritative gameplay state before and after each fixed step.
  */
-export class StatefulSkillStreetPhysics extends IntegratedRampSafetySkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends DeckAwareRampExitSkillStreetPhysics {
   syncMovementState() {
     if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
     else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
