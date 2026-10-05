@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as THREE from 'three';
 import {
+  StableBoardContactSkillStreetPhysics,
   flipLandingMode,
   isSharpDeckBlocker,
   isUnsafeSupportDrop,
 } from '../src/game/StableBoardContactSkillStreetPhysics.js';
+import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
+
+function flatWorld() {
+  const root = new THREE.Group();
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(20, 0.1, 20),
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  floor.position.y = -0.05;
+  root.add(floor);
+  root.updateMatrixWorld(true);
+  return root;
+}
 
 test('nose/tail blocker accepts vertical ledge faces', () => {
   assert.equal(isSharpDeckBlocker({ y: 0.01 }), true);
@@ -77,4 +92,34 @@ test('flat landing remains stricter than ramp auto-catch', () => {
 test('fully caught flip is always clear to land', () => {
   assert.equal(flipLandingMode(0.05, 0.75), 'clear');
   assert.equal(flipLandingMode(0.94, 0.75), 'clear');
+});
+
+test('steep ramp touchdown preserves airborne yaw instead of snapping 90 degrees sideways', () => {
+  const p = new StableBoardContactSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+
+  p.position.set(0, 2, 0);
+  p.heading = THREE.MathUtils.degToRad(2);
+  p.airHeading = p.heading;
+  p.airDirection();
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.grounded = false;
+  p.airTime = 0.30;
+  p.velocity.set(0, -0.10, 0);
+
+  const beforeHeading = p.heading;
+  const support = {
+    count: 4,
+    frontSupported: 2,
+    rearSupported: 2,
+    position: p.position.clone(),
+    normal: new THREE.Vector3(0, 0.05, 0.99875).normalize(),
+  };
+
+  assert.equal(p.land(support), true);
+  assert.ok(Math.abs(p.heading - beforeHeading) < 1e-9,
+    `touchdown rewrote yaw: before=${beforeHeading}, after=${p.heading}`);
 });
