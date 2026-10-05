@@ -41,7 +41,7 @@ function narrowDeckWorld(depth = 0.82, includeLowerFloor = true) {
   const root = new THREE.Group();
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(4, 0.12, depth), material);
-  deck.position.set(0, 0.94, -depth * 0.5); // top surface is y=1, lip is z=0
+  deck.position.set(0, 0.94, -depth * 0.5);
   root.add(deck);
   if (includeLowerFloor) {
     const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.1, 12), material.clone());
@@ -70,7 +70,7 @@ function exitFrame() {
   };
 }
 
-test('steep ramp context cannot fire 90-degree wall recovery', () => {
+test('steep ramp context remains excluded from legacy wall classification', () => {
   assert.equal(wallRecoveryContextAllows({
     groundNormalY: 0.72,
     verticalSpeed: 5.4,
@@ -83,31 +83,27 @@ test('steep ramp context cannot fire 90-degree wall recovery', () => {
   }), false);
 });
 
-test('real flat-ground wall remains eligible for 90-degree recovery', () => {
-  assert.equal(wallRecoveryContextAllows({
-    groundNormalY: 1,
-    verticalSpeed: 0,
-    hitNormalY: 0,
-  }), true);
-
+test('real wall has zero automatic yaw authority in final gameplay physics', () => {
   const p = physics();
   p.position.set(0, 0.015, 0);
   p.normal.set(0, 1, 0);
-  p.heading = 0;
+  p.heading = 0.37;
   p.groundDirection();
   p.setMovementState(MOVEMENT_STATE.GROUND);
-  p.velocity.set(0, 0, -8);
+  p.velocity.copy(p.forward).multiplyScalar(8);
   p.rollingSign = 1;
   p.wallImpactCooldown = 0;
 
-  const hit = p.detectGroundWallImpact(1 / 120);
-  assert.ok(hit, 'real wall should be detected');
-  assert.ok(Math.abs(hit.normal.y) <= RAMP_WALL_SAFETY.wallFaceMaxY + 1e-6);
-  p.applyWallRecovery(hit);
-  assert.ok(Math.abs(p.velocity.z) < 0.15,
-    `wall recovery should redirect along wall tangent, z=${p.velocity.z}`);
-  assert.ok(Math.abs(p.velocity.x) > 2.5,
-    `wall recovery should keep useful tangent speed, x=${p.velocity.x}`);
+  const heading = p.heading;
+  assert.equal(p.detectGroundWallImpact(1 / 120), null,
+    'final runtime must not request an automatic wall turn');
+  assert.equal(p.applyWallRecovery({
+    point: new THREE.Vector3(0, 0.3, -0.3),
+    normal: new THREE.Vector3(0, 0, 1),
+    speed: 8,
+    broadWall: true,
+  }), false);
+  assert.equal(p.heading, heading, 'wall contact must preserve player yaw');
 });
 
 test('high-speed bowl exit is range bounded instead of 12.8 m/s cannon', () => {
@@ -234,7 +230,7 @@ test('latest video: lower floor below platform cannot become a late deck landing
 test('latest video: missing deck behind coping returns null instead of inventing transfer distance', () => {
   const p = physics(narrowDeckWorld(0.82, true));
   const frame = exitFrame();
-  frame.lipPoint.set(0, 2.2, 0); // no surface within deck-height tolerance
+  frame.lipPoint.set(0, 2.2, 0);
   const target = scanDeckTransferTarget(p.surface, frame);
   assert.equal(target, null, 'no real deck must mean no outward transfer target');
 });
