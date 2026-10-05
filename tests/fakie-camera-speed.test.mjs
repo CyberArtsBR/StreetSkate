@@ -9,9 +9,7 @@ import {
 } from '../src/game/FollowCamera.js';
 import {
   MOMENTUM_ROLL,
-  chooseWallRecoveryDirection,
   transitionGravityScale,
-  wallRecoverySpeed,
 } from '../src/game/MomentumRollSkillStreetPhysics.js';
 import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 
@@ -114,20 +112,18 @@ test('fakie steering is camera-relative: left/right are not inverted after a 180
   assert.equal(fakie.fakie, true, 'explicit fakie state must remain active');
 });
 
-test('wall recovery chooses the 90-degree tangent that preserves most momentum', () => {
-  const incoming = new THREE.Vector3(1.4, 0, -8);
-  const wallNormal = new THREE.Vector3(0, 0, 1);
-  const tangent = chooseWallRecoveryDirection(incoming, wallNormal, 0);
-  assert.ok(Math.abs(tangent.dot(wallNormal)) < 1e-8, 'recovery direction must run parallel to the wall');
-  assert.ok(tangent.x > 0.99, `favorable tangent should preserve incoming +X component, got ${tangent.x}`);
-  const angle = Math.acos(THREE.MathUtils.clamp(Math.abs(tangent.dot(wallNormal)), -1, 1)) * 180 / Math.PI;
-  assert.ok(Math.abs(angle - 90) < 0.001, `wall recovery should be 90 degrees to wall normal, got ${angle}`);
-});
-
-test('wall recovery sheds impact speed without stopping the rider', () => {
-  const recovered = wallRecoverySpeed(12);
-  assert.ok(recovered > 7.5 && recovered < 10, `12 m/s wall impact should keep useful but reduced speed, got ${recovered}`);
-  assert.ok(wallRecoverySpeed(4) <= 4, 'wall recovery must never create speed');
+test('contact systems expose no automatic wall-turn authority in final physics', () => {
+  const p = physics();
+  setRolling(p, 0.37, 8.0);
+  const heading = p.heading;
+  assert.equal(p.detectGroundWallImpact(1 / 120), null);
+  assert.equal(p.applyWallRecovery({
+    point: new THREE.Vector3(0, 0.3, -0.3),
+    normal: new THREE.Vector3(0, 0, 1),
+    speed: 8,
+    broadWall: true,
+  }), false);
+  assert.equal(p.heading, heading);
 });
 
 test('neutral flat skating reaches a real skatepark cruise without forward throttle', () => {
