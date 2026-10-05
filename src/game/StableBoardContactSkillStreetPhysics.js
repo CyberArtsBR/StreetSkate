@@ -36,6 +36,29 @@ export function isUnsafeSupportDrop({
 }
 
 /**
+ * A ramp takeoff is the opposite of a partial landing. While climbing, once the
+ * leading truck has fully cleared the lip and only the trailing truck remains,
+ * keeping the board grounded makes it hinge over the last wheels and fall. Let
+ * the board become ballistic immediately. Travel sign makes this work in fakie.
+ */
+export function shouldReleaseRampLip({
+  normalY = 1,
+  verticalSpeed = 0,
+  speed = 0,
+  contactCount = 0,
+  frontSupported = 0,
+  rearSupported = 0,
+  travelSign = 1,
+} = {}) {
+  if (Math.abs(normalY) >= 0.985) return false;
+  if (verticalSpeed <= 0.12 || Math.abs(speed) < 2.5) return false;
+  if (contactCount < 1 || contactCount > 2) return false;
+  const leadingSupported = travelSign < 0 ? rearSupported : frontSupported;
+  const trailingSupported = travelSign < 0 ? frontSupported : rearSupported;
+  return !leadingSupported && Boolean(trailingSupported);
+}
+
+/**
  * Backward-compatible landing rule for the base stable solver. The dedicated
  * transition subclass uses a more forgiving wheel/truck-first rule for bowls,
  * pools and ramps; flat/base behavior stays unchanged for existing regressions.
@@ -197,6 +220,24 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       ? (this.rollingSign < 0 ? -1 : 1)
       : measuredSign;
     const speed = this.velocity.length() * sign;
+
+    if (!landingGrace && shouldReleaseRampLip({
+      normalY: this._supportPreviousNormal.y,
+      verticalSpeed: this.velocity.y,
+      speed,
+      contactCount: support.count || 0,
+      frontSupported: support.frontSupported || 0,
+      rearSupported: support.rearSupported || 0,
+      travelSign: sign,
+    })) {
+      // Keep the current tangent velocity; do not snap the center back to the
+      // trailing wheels. Up adds only a small contextual lip lift, never throttle.
+      this.lastWheelSupport = support;
+      const lipBoost = (this.rampExitIntentTime || 0) > 0 ? 0.9 : 0;
+      this.takeoff(lipBoost);
+      return;
+    }
+
     if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
       this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
     }
