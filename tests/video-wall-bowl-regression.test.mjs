@@ -9,6 +9,12 @@ import {
   isControlledDeckExitTouchdown,
   wallRecoveryContextAllows,
 } from '../src/game/RampWallSafetySkillStreetPhysics.js';
+import {
+  DECK_AWARE_EXIT,
+  deckAwareLaunchSpeed,
+  scanDeckTransferTarget,
+  supportMatchesDeckTarget,
+} from '../src/game/DeckAwareRampExitSkillStreetPhysics.js';
 import { MOVEMENT_STATE, PHYSICS } from '../src/game/StreetPhysics.js';
 
 function flatWallWorld() {
@@ -31,12 +37,37 @@ function flatWallWorld() {
   return root;
 }
 
-function physics() {
+function narrowDeckWorld(depth = 0.82, includeLowerFloor = true) {
+  const root = new THREE.Group();
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(4, 0.12, depth), material);
+  deck.position.set(0, 0.94, -depth * 0.5); // top surface is y=1, lip is z=0
+  root.add(deck);
+  if (includeLowerFloor) {
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.1, 12), material.clone());
+    floor.position.y = -0.05;
+    root.add(floor);
+  }
+  root.updateMatrixWorld(true);
+  return root;
+}
+
+function physics(root = flatWallWorld()) {
   return new StatefulSkillStreetPhysics({
-    collision: flatWallWorld(),
+    collision: root,
     spawn: [0, 0.5, 1.5],
     rails: [],
   });
+}
+
+function exitFrame() {
+  return {
+    lipPoint: new THREE.Vector3(0, 1, 0),
+    deckOutward: new THREE.Vector3(0, 0, -1),
+    rampInward: new THREE.Vector3(0, 0, 1),
+    copingTangent: new THREE.Vector3(1, 0, 0),
+    returnTarget: new THREE.Vector3(0, 0.96, 0.28),
+  };
 }
 
 test('steep ramp context cannot fire 90-degree wall recovery', () => {
@@ -154,4 +185,56 @@ test('one-wheel flat deck touchdown is only bridged during controlled coping exi
   assert.equal(isControlledDeckExitTouchdown({ ...support, count: 0 }, {
     transferring: true,
   }), false);
+});
+
+test('latest video: narrow quarter deck chooses a landing INSIDE its real width', () => {
+  const p = physics(narrowDeckWorld(0.82));
+  const target = scanDeckTransferTarget(p.surface, exitFrame());
+  assert.ok(target, 'narrow deck should be detected behind coping');
+  assert.ok(target.endDistance < 0.9,
+    `scanner incorrectly believes narrow deck continues: ${target.endDistance}`);
+  assert.ok(target.targetDistance >= 0.25 && target.targetDistance <= 0.78,
+    `landing target must stay inside 0.82m deck, got ${target.targetDistance}`);
+  assert.ok(target.usableWidth < 1.0,
+    `narrow quarter should not inherit old 1.15m minimum transfer, width=${target.usableWidth}`);
+});
+
+test('latest video: narrow deck automatically receives a slower horizontal exit', () => {
+  const speed = deckAwareLaunchSpeed(0.54, 5.2);
+  assert.ok(speed >= DECK_AWARE_EXIT.launchHorizontalMin);
+  assert.ok(speed < 2.0,
+    `0.54m deck target should not use old multi-metre cannon speed, got ${speed}`);
+});
+
+test('latest video: lower floor below platform cannot become a late deck landing', () => {
+  const air = {
+    transferring: true,
+    frame: exitFrame(),
+    exitControl: {
+      geometryAware: true,
+      abortToReturn: false,
+      startDistance: 0.22,
+      endDistance: 0.70,
+      targetPoint: new THREE.Vector3(0, 1, -0.46),
+    },
+  };
+  const correctDeck = {
+    position: new THREE.Vector3(0, 1, -0.50),
+    normal: new THREE.Vector3(0, 1, 0),
+  };
+  const lowerVoidFloor = {
+    position: new THREE.Vector3(0, 0, -0.50),
+    normal: new THREE.Vector3(0, 1, 0),
+  };
+  assert.equal(supportMatchesDeckTarget(correctDeck, air), true);
+  assert.equal(supportMatchesDeckTarget(lowerVoidFloor, air), false,
+    'floor under the quarter must never produce the delayed align-board bail from the video');
+});
+
+test('latest video: missing deck behind coping returns null instead of inventing transfer distance', () => {
+  const p = physics(narrowDeckWorld(0.82, true));
+  const frame = exitFrame();
+  frame.lipPoint.set(0, 2.2, 0); // no surface within deck-height tolerance
+  const target = scanDeckTransferTarget(p.surface, frame);
+  assert.equal(target, null, 'no real deck must mean no outward transfer target');
 });
