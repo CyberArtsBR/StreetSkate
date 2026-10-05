@@ -123,7 +123,18 @@ test('3 high-speed quarter approach', () => {
   assert(high <= 15.5);
 });
 
-test('4 ollie released before coping is buffered into lip boost', () => {
+test('4 averaged wheel normal still captures authored coping', () => {
+  const guide = quarterGuide();
+  const normal = new THREE.Vector3(0, 0.82, 0.57).normalize();
+  const candidate = guide.launchAt(
+    new THREE.Vector3(0, 1.72, 0.34),
+    normal,
+    new THREE.Vector3(0, 4.2, -5.4),
+  );
+  assert(candidate, 'real four-wheel averaged normal should not miss the coping guide');
+});
+
+test('5 ollie released before coping is buffered into lip boost', () => {
   const guide = quarterGuide();
   const approach = guide.approachAt(
     new THREE.Vector3(0, 0.75, 0.82),
@@ -136,7 +147,7 @@ test('4 ollie released before coping is buffered into lip boost', () => {
   assert(boosted > base + 0.8, `expected buffered boost ${boosted} > ${base}`);
 });
 
-test('5 normal vert return', () => {
+test('6 normal vert return without Up', () => {
   const result = simulateQuarter({ speed: 8 });
   assert(result.air.apexPassed);
   assert(result.descendingLip, 'should descend back through coping height');
@@ -144,7 +155,7 @@ test('5 normal vert return', () => {
   assert(inward > 0.02, `return should remain on ramp side, got ${inward}`);
 });
 
-test('6 flip during vert leaves trajectory controller intact', () => {
+test('7 flip during vert leaves trajectory controller intact', () => {
   const tricks = new SkateTricks();
   const events = tricks.resolve({ flipPressed: true, directionTaps: [], steer: 0, drive: 0 }, {
     grounded: false, grinding: false, manual: null, speed: 8, airborne: true,
@@ -155,7 +166,7 @@ test('6 flip during vert leaves trajectory controller intact', () => {
   assert(baseline.descendingLip.distanceTo(withFlipInput.descendingLip) < 1e-9);
 });
 
-test('7 grab during vert leaves trajectory controller intact', () => {
+test('8 grab during vert leaves trajectory controller intact', () => {
   const tricks = new SkateTricks();
   const events = tricks.resolve({ grabPressed: true, directionTaps: [], steer: 0, drive: 0 }, {
     grounded: false, grinding: false, manual: null, speed: 8, airborne: true,
@@ -166,19 +177,19 @@ test('7 grab during vert leaves trajectory controller intact', () => {
   assert(baseline.descendingLip.distanceTo(withGrabInput.descendingLip) < 1e-9);
 });
 
-test('8 180 during vert does not steer world trajectory', () => {
+test('9 180 during vert does not steer world trajectory', () => {
   const baseline = simulateQuarter({ speed: 8 });
   const spinning = simulateQuarter({ speed: 8, inputForStep: () => ({ spin: 1 }) });
   assert(baseline.descendingLip.distanceTo(spinning.descendingLip) < 1e-9);
 });
 
-test('9 360 during vert does not steer world trajectory', () => {
+test('10 360 during vert does not steer world trajectory', () => {
   const baseline = simulateQuarter({ speed: 9 });
   const spinning = simulateQuarter({ speed: 9, inputForStep: () => ({ spin: -1, steer: -1 }) });
   assert(baseline.descendingLip.distanceTo(spinning.descendingLip) < 1e-9);
 });
 
-test('10 explicit Ctrl/L2 vert exit permits deck transfer', () => {
+test('11 explicit Ctrl/L2 vert exit still permits deck transfer', () => {
   const result = simulateQuarter({
     speed: 9,
     inputForStep: (_i, sim) => ({ vertExit: sim.air.age > 0.2 }),
@@ -188,13 +199,34 @@ test('10 explicit Ctrl/L2 vert exit permits deck transfer', () => {
   assert(result.maxDeckOutward > 0.45, `expected deck travel, got ${result.maxDeckOutward}`);
 });
 
-test('11 no Ctrl/L2 means no accidental deck exit even with forward held', () => {
-  const result = simulateQuarter({ speed: 10, inputForStep: () => ({ drive: 1, KeyW: true }) });
-  assert(!result.air.transferring);
-  assert(result.maxDeckOutward < 0.12, `forward input leaked across deck: ${result.maxDeckOutward}`);
+test('12 holding Up exits quarter pipe forward like THPS', () => {
+  const result = simulateQuarter({
+    speed: 10,
+    inputForStep: () => ({ drive: 1 }),
+    duration: 1.6,
+  });
+  assert(result.air.transferring, 'Up should enter transfer mode');
+  assert(result.maxDeckOutward > 0.7, `Up should travel out over deck, got ${result.maxDeckOutward}`);
 });
 
-test('12 bowl launch derives local frame at multiple coping locations', () => {
+test('13 Up buffered before coping launches outward on frame one', () => {
+  const guide = quarterGuide();
+  const position = new THREE.Vector3(0, 1.9, 0.18);
+  const normal = new THREE.Vector3(0, 0.08, 1).normalize();
+  const velocity = new THREE.Vector3(0, 9.2, -3.8);
+  const edge = guide.launchAt(position, normal, velocity);
+  assert(edge);
+  edge.exitRequested = true;
+  const air = guide.begin(position, velocity, edge, {
+    boardForward: new THREE.Vector3(0, 0, -1),
+  });
+  const outwardSpeed = velocity.clone().setY(0).dot(edge.deckOutward);
+  assert(air.transferring, 'buffered Up should begin directly in transfer');
+  assert(outwardSpeed > 4.5, `buffered Up initially launched inward: ${outwardSpeed}`);
+  assert(velocity.y > 3.1, `transfer should retain trick airtime: ${velocity.y}`);
+});
+
+test('14 bowl launch derives local frame at multiple coping locations', () => {
   const frames = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5].map(bowlLaunchAt);
   for (const frame of frames) {
     assert(frame.air.frame.rampInward.dot(frame.rampInward) > 0.93);
@@ -203,7 +235,7 @@ test('12 bowl launch derives local frame at multiple coping locations', () => {
   assert(frames[0].air.frame.rampInward.distanceTo(frames[1].air.frame.rampInward) > 1);
 });
 
-test('13 vert air has natural X/Z drift instead of freeze', () => {
+test('15 vert air has natural X/Z drift instead of freeze', () => {
   const sim = quarterSetup(8, 0);
   const start = sim.position.clone();
   for (let i = 0; i < 36; i++) stepAir(sim, {});
@@ -211,12 +243,13 @@ test('13 vert air has natural X/Z drift instead of freeze', () => {
   assert(horizontalDistance > 0.05, `horizontal motion was effectively frozen: ${horizontalDistance}`);
 });
 
-test('14 normal vert never launches forward across deck', () => {
+test('16 normal vert never launches forward across deck without Up', () => {
   const result = simulateQuarter({ speed: 13 });
+  assert(!result.air.transferring, 'neutral vert should remain a same-wall air');
   assert(result.maxDeckOutward < 0.12, `unexpected deck launch ${result.maxDeckOutward}`);
 });
 
-test('15 same-wall return targets the original local coping frame', () => {
+test('17 same-wall return targets the original local coping frame', () => {
   const result = simulateQuarter({ speed: 9 });
   assert.equal(result.air.copingName, 'Quarter coping');
   assert(result.descendingLip);
@@ -224,7 +257,7 @@ test('15 same-wall return targets the original local coping frame', () => {
   assert(error < 0.8, `return target miss too large: ${error}`);
 });
 
-test('16 smooth four-wheel reconnection has front and rear support', () => {
+test('18 smooth four-wheel reconnection has front and rear support', () => {
   const collision = makeFlatCollision();
   const from = new THREE.Vector3(0, 0.25, 0);
   const to = new THREE.Vector3(0, -0.1, 0);
@@ -237,14 +270,14 @@ test('16 smooth four-wheel reconnection has front and rear support', () => {
   assert(correction <= 0.22, `contact correction should stay small, got ${correction}`);
 });
 
-test('17 vert controller produces no NaNs', () => {
+test('19 vert controller produces no NaNs', () => {
   const result = simulateQuarter({ speed: 20, boost: 8.5, duration: 2.5 });
   for (const value of [...result.position.toArray(), ...result.velocity.toArray(), result.air.returnError]) {
     assert(Number.isFinite(value), `non-finite vert value: ${value}`);
   }
 });
 
-test('18 fixed-step vert result is independent of render FPS', () => {
+test('20 fixed-step vert result is independent of render FPS', () => {
   const at30 = fixedRenderSimulation(1 / 30);
   const at144 = fixedRenderSimulation(1 / 144);
   assert(at30.position.distanceTo(at144.position) < 1e-8, `${at30.position.distanceTo(at144.position)} position delta`);
