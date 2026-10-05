@@ -36,6 +36,20 @@ export function isUnsafeSupportDrop({
 }
 
 /**
+ * THPS-style flip landing rule. A flip that is still in the early/mid rotation
+ * can bail, but once the main rotation has been completed the rider auto-catches
+ * the deck at contact. Banks/quarters get a little more catch grace because their
+ * rising surface shortens airtime compared with a flat-ground ollie.
+ */
+export function flipLandingMode(progress, normalY = 1) {
+  if (!Number.isFinite(progress)) return 'clear';
+  if (progress <= 0.12 || progress >= 0.88) return 'clear';
+  const sloped = Math.abs(normalY) < 0.985;
+  const catchThreshold = sloped ? 0.62 : 0.72;
+  return progress >= catchThreshold ? 'autoCatch' : 'bail';
+}
+
+/**
  * Regression guard around the validated six-point board solver.
  * It preserves the same contact rig while rejecting disconnected downward snaps
  * and filtering nose/tail clearance to near-vertical obstacle faces only.
@@ -222,8 +236,12 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       alignment = boardForward.dot(transitionTangent);
     }
 
-    const unfinishedFlip = this.flipState && this.flipState.progress > 0.12 && this.flipState.progress < 0.88;
-    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || unfinishedFlip) {
+    const flipMode = this.flipState
+      ? flipLandingMode(this.flipState.progress, support.normal.y)
+      : 'clear';
+    if (flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
+
+    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || flipMode === 'bail') {
       this.bail('BAIL · align your board before landing');
       return false;
     }
