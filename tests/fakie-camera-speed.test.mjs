@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
-import { resolveTravelFollowDirection } from '../src/game/FollowCamera.js';
+import {
+  THPS_CAMERA,
+  fixedChaseFrame,
+  resolveTravelFollowDirection,
+} from '../src/game/FollowCamera.js';
 import {
   MOMENTUM_ROLL,
   transitionGravityScale,
@@ -56,6 +60,30 @@ test('camera keeps previous travel side if fakie rider briefly becomes nearly st
   const previous = new THREE.Vector3(0, 0, -1);
   const direction = resolveTravelFollowDirection(player, previous, true);
   assert.ok(direction.z < -0.999, 'camera should not orbit 180 merely because fakie speed becomes small');
+});
+
+test('Tony Hawk chase camera keeps one high fixed aerial angle', () => {
+  const player = { position: new THREE.Vector3(2, 3, 4) };
+  const direction = new THREE.Vector3(0, 0, -1);
+  const frame = fixedChaseFrame(player, direction);
+  const cameraToTarget = frame.desired.clone().sub(frame.target);
+  const vertical = cameraToTarget.y;
+  cameraToTarget.y = 0;
+  const angleDeg = Math.atan2(vertical, cameraToTarget.length()) * 180 / Math.PI;
+
+  assert.equal(THPS_CAMERA.distance, 7.0);
+  assert.equal(THPS_CAMERA.height, 6.0);
+  assert.ok(angleDeg > 34 && angleDeg < 39, `fixed aerial angle should be about 36°, got ${angleDeg}`);
+});
+
+test('regular and fakie use the exact same camera frame for the same world travel direction', () => {
+  const position = new THREE.Vector3(0, 1, 0);
+  const direction = new THREE.Vector3(1, 0, 0);
+  const regularFrame = fixedChaseFrame({ position, fakie: false }, direction);
+  const fakieFrame = fixedChaseFrame({ position, fakie: true }, direction);
+
+  assert.ok(regularFrame.desired.distanceTo(fakieFrame.desired) < 1e-9);
+  assert.ok(regularFrame.target.distanceTo(fakieFrame.target) < 1e-9);
 });
 
 test('fakie steering stays inverted for many ground steps instead of reverting after contact updates', () => {
