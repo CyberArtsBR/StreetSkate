@@ -1,11 +1,11 @@
-import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
-
 /**
- * Phase 1 compatibility bridge.
+ * Phase 1 compatibility alias.
  *
- * Travel/fakie/rolling-sign ownership has moved down to the canonical TravelState
- * path in MomentumRollSkillStreetPhysics. This layer intentionally has no land()
- * override anymore, removing one duplicate post-landing state writer while the
- * remaining ramp safety behavior stays in the inherited RampWallSafety layer.
+ * This layer used to own a duplicate post-landing travel/fakie rewrite. That
+ * authority moved to canonical TravelState and the override was removed. Keeping
+ * an empty subclass would still add another prototype level to the runtime tower,
+ * so old imports now resolve directly to RampWallSafetySkillStreetPhysics.
  */
-export class IntegratedRampSafetySkillStreetPhysics extends RampWallSafetySkillStreetPhysics {}
+export {
+  RampWallSafetySkillStreetPhysics as IntegratedRampSafetySkillStreetPhysics,
+} from './RampWallSafetySkillStreetPhysics.js';
