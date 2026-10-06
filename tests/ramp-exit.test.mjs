@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { TransitionGuide, wantsRampExit } from '../src/game/TransitionGuide.js';
+import { authoredTransitionRails } from '../src/game/transitions/TransitionController.js';
 import { shouldReleaseRampLip } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { shouldBufferRampExit } from '../src/game/MomentumRollSkillStreetPhysics.js';
 
@@ -63,10 +64,10 @@ test('flat seams and downhill partial contacts never masquerade as ramp takeoff'
 });
 
 test('authored coping accepts a realistic averaged wheel normal and buffered Up launches outward', () => {
-  const guide = new TransitionGuide([{
+  const guide = new TransitionGuide(authoredTransitionRails([{
     name: '04 / eastern quarter coping',
     points: [[-3, 2, 0], [3, 2, 0]],
-  }]);
+  }]));
   const position = new THREE.Vector3(0, 1.72, 0.34);
   const normal = new THREE.Vector3(0, 0.82, 0.57).normalize();
   const velocity = new THREE.Vector3(0, 5.1, -7.4);
@@ -79,10 +80,20 @@ test('authored coping accepts a realistic averaged wheel normal and buffered Up 
   assert.ok(velocity.y > 3, 'outward transfer must retain usable airtime');
 });
 
-test('an arbitrary rail name containing coping is not a transition without authored metadata', () => {
-  const guide = new TransitionGuide([{
+test('transition controller rejects arbitrary coping names before geometry guide sees them', () => {
+  const rails = authoredTransitionRails([{
     name: 'Random coping decoration',
     points: [[-3, 2, 0], [3, 2, 0]],
   }]);
+  assert.equal(rails.length, 0);
+  const guide = new TransitionGuide(rails);
   assert.equal(guide.edges.length, 0);
+});
+
+test('geometry guide itself is semantic-agnostic after Phase 1 handoff', () => {
+  const guide = new TransitionGuide([{
+    name: 'synthetic test lip',
+    points: [[-3, 2, 0], [3, 2, 0]],
+  }]);
+  assert.equal(guide.edges.length, 1);
 });
