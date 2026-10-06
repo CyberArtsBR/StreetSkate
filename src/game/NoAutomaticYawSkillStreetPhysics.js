@@ -18,10 +18,12 @@ export class NoAutomaticYawSkillStreetPhysics extends UnifiedRampFeelSkillStreet
   }
 
   /**
-   * Observe, never repair. If any lower layer changes yaw during touchdown the
-   * counter becomes non-zero and deterministic replay fails CI on that frame.
+   * Observe, never repair. The final runtime can defer this hook to the explicit
+   * LandingPostPipeline; direct subclass tests retain the same compatibility path.
    */
   land(support) {
+    if (this.deferLandingPostHooks) return super.land(support);
+
     const playerHeading = this.heading;
     const landed = super.land(support);
     if (!landed) return false;
