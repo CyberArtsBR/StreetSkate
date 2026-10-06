@@ -8,8 +8,11 @@ import {
   phaseFromMotion,
   pumpEventTier,
   pumpTimingQuality,
-  resolveOllieRelease,
 } from './PumpSystem.js';
+import {
+  OLLIE_COMMAND,
+  interpretOllieRelease,
+} from '../input/InputInterpreter.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -119,18 +122,32 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     else if (!input.ollieHeld) this.pumpHoldTime = 0;
     else this.pumpHoldTime *= Math.exp(-8 * dt);
 
-    let releaseAction = null;
+    let releaseCommand = OLLIE_COMMAND.NONE;
     if (input.ollieReleased) {
-      releaseAction = resolveOllieRelease({ grounded: this.grounded, pumpEligible: this.pumpEligible, holdTime: this.pumpHoldTime, cooldown: this.pumpCooldown, nearCoping });
-      if (releaseAction === 'pump') {
+      releaseCommand = interpretOllieRelease({
+        ollieReleased: true,
+        grinding: false,
+        grounded: this.grounded,
+        nearCoping,
+        pumpEligible: this.pumpEligible,
+        pumpHoldTime: this.pumpHoldTime,
+        pumpCooldown: this.pumpCooldown,
+        pumpMinHold: PUMP_CONFIG.minHold,
+      });
+
+      if (releaseCommand === OLLIE_COMMAND.PUMP) {
         this.applyPump(this.pumpQuality, { normal: supportNormal, contactCount: contacts.contactCount, curvature: eligibility.curvature });
         this.pumpCooldown = PUMP_CONFIG.cooldown;
         this.pumpState = 'PUMP';
         this.pumpPresentationTimer = 0.18;
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
-      } else if (releaseAction === 'pumpBlocked') {
+      } else if (releaseCommand === OLLIE_COMMAND.PUMP_BLOCKED) {
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
-      } else this.releaseJump();
+      } else if (releaseCommand !== OLLIE_COMMAND.NONE) {
+        // OLLIE, VERT_OLLIE and AIR_RELEASE keep their validated legacy execution.
+        // The interpreter owns semantics; releaseJump remains the temporary executor.
+        this.releaseJump();
+      }
       this.pumpHoldTime = 0;
     }
 
@@ -142,15 +159,20 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
         deltaSpeed: this.pumpLastDeltaSpeed, tangentSpeed: this.pumpTangentSpeed,
         cooldown: this.pumpCooldown, holdTime: this.pumpHoldTime,
         landingWindow: this.pumpLandingWindow, landingImpact: this.pumpLandingImpact,
-        nearCoping, releaseAction,
+        nearCoping, releaseCommand,
       };
     }
   }
 
   advance(delta, input = {}) {
     this.gameplayEvents = [];
-    const grindRelease = Boolean(this.grind && input.ollieReleased);
-    if (input.ollieReleased && !this.grind) this.pumpReleaseQueued = true;
+    const immediateCommand = interpretOllieRelease({
+      ollieReleased: Boolean(input.ollieReleased),
+      grinding: Boolean(this.grind),
+      grounded: this.grounded,
+    });
+    const grindRelease = immediateCommand === OLLIE_COMMAND.GRIND_OLLIE_OUT;
+    if (input.ollieReleased && !grindRelease) this.pumpReleaseQueued = true;
     super.advance(delta, { ...input, ollieReleased: grindRelease });
   }
 
