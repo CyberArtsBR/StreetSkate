@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { StreetSkater } from './StreetSkater.js';
+import { PlayerState } from './core/PlayerState.js';
+import { legacyStateViolations } from './core/LegacyStateInvariants.js';
 
 const EPSILON = 1e-8;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -64,11 +66,17 @@ export function yawStableSurfaceBasis(
  * updates animation/presentation we replace only the root orientation basis with
  * a coping-safe basis. Therefore coping can change pitch/roll but never invent
  * horizontal yaw.
+ *
+ * Phase 1 also mirrors the legacy runtime into PlayerState and records invariant
+ * violations in shadow mode. This observer is strictly read-only: it does not
+ * normalize, repair or feed any canonical value back into gameplay yet.
  */
 export class YawStableStreetSkater extends StreetSkater {
   constructor(options) {
     super(options);
     this._yawStableUp = new THREE.Vector3(0, 1, 0);
+    this.playerState = new PlayerState().syncFromLegacy(this);
+    this.stateViolations = [];
   }
 
   update(delta, input, elapsed) {
@@ -83,6 +91,22 @@ export class YawStableStreetSkater extends StreetSkater {
     this.visual.quaternion.setFromRotationMatrix(
       this._basis.makeBasis(this._rightVisual, this._yawStableUp, this._backVisual),
     );
+
+    this.playerState.syncFromLegacy(this);
+    this.stateViolations = legacyStateViolations(this, this.playerState);
+
+    if (this.debugEnabled && this.debugElement) {
+      const canonical = this.playerState;
+      const codes = this.stateViolations.map(entry => entry.code);
+      this.debugElement.textContent += [
+        '',
+        '--- PHASE 1 CANONICAL ---',
+        `DECK HEADING ${canonical.deckHeading.toFixed(4)}`,
+        `TRAVEL       ${canonical.travelDirection.toArray().map(n => n.toFixed(3)).join(', ')}`,
+        `FAKIE        ${canonical.fakie}`,
+        `STATE CHECK  ${codes.length ? codes.join(', ') : 'OK'}`,
+      ].join('\n');
+    }
     return result;
   }
 }
