@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  captureCameraState,
+  resolveCameraTravelDirection,
+} from './core/CameraState.js';
+
 const UP = new THREE.Vector3(0, 1, 0);
 
 export const THPS_CAMERA = Object.freeze({
@@ -62,39 +67,16 @@ export function cameraDirectionRate(current, target, config = THPS_CAMERA) {
     : config.directionFollowRate;
 }
 
-/**
- * Third-person skate cameras follow the path through the park, not the deck nose.
- * `travelDirection` is persistent gameplay state and therefore survives a 180,
- * tiny contact corrections and near-zero-speed frames without orbiting the rider.
- */
+/** Backward-compatible helper now delegated to canonical CameraState. */
 export function resolveTravelFollowDirection(player, previousDirection = null, initialized = true) {
-  const persistent = player?.travelDirection?.clone?.() || new THREE.Vector3();
-  persistent.y = 0;
-  if (persistent.lengthSq() > 1e-6) return persistent.normalize();
-
-  const travel = player?.velocity?.clone?.() || new THREE.Vector3();
-  travel.y = 0;
-  if (travel.lengthSq() > 0.16) return travel.normalize();
-
-  if (initialized && previousDirection?.lengthSq?.() > 1e-6) {
-    const previous = previousDirection.clone();
-    previous.y = 0;
-    if (previous.lengthSq() > 1e-6) return previous.normalize();
-  }
-
-  const deckForward = player?.forward?.clone?.() || new THREE.Vector3(0, 0, -1);
-  deckForward.y = 0;
-  if (deckForward.lengthSq() > 1e-6) {
-    if (player?.fakie) deckForward.negate();
-    return deckForward.normalize();
-  }
-  return new THREE.Vector3(0, 0, -1);
+  return resolveCameraTravelDirection(player, previousDirection, initialized);
 }
 
 /**
  * Deterministic fixed camera frame. Speed, stance, jump state and vert state do
  * not change the distance or pitch; only the smoothed world travel direction can
- * rotate it.
+ * rotate it. The first argument can be a gameplay object or CameraState because
+ * this frame only consumes its copied `position`.
  */
 export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
   const travel = direction.clone();
@@ -132,14 +114,18 @@ export class FollowCamera {
     // owns one fixed aerial angle so spins, fakie and vert never reframe the rider.
     void input;
 
-    const followDirection = resolveTravelFollowDirection(player, this.direction, this.initialized);
+    const state = captureCameraState(player, {
+      previousDirection: this.direction,
+      initialized: this.initialized,
+    });
+    const followDirection = state.travelDirection;
     if (!this.initialized) this.direction.copy(followDirection);
     else {
       const rate = cameraDirectionRate(this.direction, followDirection);
       this.direction.copy(smoothCameraDirection(this.direction, followDirection, dt, rate));
     }
 
-    const frame = fixedChaseFrame(player, this.direction);
+    const frame = fixedChaseFrame(state, this.direction);
     if (!this.initialized) {
       this.position.copy(frame.desired);
       this.target.copy(frame.target);
@@ -155,9 +141,11 @@ export class FollowCamera {
       );
     }
 
-    // Keep obstacle occlusion protection; outside of an obstruction the camera
-    // stays exactly on the fixed Tony-Hawk-style high chase rig.
-    this.camera.position.copy(player.surface.camera(frame.anchor, this.position));
+    // Occlusion stays a presentation-only query against the collision surface.
+    const resolvedPosition = player?.surface?.camera
+      ? player.surface.camera(frame.anchor, this.position)
+      : this.position;
+    this.camera.position.copy(resolvedPosition);
     this.camera.lookAt(this.target);
   }
 }
