@@ -26,6 +26,18 @@ function legacySourceName(candidate) {
 }
 
 /**
+ * Authoritative semantic gate for transition rails.
+ * TransitionGuide is intentionally geometry-only; every runtime rail must pass
+ * through this exact authoring table before it can participate in vert physics.
+ */
+export function authoredTransitionRails(
+  rails = [],
+  authoring = PRODUCTION_TRANSITION_AUTHORING,
+) {
+  return rails.filter(rail => Boolean(authoring[rail?.name]));
+}
+
+/**
  * Semantic bridge used while TransitionGuide still owns trajectory geometry.
  * It is side-effect free: the legacy candidate is only classified against the
  * explicit production authoring table, never mutated or accepted by name regex.
@@ -48,16 +60,16 @@ export function authoredTransitionIdentity(
 }
 
 /**
- * Phase 1 shadow transition authority.
+ * Phase 1 transition semantic authority.
  *
- * This class owns transition semantics and lip geometry, but it deliberately does
- * not mutate player physics yet. The legacy TransitionGuide continues to drive the
- * live branch behavior until replay parity is established. That lets us compare
- * old detection against explicit metadata before switching authority.
+ * It now owns which rails are allowed to become transitions plus canonical
+ * metadata/identity. TransitionGuide still owns the validated local trajectory
+ * geometry until a later migration slice proves begin/advance parity.
  */
 export class TransitionController {
   constructor({ rails = [], authoring = PRODUCTION_TRANSITION_AUTHORING } = {}) {
-    this.transitions = compileTransitionMetadata(rails, authoring);
+    this.rails = authoredTransitionRails(rails, authoring);
+    this.transitions = compileTransitionMetadata(this.rails, authoring);
     this.byId = new Map(this.transitions.map(transition => [transition.id, transition]));
     this.byRailName = new Map(this.transitions.map(transition => [transition.sourceRail, transition]));
   }
