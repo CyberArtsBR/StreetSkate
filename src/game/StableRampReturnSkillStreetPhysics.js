@@ -117,6 +117,8 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
   autoAlignOriginalTransition() {}
 
   land(support) {
+    if (this.deferLandingPostHooks) return super.land(support);
+
     const activeAir = this.transitionAir;
     const wasRampAir = Boolean(activeAir) || Boolean(this.airTakeoffFromRamp);
     const takeoffFacing = activeAir?.frame?.takeoffFacing
