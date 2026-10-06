@@ -3,6 +3,7 @@ import { StatefulSkillStreetPhysics } from './StatefulSkillStreetPhysics.js';
 import { UnrealRider } from '../character/UnrealRider.js';
 import { StreetBoard } from '../skateboard/StreetBoard.js';
 import { ensureBalanceHud } from './BalanceHud.js';
+import { captureGameplayState } from './core/GameplayStateSnapshot.js';
 import { flipPhaseFor, physicsMovementState, resolvePresentationState } from '../character/PresentationState.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -38,7 +39,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     panel.setAttribute('aria-label', 'Animation debug viewer');
     Object.assign(panel.style, {
       position: 'fixed', top: '72px', right: '16px', zIndex: '9999', margin: '0', padding: '12px 14px',
-      maxWidth: '380px', whiteSpace: 'pre-wrap', pointerEvents: 'none', border: '1px solid rgba(255,255,255,.22)',
+      maxWidth: '480px', whiteSpace: 'pre-wrap', pointerEvents: 'none', border: '1px solid rgba(255,255,255,.22)',
       borderRadius: '8px', background: 'rgba(7,12,14,.86)', color: '#d9ff64', font: '12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace',
       boxShadow: '0 10px 40px rgba(0,0,0,.28)',
     });
@@ -49,15 +50,28 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   updateDebugViewer() {
     if (!this.debugElement) return;
     const d = this.getPresentationDebug();
+    const s = captureGameplayState(this);
     const rig = d.rig ? `${d.rig.boneCount} bones${d.rig.missing?.length ? ` / missing: ${d.rig.missing.join(', ')}` : ' / semantic rig OK'}` : 'loading';
+    const vec = value => value ? value.map(n => n == null ? '—' : n.toFixed(3)).join(', ') : '—';
     this.debugElement.textContent = [
       `PHYSICS      ${d.physicsState}`,
+      `MODE         ${s.movementState}`,
       `PRESENTATION ${d.presentationState}`,
       `TRICK        ${d.activeTrick}`,
       `FLIP PHASE   ${d.flipPhase}`,
       `GRAB         ${d.grab}`,
       `GRIND        ${d.grindType}`,
       `MANUAL       ${d.manual}`,
+      `HEADING      ${s.heading ?? '—'}`,
+      `AIR HEADING  ${s.airHeading ?? '—'}`,
+      `AIR SPIN     ${s.airSpin ?? '—'}`,
+      `VELOCITY     ${vec(s.velocity)}`,
+      `TRAVEL       ${vec(s.travelDirection)}`,
+      `NORMAL       ${vec(s.normal)}`,
+      `FAKIE        ${s.fakie ?? '—'}`,
+      `ROLL SIGN    ${s.rollingSign ?? '—'}`,
+      `TRANSITION   ${s.transitionId || (s.transitionActive ? 'ACTIVE' : '—')}`,
+      `WHEELS       ${s.wheelSupport ? `${s.wheelSupport.count} / F${s.wheelSupport.frontSupported} R${s.wheelSupport.rearSupported}` : '—'}`,
       `GRIND BAL    ${d.grindBalance.toFixed(3)}`,
       `MANUAL BAL   ${d.manualBalance.toFixed(3)}`,
       `STANCE       ${d.stance}`,
