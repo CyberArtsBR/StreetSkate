@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
+import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -244,8 +245,14 @@ export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySki
   land(support) {
     const air = this.transitionAir;
     const control = air?.exitControl;
+    const deckTargetMatches = supportMatchesDeckTarget(support, air);
+    const route = resolveLandingRoute({
+      geometryAware: Boolean(control?.geometryAware),
+      abortToReturn: Boolean(control?.abortToReturn),
+      deckTargetMatches,
+    });
 
-    if (control?.geometryAware && control.abortToReturn) {
+    if (route === LANDING_ROUTE.ABORT_TO_RETURN) {
       const transferring = air.transferring;
       air.transferring = false;
       const landed = super.land(support);
@@ -253,7 +260,7 @@ export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySki
       return landed;
     }
 
-    if (control?.geometryAware && !supportMatchesDeckTarget(support, air)) return false;
+    if (route === LANDING_ROUTE.REJECT_DECK_TARGET) return false;
     return super.land(support);
   }
 
