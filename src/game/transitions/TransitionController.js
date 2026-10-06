@@ -50,9 +50,8 @@ export function authoredTransitionRails(
 }
 
 /**
- * Semantic bridge used while TransitionGuide still owns trajectory geometry.
- * It is side-effect free: the legacy candidate is only classified against the
- * explicit production authoring table, never mutated or accepted by name regex.
+ * Debug/migration bridge for inspecting legacy candidates. Runtime takeoff no
+ * longer uses this lookup: canonical identity must originate at candidate time.
  */
 export function authoredTransitionIdentity(
   candidate,
@@ -74,10 +73,10 @@ export function authoredTransitionIdentity(
 /**
  * Phase 1 transition authority.
  *
- * The controller now owns semantic rail selection AND approach/launch detection.
- * The validated TransitionGuide remains only as a temporary trajectory delegate
- * for begin/advance/presentationNormal. This splits migration at a deterministic
- * seam: detection can move first without changing established air motion.
+ * The controller owns semantic rail selection and approach/launch detection.
+ * TransitionGuide remains only as a temporary trajectory delegate for
+ * begin/advance/presentationNormal. Canonical identity is created by candidate()
+ * and must be carried into begin(); names are never reinterpreted at takeoff.
  */
 export class TransitionController {
   constructor({ rails = [], authoring = PRODUCTION_TRANSITION_AUTHORING } = {}) {
@@ -224,14 +223,14 @@ export class TransitionController {
   /** Trajectory execution remains delegated until its own parity migration. */
   begin(position, velocity, edge, options = {}) {
     const air = this.geometryGuide.begin(position, velocity, edge, options);
-    const identity = this.inspectLegacyCandidate(edge);
-    if (identity.mapped) {
-      air.transitionId = identity.transitionId;
-      air.transitionType = identity.type;
-      air.supportsTransfer = identity.supportsTransfer;
-      air.supportsPump = identity.supportsPump;
-      air.frame.transitionId = identity.transitionId;
-      air.frame.transitionType = identity.type;
+    const transition = edge?.transitionId ? this.get(edge.transitionId) : null;
+    if (transition) {
+      air.transitionId = transition.id;
+      air.transitionType = transition.type;
+      air.supportsTransfer = transition.supportsTransfer;
+      air.supportsPump = transition.supportsPump;
+      air.frame.transitionId = transition.id;
+      air.frame.transitionType = transition.type;
     }
     return air;
   }
@@ -244,7 +243,7 @@ export class TransitionController {
     return this.geometryGuide.presentationNormal(air, verticalSpeed);
   }
 
-  /** Map a legacy TransitionGuide result to canonical metadata without mutation. */
+  /** Debug-only bridge for comparing old name-based candidates during migration. */
   inspectLegacyCandidate(candidate) {
     const identity = authoredTransitionIdentity(candidate);
     if (!identity.mapped) return identity;
