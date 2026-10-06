@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DeckAwareRampExitSkillStreetPhysics } from './DeckAwareRampExitSkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
+import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -169,8 +170,9 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     const control = air?.exitControl;
     const originalTransition = Boolean(air
       && supportMatchesOriginalTransition(support, air));
+    const route = resolveLandingRoute({ originalTransition });
 
-    if (originalTransition) {
+    if (route === LANDING_ROUTE.ORIGINAL_TRANSITION) {
       this.autoAlignOriginalTransition(support, air);
 
       // Any verified contact with the original ramp outranks deck-transfer
