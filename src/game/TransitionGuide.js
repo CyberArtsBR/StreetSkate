@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PRODUCTION_TRANSITION_AUTHORING } from './transitions/TransitionMetadata.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const CAPTURE_SCALE = 1.3;
@@ -39,12 +40,16 @@ export function wantsRampExit(input = {}) {
 /**
  * Coping-aware transition helper. It owns only the local vert-air trajectory;
  * board trick orientation is deliberately kept outside this controller.
+ *
+ * Phase 1 semantic migration: only explicitly authored transition rails are
+ * accepted. Geometry/trajectory behavior is unchanged; the old /coping/i name
+ * heuristic is no longer a gameplay authority.
  */
 export class TransitionGuide {
   constructor(rails = []) {
     this.edges = [];
     for (const rail of rails) {
-      if (!/coping/i.test(rail.name)) continue;
+      if (!PRODUCTION_TRANSITION_AUTHORING[rail.name]) continue;
       for (let i = 1; i < rail.points.length; i++) {
         const a = new THREE.Vector3(...rail.points[i - 1]);
         const b = new THREE.Vector3(...rail.points[i]);
