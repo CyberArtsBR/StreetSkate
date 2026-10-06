@@ -70,3 +70,29 @@ test('explicit 180 landing is player-authored yaw, not a contact yaw violation',
   assert.equal(p.lastLandingYawInvariant?.violated, false);
   assert.ok(Math.abs(Math.abs(p.heading) - Math.PI) < 1e-10);
 });
+
+test('passive ramp return keeps takeoff yaw and becomes fakie without contact yaw', () => {
+  const p = physics();
+  const s = support(new THREE.Vector3(0, 0.72, 0.694));
+  p.position.copy(s.position).addScaledVector(s.normal, 0.04);
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.airTime = 0.55;
+  p.heading = 0;
+  p.airHeading = 0;
+  p.airSpin = 0;
+  p.groundDirection();
+  p.airTakeoffFromRamp = true;
+  p.airTakeoffFacing.set(0, 0, -1);
+  p.airTakeoffHeading = 0;
+  p.airTakeoffStance = 1;
+
+  const returnTangent = new THREE.Vector3(0, 0, 1).projectOnPlane(s.normal).normalize();
+  p.velocity.copy(returnTangent).multiplyScalar(5).addScaledVector(s.normal, -1.1);
+
+  assert.equal(p.land(s), true);
+  assert.equal(p.landingYawInvariantViolations, 0);
+  assert.equal(p.lastLandingYawInvariant?.violated, false);
+  assert.ok(Math.abs(p.heading) < 1e-10, `ramp return invented yaw: ${p.heading}`);
+  assert.equal(p.fakie, true, 'same-yaw return should be fakie relative to reversed travel');
+  assert.ok(p.velocity.z > 0, 'return travel should descend opposite the deck nose');
+});
