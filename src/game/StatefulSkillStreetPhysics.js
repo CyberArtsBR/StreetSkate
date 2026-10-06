@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics as BaseStatefulSkillStreetPhysics } from './BaseStatefulSkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
-import { TransitionGuide } from './TransitionGuide.js';
 import {
   PUMP_CONFIG,
   computePumpEnergy,
@@ -25,11 +24,11 @@ const clamp = THREE.MathUtils.clamp;
 export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
   constructor(options = {}) {
     super(options);
-    // Phase 1 authority handoff: the final runtime no longer gives every park rail
-    // to TransitionGuide. TransitionController owns semantic selection; the guide
-    // only receives the explicitly authored transition subset for legacy geometry.
+    // Phase 1 authority handoff: semantic rail selection and lip detection now
+    // belong to TransitionController. It delegates only the validated air
+    // trajectory execution to TransitionGuide internally.
     this.transitionController = new TransitionController({ rails: options.rails || [] });
-    this.transitions = new TransitionGuide(this.transitionController.rails);
+    this.transitions = this.transitionController;
   }
 
   reset(position = this.spawn, heading = 0) {
