@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
+import { captureGameplayState } from '../src/game/core/GameplayStateSnapshot.js';
+import { PlayerState } from '../src/game/core/PlayerState.js';
 import { TRANSITION_TYPE } from '../src/game/transitions/TransitionMetadata.js';
 
 function flatWorld() {
@@ -49,6 +51,15 @@ test('authored quarter transitionAir carries canonical transition identity', () 
   assert.equal(physics.transitionAir.transitionType, TRANSITION_TYPE.QUARTER);
   assert.equal(physics.transitionAir.supportsTransfer, true);
   assert.equal(physics.transitionAir.supportsPump, true);
+
+  const snapshot = captureGameplayState(physics);
+  assert.equal(snapshot.transitionId, 'eastern-quarter');
+  assert.equal(snapshot.transitionType, TRANSITION_TYPE.QUARTER);
+  assert.equal(snapshot.transitionActive, true);
+
+  const canonical = new PlayerState().syncFromLegacy(physics);
+  assert.equal(canonical.transitionId, 'eastern-quarter');
+  assert.equal(canonical.transitionType, TRANSITION_TYPE.QUARTER);
 });
 
 test('unmapped legacy candidate cannot invent canonical transition identity', () => {
@@ -56,4 +67,13 @@ test('unmapped legacy candidate cannot invent canonical transition identity', ()
   assert.ok(physics.transitionAir);
   assert.equal(physics.transitionAir.transitionId, undefined);
   assert.equal(physics.transitionAir.transitionType, undefined);
+
+  const snapshot = captureGameplayState(physics);
+  assert.equal(snapshot.transitionActive, true);
+  assert.equal(snapshot.transitionId, null);
+  assert.equal(snapshot.transitionType, null);
+
+  const canonical = new PlayerState().syncFromLegacy(physics);
+  assert.equal(canonical.transitionId, null);
+  assert.equal(canonical.transitionType, null);
 });
