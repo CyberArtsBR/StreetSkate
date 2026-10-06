@@ -7,7 +7,10 @@ import {
   compileTransitionMetadata,
   transitionMetadataCoverage,
 } from '../src/game/transitions/TransitionMetadata.js';
-import { TransitionController } from '../src/game/transitions/TransitionController.js';
+import {
+  TransitionController,
+  authoredTransitionIdentity,
+} from '../src/game/transitions/TransitionController.js';
 
 const manifest = JSON.parse(fs.readFileSync(
   new URL('../public/assets/park/park-manifest.json', import.meta.url),
@@ -78,7 +81,23 @@ test('legacy coping candidate maps to canonical transition id by exact authored 
     sourceName: '04 / eastern quarter coping',
     transitionId: 'eastern-quarter',
     type: TRANSITION_TYPE.QUARTER,
+    supportsVert: true,
+    supportsTransfer: true,
+    supportsPump: true,
     mapped: true,
   });
   assert.equal(controller.inspectLegacyCandidate({ name: '07 / angled rail' }).mapped, false);
+});
+
+test('semantic bridge classifies legacy transitionAir without requiring geometry mutation', () => {
+  assert.deepEqual(authoredTransitionIdentity({ copingName: '02 / western vert wall coping' }), {
+    sourceName: '02 / western vert wall coping',
+    transitionId: 'western-vert',
+    type: TRANSITION_TYPE.VERT,
+    supportsVert: true,
+    supportsTransfer: true,
+    supportsPump: true,
+    mapped: true,
+  });
+  assert.equal(authoredTransitionIdentity({ copingName: 'anything coping' }).mapped, false);
 });
