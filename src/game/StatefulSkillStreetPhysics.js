@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics as BaseStatefulSkillStreetPhysics } from './BaseStatefulSkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
+import { TransitionGuide } from './TransitionGuide.js';
 import {
   PUMP_CONFIG,
   computePumpEnergy,
@@ -13,12 +14,24 @@ import {
   OLLIE_COMMAND,
   interpretOllieRelease,
 } from '../input/InputInterpreter.js';
-import { authoredTransitionIdentity } from './transitions/TransitionController.js';
+import {
+  TransitionController,
+  authoredTransitionIdentity,
+} from './transitions/TransitionController.js';
 
 const clamp = THREE.MathUtils.clamp;
 
 /** Skill-based transition pumping layered on top of board contact + vert physics. */
 export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
+  constructor(options = {}) {
+    super(options);
+    // Phase 1 authority handoff: the final runtime no longer gives every park rail
+    // to TransitionGuide. TransitionController owns semantic selection; the guide
+    // only receives the explicitly authored transition subset for legacy geometry.
+    this.transitionController = new TransitionController({ rails: options.rails || [] });
+    this.transitions = new TransitionGuide(this.transitionController.rails);
+  }
+
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
     this.pumpReleaseQueued = false;
