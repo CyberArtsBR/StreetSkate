@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { DeckAwareRampExitSkillStreetPhysics } from './DeckAwareRampExitSkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
-
-const clamp = THREE.MathUtils.clamp;
+import {
+  resolveSafeCopingTransferLaunch,
+  transferDeckCanFit,
+} from './core/TransferLaunchResult.js';
 
 export const SAFE_COPING_EXIT = Object.freeze({
   boardLength: PRODUCTION_BOARD_CONTACT_RIG.deckLength,
@@ -32,11 +34,9 @@ function horizontal(vector) {
   return vector.clone().setY(0);
 }
 
+/** Compatibility export backed by the canonical transfer-deck fit rule. */
 export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
-  if (!control?.found || !Number.isFinite(control.usableWidth)) return false;
-  const required = Math.max(config.minSafeDeckWidth,
-    config.boardLength + config.edgeSafety * 2);
-  return control.usableWidth + 1e-6 >= required;
+  return transferDeckCanFit(control, config);
 }
 
 export function supportMatchesOriginalTransition(support, air,
@@ -122,24 +122,30 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     if (!air?.transferring || !air.frame || !control?.geometryAware
       || control.abortToReturn) return;
 
-    if (deckCanFitBoard(control)) return;
+    if (transferDeckCanFit(control, SAFE_COPING_EXIT)) return;
 
-    air.exitControl = {
-      ...control,
-      geometryAware: true,
-      abortToReturn: true,
-      unsafeDeckWidth: control.usableWidth,
-      targetPoint: air.frame.returnTarget.clone(),
+    const plan = {
+      active: true,
+      mode: air.mode,
+      transferring: air.transferring,
+      exitControl: { ...control },
+      launchVertical: air.launchVertical,
+      launchHorizontal: air.launchHorizontal?.clone?.() || new THREE.Vector3(),
+      velocity: this.velocity.clone(),
     };
-    air.mode = 'return';
+    const result = resolveSafeCopingTransferLaunch({
+      plan,
+      frame: air.frame,
+      lateralVelocity: air.lateralVelocity,
+      config: SAFE_COPING_EXIT,
+    });
+    if (!result?.active) return;
 
-    const retainedVertical = clamp(Math.max(this.velocity.y, 3.2), 3.2, 7.2);
-    const lateral = air.frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * 0.28);
-    const inward = air.frame.rampInward.clone().multiplyScalar(0.36).add(lateral);
-    this.velocity.x = inward.x;
-    this.velocity.z = inward.z;
-    this.velocity.y = retainedVertical;
+    air.mode = result.mode;
+    air.exitControl = { ...result.exitControl };
+    air.launchVertical = result.launchVertical;
+    if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
+    this.velocity.copy(result.velocity);
   }
 
   /** Contact alignment is intentionally inert: only player input may change yaw. */
