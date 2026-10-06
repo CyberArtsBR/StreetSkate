@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { StreetSkater } from './StreetSkater.js';
-import './ActiveParkTransition.js';
 
 const EPSILON = 1e-8;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
