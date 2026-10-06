@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BoardContactSkillStreetPhysics } from './BoardContactSkillStreetPhysics.js';
+import { CollisionResolver } from './collision/CollisionResolver.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -91,6 +92,13 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     this._deckHitNormal ||= new THREE.Vector3();
   }
 
+  ensureCollisionResolver() {
+    if (!this.collisionResolver || this.collisionResolver.surface !== this.surface) {
+      this.collisionResolver = new CollisionResolver(this.surface);
+    }
+    return this.collisionResolver;
+  }
+
   resolveSharpDeckClearance(from, desired, velocity, heading, normal) {
     const contact = this.ensureBoardContact();
     this.ensureBoardSafetyScratch();
@@ -125,16 +133,20 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
   }
 
   resolveMotion(before, beforeUp, input = {}) {
-    const result = this.surface.move(before, this.position, this.velocity, {
+    const collision = this.ensureCollisionResolver();
+    const result = collision.resolveBody({
+      from: before,
+      desired: this.position,
+      velocity: this.velocity,
       fromUp: beforeUp,
       toUp: this.bodyUp(),
       grounded: this.grounded,
       forward: this.forward,
       ignoreRail: this.grind?.rail.name || null,
     });
-    this.position.copy(result.position);
+    collision.applyBodyResult(this, result);
 
-    const wall = result.contacts.find(hit => !hit.railId && Math.abs(hit.normal.y) < 0.3);
+    const wall = result.wallContacts[0] || null;
     if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0
       && this.movementState !== MOVEMENT_STATE.VERT_AIR) {
       if (input.olliePressed) this.wallPlant(wall, this.position.clone());
@@ -226,8 +238,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       return;
     }
 
-    // Generic contacts never rewrite yaw. Verified wall recovery is the only
-    // automatic contact-driven turn in the game.
+    // Generic contacts correct support position/normal/velocity only. They never
+    // rewrite horizontal yaw; heading remains player-authored.
     this.position.copy(support.position);
     this.normal.copy(support.normal);
     this.lastWheelSupport = support;
