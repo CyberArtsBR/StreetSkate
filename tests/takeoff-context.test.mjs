@@ -3,6 +3,19 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { captureTakeoffContext } from '../src/game/core/TakeoffContext.js';
 import { composeLaunchImpulse, rampLaunchBonus } from '../src/game/core/LaunchEnergyModel.js';
+import { StableRampReturnSkillStreetPhysics } from '../src/game/StableRampReturnSkillStreetPhysics.js';
+
+function flatWorld() {
+  const root = new THREE.Group();
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(20, 0.1, 20),
+    new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }),
+  );
+  floor.position.y = -0.05;
+  root.add(floor);
+  root.updateMatrixWorld(true);
+  return root;
+}
 
 test('flat-ground ollie has no ramp bonus and preserves requested impulse', () => {
   const context = captureTakeoffContext({
@@ -111,4 +124,29 @@ test('context records buffered ramp-exit intent without mutating source vectors'
   forward.set(1, 0, 0);
   assert.notEqual(context.speed, velocity.length());
   assert.deepEqual(context.takeoffFacing.toArray(), [0, 0, -1]);
+});
+
+test('StableRampReturn runtime consumes canonical takeoff orientation/ramp context', () => {
+  const p = new StableRampReturnSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+  p.grounded = true;
+  p.normal.set(0, 1, 0);
+  p.heading = Math.PI / 2;
+  p.stance = -1;
+  p.groundDirection();
+  p.velocity.copy(p.forward).multiplyScalar(8);
+  p.rampLaunchMemory = 4.9;
+  p.rampLaunchMemoryTime = 0.16;
+
+  p.takeoff(0, null);
+
+  assert.ok(p.airTakeoffFacing.x < -0.999);
+  assert.ok(Math.abs(p.airTakeoffFacing.z) < 1e-9);
+  assert.ok(Math.abs(p.airTakeoffHeading - Math.PI / 2) < 1e-9);
+  assert.equal(p.airTakeoffStance, -1);
+  assert.equal(p.airTakeoffFromRamp, true,
+    'remembered climb context must survive a flat exact takeoff frame');
 });
