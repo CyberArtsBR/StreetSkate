@@ -5,6 +5,7 @@ import {
   evaluateTransitionLanding,
   transitionLandingSupportMode,
 } from './core/LandingResult.js';
+import { resolveControlledTransferLaunch } from './core/TransferLaunchResult.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -59,9 +60,8 @@ export function wallRecoveryContextAllows({
 }
 
 /**
- * Convert incoming transition energy into a short, controlled deck transfer.
- * Horizontal distance is intentionally bounded; speed still matters, but it no
- * longer decides whether a bowl beside the park edge throws the player to void.
+ * Compatibility helper retained for tests/tuning. Runtime takeoff now consumes
+ * the equivalent pure TransferLaunchResult stage.
  */
 export function controlledTransferProfile(incomingSpeed = 0, launchVertical = 0,
   config = RAMP_WALL_SAFETY) {
@@ -107,18 +107,19 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     const air = this.transitionAir;
     if (!air?.transferring || !air.frame) return;
 
-    const profile = controlledTransferProfile(air.frame.incomingSpeed, air.launchVertical);
-    air.exitControl = profile;
-    air.launchVertical = profile.verticalSpeed;
+    const result = resolveControlledTransferLaunch({
+      frame: air.frame,
+      incomingSpeed: air.frame.incomingSpeed,
+      launchVertical: air.launchVertical,
+      lateralVelocity: air.lateralVelocity,
+      config: RAMP_WALL_SAFETY,
+    });
+    if (!result.active) return;
 
-    const retainedLateral = air.frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * 0.32);
-    const launchHorizontal = air.frame.deckOutward.clone()
-      .multiplyScalar(profile.horizontalSpeed)
-      .add(retainedLateral);
-    air.launchHorizontal = launchHorizontal.clone();
-    this.velocity.copy(launchHorizontal);
-    this.velocity.y = profile.verticalSpeed;
+    air.exitControl = { ...result.exitControl };
+    air.launchVertical = result.launchVertical;
+    air.launchHorizontal = result.launchHorizontal.clone();
+    this.velocity.copy(result.velocity);
   }
 
   advanceControlledTransfer(air, dt) {
