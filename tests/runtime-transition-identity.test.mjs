@@ -34,7 +34,11 @@ function airborneFrom(edge) {
   const physics = new StatefulSkillStreetPhysics({
     collision: flatWorld(),
     spawn: [0, 0.5, 0],
-    rails: [],
+    rails: [{
+      name: edge.name,
+      points: [[-3, 2, 0], [3, 2, 0]],
+      radius: 0.06,
+    }],
   });
   physics.position.set(0, 1.9, 0.18);
   physics.normal.set(0, 0.08, 1).normalize();
