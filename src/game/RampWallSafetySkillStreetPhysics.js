@@ -6,6 +6,7 @@ import {
   transitionLandingSupportMode,
 } from './core/LandingResult.js';
 import { resolveControlledTransferLaunch } from './core/TransferLaunchResult.js';
+import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -36,17 +37,6 @@ export const RAMP_WALL_SAFETY = Object.freeze({
   exitLandingMaxSpeed: 3.2,
 });
 
-function horizontal(vector) {
-  return vector.clone().setY(0);
-}
-
-function accelerateToward(current, target, maxDelta) {
-  const correction = target.clone().sub(current);
-  const length = correction.length();
-  if (length <= maxDelta || length < 1e-8) return target.clone();
-  return current.clone().addScaledVector(correction, maxDelta / length);
-}
-
 /** Legacy geometry classifier kept for regression tests; it has no yaw authority. */
 export function wallRecoveryContextAllows({
   groundNormalY = 1,
@@ -75,6 +65,7 @@ export function controlledTransferProfile(incomingSpeed = 0, launchVertical = 0,
   return { horizontalSpeed, verticalSpeed, targetDistance };
 }
 
+/** Compatibility helper retained for tests/tuning; flight runtime uses the pure result model. */
 export function controlledTransferOutwardSpeed({
   apexPassed = false,
   outwardDistance = 0,
@@ -123,28 +114,19 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
   }
 
   advanceControlledTransfer(air, dt) {
-    air.age += dt;
-    if (this.velocity.y <= 0) air.apexPassed = true;
-
-    const frame = air.frame;
-    const profile = air.exitControl;
-    const currentHorizontal = horizontal(this.velocity);
-    const outwardDistance = horizontal(this.position.clone().sub(frame.lipPoint))
-      .dot(frame.deckOutward);
-    const outwardSpeed = controlledTransferOutwardSpeed({
-      apexPassed: air.apexPassed,
-      outwardDistance,
-      targetDistance: profile.targetDistance,
-      initialSpeed: profile.horizontalSpeed,
-      age: air.age,
+    const result = resolveTransferFlightStep({
+      air,
+      position: this.position,
+      velocity: this.velocity,
+      dt,
+      config: RAMP_WALL_SAFETY,
     });
-    const lateral = frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * Math.exp(-2.4 * air.age) * 0.24);
-    const desired = frame.deckOutward.clone().multiplyScalar(outwardSpeed).add(lateral);
-    const next = accelerateToward(currentHorizontal, desired, (air.apexPassed ? 28 : 18) * dt);
-    this.velocity.x = next.x;
-    this.velocity.z = next.z;
-    air.returnError = Math.abs(profile.targetDistance - outwardDistance);
+    if (!result.active) return;
+
+    air.age = result.age;
+    air.apexPassed = result.apexPassed;
+    air.returnError = result.returnError;
+    this.velocity.copy(result.velocity);
   }
 
   stepAir(dt, input, drive, before) {
