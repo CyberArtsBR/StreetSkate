@@ -171,9 +171,16 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
       grinding: Boolean(this.grind),
       grounded: this.grounded,
     });
-    const grindRelease = immediateCommand === OLLIE_COMMAND.GRIND_OLLIE_OUT;
-    if (input.ollieReleased && !grindRelease) this.pumpReleaseQueued = true;
-    super.advance(delta, { ...input, ollieReleased: grindRelease });
+
+    if (immediateCommand === OLLIE_COMMAND.GRIND_OLLIE_OUT) {
+      // Preserve the validated immediate grind-pop timing, but execute the command
+      // here so the base class never reinterprets this physical button release.
+      this.exitGrind(true);
+    } else if (input.ollieReleased) {
+      this.pumpReleaseQueued = true;
+    }
+
+    super.advance(delta, { ...input, ollieReleased: false });
   }
 
   step(dt, input = {}) {
