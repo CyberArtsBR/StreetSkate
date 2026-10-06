@@ -9,7 +9,8 @@ import {
 } from '../src/game/core/PlayerState.js';
 
 test('deck heading zero points along local -Z', () => {
-  assert.deepEqual(deckForwardFromHeading(0).toArray(), [0, 0, -1]);
+  const forward = deckForwardFromHeading(0);
+  assert.ok(forward.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-12);
 });
 
 test('fakie is derived from deck facing versus travel direction', () => {
