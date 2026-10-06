@@ -13,11 +13,13 @@ function vectorArray(vector) {
 
 function transitionIdentifier(air) {
   return air?.transitionId
-    ?? air?.id
-    ?? air?.edge?.id
-    ?? air?.edge?.rail?.name
     ?? air?.frame?.transitionId
-    ?? air?.frame?.railName
+    ?? null;
+}
+
+function transitionType(air) {
+  return air?.transitionType
+    ?? air?.frame?.transitionType
     ?? null;
 }
 
@@ -27,6 +29,8 @@ function transitionIdentifier(air) {
  * Phase 1 uses this as the common observability/replay boundary before state
  * ownership is migrated away from the legacy inheritance tower. Keep this
  * function side-effect free: it must never normalize or repair runtime state.
+ * Transition identity is intentionally canonical-only: raw coping/rail names are
+ * not accepted as fallback IDs, so replay detects lost metadata propagation.
  */
 export function captureGameplayState(controller) {
   const support = controller?.lastWheelSupport || null;
@@ -52,6 +56,7 @@ export function captureGameplayState(controller) {
     rollingSign: Number.isFinite(Number(controller?.rollingSign)) ? Number(controller.rollingSign) : null,
 
     transitionId: transitionIdentifier(transitionAir),
+    transitionType: transitionType(transitionAir),
     transitionActive: Boolean(transitionAir),
     grindActive: Boolean(controller?.grind),
     grindName: controller?.grind?.trick?.name ?? null,
