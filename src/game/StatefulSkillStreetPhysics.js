@@ -13,10 +13,7 @@ import {
   OLLIE_COMMAND,
   interpretOllieRelease,
 } from '../input/InputInterpreter.js';
-import {
-  TransitionController,
-  authoredTransitionIdentity,
-} from './transitions/TransitionController.js';
+import { TransitionController } from './transitions/TransitionController.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -127,14 +124,9 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     this.pumpQuality = pumpTimingQuality(this.pumpPhase);
     this.pumpTangentSpeed = tangentSpeed;
 
-    const legacyApproach = this.grounded && this.movementState === MOVEMENT_STATE.GROUND
+    const transitionApproach = this.grounded && this.movementState === MOVEMENT_STATE.GROUND
       ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
-    const approachIdentity = authoredTransitionIdentity(legacyApproach);
-    const nearCoping = Boolean(
-      legacyApproach
-      && approachIdentity.mapped
-      && approachIdentity.supportsVert,
-    );
+    const nearCoping = Boolean(transitionApproach?.supportsVert);
     this.pumpEligible = Boolean(eligibility.eligible && !nearCoping);
 
     if (input.ollieHeld && this.pumpEligible) this.pumpHoldTime += dt;
@@ -179,7 +171,7 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
         cooldown: this.pumpCooldown, holdTime: this.pumpHoldTime,
         landingWindow: this.pumpLandingWindow, landingImpact: this.pumpLandingImpact,
         nearCoping,
-        transitionId: approachIdentity.transitionId,
+        transitionId: transitionApproach?.transitionId ?? null,
         releaseCommand,
       };
     }
@@ -215,18 +207,7 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     this.pumpEligible = false;
     this.pumpHoldTime = 0;
     this.pumpPreviousNormal = null;
-    const result = super.takeoff(impulse, transition);
-
-    if (this.transitionAir) {
-      const identity = authoredTransitionIdentity(this.transitionAir);
-      if (identity.mapped) {
-        this.transitionAir.transitionId = identity.transitionId;
-        this.transitionAir.transitionType = identity.type;
-        this.transitionAir.supportsTransfer = identity.supportsTransfer;
-        this.transitionAir.supportsPump = identity.supportsPump;
-      }
-    }
-    return result;
+    return super.takeoff(impulse, transition);
   }
 
   land(support) {
