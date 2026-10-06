@@ -5,11 +5,6 @@ import { YawStableStreetSkater } from './game/YawStableStreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import {
-  buildExtendedCollisionRoot,
-  countParkTriangles,
-  disposeParkReference,
-} from './game/ExtendedParkCollision.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -78,7 +73,6 @@ let collision = null;
 let manifest = null;
 let skater = null;
 let followCamera = null;
-let collisionDiagnostics = null;
 let dusk = false;
 let mode = 'skate';
 let loaded = false;
@@ -166,14 +160,9 @@ function showError(error) {
 async function loadGame() {
   try {
     const loader = new GLTFLoader();
-    const [parkFile, collisionFile, legacyVisualReference, parkManifest] = await Promise.all([
-      // ActiveParkTransition redirects this legacy visual URL to halfpipenew.glb.
+    const [parkFile, collisionFile, parkManifest] = await Promise.all([
       loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
-      // This stays on the small, optimized legacy collision GLB.
       loader.loadAsync('/assets/park/park-collision.glb'),
-      // Query suffix bypasses the visual redirect. It is loaded only long enough
-      // to identify which meshes are genuinely new in halfpipenew, then disposed.
-      loader.loadAsync('/assets/park/insanity-inspired-park.glb?collision-reference=1'),
       fetch('/assets/park/park-manifest.json').then(r => {
         if (!r.ok) throw new Error('Park manifest unavailable');
         return r.json();
@@ -181,16 +170,7 @@ async function loadGame() {
     ]);
     manifest = parkManifest;
     park = parkFile.scene;
-
-    const extendedCollision = buildExtendedCollisionRoot({
-      activePark: park,
-      legacyPark: legacyVisualReference.scene,
-      legacyCollision: collisionFile.scene,
-    });
-    collision = extendedCollision.root;
-    collisionDiagnostics = extendedCollision.diagnostics;
-    disposeParkReference(legacyVisualReference.scene);
-
+    collision = collisionFile.scene;
     const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
@@ -208,19 +188,14 @@ async function loadGame() {
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
 
-    const visualTriangles = countParkTriangles(park);
-    document.querySelector('#poly-count').textContent = `${(visualTriangles / 1000).toFixed(1)}k triangles`;
+    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
-      collisionDiagnostics,
-      activeParkAsset: globalThis.__STREETSKATE_ACTIVE_PARK__,
-      collisionBaseAsset: globalThis.__STREETSKATE_COLLISION_BASE__,
       setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1', rampTuning,
     };
-    console.info('[StreetSkate] optimized extended collision', collisionDiagnostics);
   } catch (error) { showError(error); }
 }
 
