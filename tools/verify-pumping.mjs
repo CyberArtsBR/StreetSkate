@@ -6,8 +6,11 @@ import {
   expApproach,
   phaseFromMotion,
   pumpTimingQuality,
-  resolveOllieRelease,
 } from '../src/game/PumpSystem.js';
+import {
+  OLLIE_COMMAND,
+  interpretOllieRelease,
+} from '../src/input/InputInterpreter.js';
 
 const rad = degrees => degrees * Math.PI / 180;
 const normalY = degrees => Math.cos(rad(degrees));
@@ -23,8 +26,26 @@ const transition = (slope, extra = {}) => evaluatePumpEligibility({
   ...extra,
 });
 
+const releaseCommand = ({
+  grounded = false,
+  pumpEligible = false,
+  holdTime = 0,
+  cooldown = 0,
+  nearCoping = false,
+  grinding = false,
+} = {}) => interpretOllieRelease({
+  ollieReleased: true,
+  grinding,
+  grounded,
+  nearCoping,
+  pumpEligible,
+  pumpHoldTime: holdTime,
+  pumpCooldown: cooldown,
+  pumpMinHold: PUMP_CONFIG.minHold,
+});
+
 // 1. Flat release still performs Ollie.
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: false, holdTime: 0.4 }), 'ollie');
+assert.equal(releaseCommand({ grounded: true, pumpEligible: false, holdTime: 0.4 }), OLLIE_COMMAND.OLLIE);
 
 // 2. Transition compression is recognized from contact/slope/curvature, not a ramp name.
 assert.equal(transition(28).eligible, true);
@@ -50,7 +71,7 @@ assert.equal(pumpTimingQuality(0.01), 0);
 assert.equal(computePumpEnergy({ tangentSpeed: 8, quality: 0, compression: 1 }).deltaSpeed, 0);
 
 // 7. Airborne release cannot resolve to a pump.
-assert.equal(resolveOllieRelease({ grounded: false, pumpEligible: true, holdTime: 0.4 }), 'airRelease');
+assert.equal(releaseCommand({ grounded: false, pumpEligible: true, holdTime: 0.4 }), OLLIE_COMMAND.AIR_RELEASE);
 
 // 8. Repeated pumping respects the hard cap and diminishes after the soft cap.
 let speed = 7;
@@ -72,17 +93,17 @@ assert.equal(transition(52, { contactSpread: rad(4.2), normalDelta: rad(2.8) }).
 
 // 11. Landing window permits immediate compression/pump even before a stable normal history exists.
 assert.equal(transition(24, { contactSpread: 0, normalDelta: 0, landingWindow: 0.3 }).eligible, true);
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: true, holdTime: 0.12, cooldown: 0 }), 'pump');
+assert.equal(releaseCommand({ grounded: true, pumpEligible: true, holdTime: 0.12, cooldown: 0 }), OLLIE_COMMAND.PUMP);
 
 // 12. Near-coping context wins over pump and preserves vert behavior.
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: true, holdTime: 0.4, nearCoping: true }), 'vertOllie');
+assert.equal(releaseCommand({ grounded: true, pumpEligible: true, holdTime: 0.4, nearCoping: true }), OLLIE_COMMAND.VERT_OLLIE);
 
 // 13. Vert-Ollie remains reachable even with a long crouch hold.
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: false, holdTime: 0.6, nearCoping: true }), 'vertOllie');
+assert.equal(releaseCommand({ grounded: true, pumpEligible: false, holdTime: 0.6, nearCoping: true }), OLLIE_COMMAND.VERT_OLLIE);
 
 // 14. A real pump release is consumed as pump, never as a regular Ollie; refractory releases are consumed too.
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: true, holdTime: 0.2, cooldown: 0 }), 'pump');
-assert.equal(resolveOllieRelease({ grounded: true, pumpEligible: true, holdTime: 0.2, cooldown: 0.1 }), 'pumpBlocked');
+assert.equal(releaseCommand({ grounded: true, pumpEligible: true, holdTime: 0.2, cooldown: 0 }), OLLIE_COMMAND.PUMP);
+assert.equal(releaseCommand({ grounded: true, pumpEligible: true, holdTime: 0.2, cooldown: 0.1 }), OLLIE_COMMAND.PUMP_BLOCKED);
 
 // 15. Compression smoothing is fixed-step/framerate independent.
 const runCompression = dt => {
