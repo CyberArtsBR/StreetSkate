@@ -1,8 +1,3 @@
-import {
-  OLLIE_COMMAND,
-  interpretOllieRelease,
-} from '../input/InputInterpreter.js';
-
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export const PUMP_CONFIG = Object.freeze({
@@ -67,41 +62,6 @@ export function evaluatePumpEligibility({
     && Math.abs(ridingAlignment) >= 0.25
     && hasTransitionShape;
   return { eligible, curvature, slopeDeg: motion.slopeDeg };
-}
-
-/**
- * Compatibility adapter for the Phase 0 pump verifier. The semantic authority
- * now lives in InputInterpreter; this function only preserves the legacy string
- * API until all callers consume OLLIE_COMMAND directly.
- */
-export function resolveOllieRelease({
-  grounded = false,
-  pumpEligible = false,
-  holdTime = 0,
-  cooldown = 0,
-  nearCoping = false,
-  grinding = false,
-} = {}, config = PUMP_CONFIG) {
-  const command = interpretOllieRelease({
-    ollieReleased: true,
-    grinding,
-    grounded,
-    nearCoping,
-    pumpEligible,
-    pumpHoldTime: holdTime,
-    pumpCooldown: cooldown,
-    pumpMinHold: config.minHold,
-  });
-
-  switch (command) {
-    case OLLIE_COMMAND.GRIND_OLLIE_OUT: return 'grindOllieOut';
-    case OLLIE_COMMAND.VERT_OLLIE: return 'vertOllie';
-    case OLLIE_COMMAND.PUMP: return 'pump';
-    case OLLIE_COMMAND.PUMP_BLOCKED: return 'pumpBlocked';
-    case OLLIE_COMMAND.OLLIE: return 'ollie';
-    case OLLIE_COMMAND.AIR_RELEASE: return 'airRelease';
-    default: return null;
-  }
 }
 
 export function speedCapFactor(tangentSpeed, config = PUMP_CONFIG) {
