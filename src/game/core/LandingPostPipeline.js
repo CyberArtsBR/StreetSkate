@@ -54,8 +54,21 @@ export function captureLandingPostContext(controller, support, {
 export function applyLandingPostPipeline(controller, support, context, {
   rampReentrySteerLock = 0.20,
   pumpLandingWindow = null,
+  lowerLayerHeading = controller?.heading,
 } = {}) {
   if (!controller || !support || !context) return false;
+
+  // Observe the raw accepted-landing result before any legitimate post hook can
+  // restore ramp-facing semantics. A lower contact writer can therefore never be
+  // hidden by the orientation hook that follows.
+  const invariant = evaluateLandingYawInvariant({
+    playerHeading: context.playerHeading,
+    lowerLayerHeading,
+  });
+  controller.lastLandingYawInvariant = invariant;
+  if (invariant.violated) {
+    controller.landingYawInvariantViolations = Number(controller.landingYawInvariantViolations || 0) + 1;
+  }
 
   if (context.wasTransitionAir || context.slopedTouchdown) {
     controller.rampReentrySteerLock = Math.max(
@@ -83,15 +96,6 @@ export function applyLandingPostPipeline(controller, support, context, {
 
   controller.syncTravelDirection?.({ preserveIfSlow: true });
   controller.airTakeoffFromRamp = false;
-
-  const invariant = evaluateLandingYawInvariant({
-    playerHeading: context.playerHeading,
-    lowerLayerHeading: controller.heading,
-  });
-  controller.lastLandingYawInvariant = invariant;
-  if (invariant.violated) {
-    controller.landingYawInvariantViolations = Number(controller.landingYawInvariantViolations || 0) + 1;
-  }
 
   if (Number.isFinite(pumpLandingWindow)) {
     controller.pumpLandingWindow = pumpLandingWindow;
