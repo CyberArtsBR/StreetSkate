@@ -30,20 +30,41 @@ function transitionEdge(name) {
   };
 }
 
-function airborneFrom(edge) {
-  const physics = new StatefulSkillStreetPhysics({
+function physicsWithRail(name) {
+  return new StatefulSkillStreetPhysics({
     collision: flatWorld(),
     spawn: [0, 0.5, 0],
     rails: [{
-      name: edge.name,
+      name,
       points: [[-3, 2, 0], [3, 2, 0]],
       radius: 0.06,
     }],
   });
+}
+
+function primeTakeoff(physics) {
   physics.position.set(0, 1.9, 0.18);
   physics.normal.set(0, 0.08, 1).normalize();
   physics.velocity.set(0, 7.2, -3.1);
   physics.grounded = true;
+}
+
+function airborneFromCanonical(name) {
+  const physics = physicsWithRail(name);
+  primeTakeoff(physics);
+  const edge = physics.transitionController.launchAt(
+    physics.position,
+    physics.normal,
+    physics.velocity,
+  );
+  assert.ok(edge, `${name} should produce a canonical launch candidate`);
+  physics.takeoff(0, edge);
+  return physics;
+}
+
+function airborneFromLegacyEdge(edge) {
+  const physics = physicsWithRail(edge.name);
+  primeTakeoff(physics);
   physics.takeoff(0, edge);
   return physics;
 }
@@ -74,7 +95,7 @@ test('final runtime filters vert rails through TransitionController but keeps al
 });
 
 test('authored quarter transitionAir carries canonical transition identity', () => {
-  const physics = airborneFrom(transitionEdge('04 / eastern quarter coping'));
+  const physics = airborneFromCanonical('04 / eastern quarter coping');
   assert.ok(physics.transitionAir);
   assert.equal(physics.transitionAir.transitionId, 'eastern-quarter');
   assert.equal(physics.transitionAir.transitionType, TRANSITION_TYPE.QUARTER);
@@ -91,8 +112,8 @@ test('authored quarter transitionAir carries canonical transition identity', () 
   assert.equal(canonical.transitionType, TRANSITION_TYPE.QUARTER);
 });
 
-test('unmapped legacy candidate cannot invent canonical transition identity', () => {
-  const physics = airborneFrom(transitionEdge('random coping name'));
+test('legacy name alone cannot invent canonical transition identity at takeoff', () => {
+  const physics = airborneFromLegacyEdge(transitionEdge('04 / eastern quarter coping'));
   assert.ok(physics.transitionAir);
   assert.equal(physics.transitionAir.transitionId, undefined);
   assert.equal(physics.transitionAir.transitionType, undefined);
@@ -105,4 +126,11 @@ test('unmapped legacy candidate cannot invent canonical transition identity', ()
   const canonical = new PlayerState().syncFromLegacy(physics);
   assert.equal(canonical.transitionId, null);
   assert.equal(canonical.transitionType, null);
+});
+
+test('unmapped legacy candidate cannot invent canonical transition identity', () => {
+  const physics = airborneFromLegacyEdge(transitionEdge('random coping name'));
+  assert.ok(physics.transitionAir);
+  assert.equal(physics.transitionAir.transitionId, undefined);
+  assert.equal(physics.transitionAir.transitionType, undefined);
 });
