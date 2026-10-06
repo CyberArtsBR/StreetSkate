@@ -1,10 +1,10 @@
 import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
 import {
   LAUNCH_ENERGY,
-  composeLaunchImpulse,
   rampLaunchBonus,
   updateRampLaunchMemory,
 } from './core/LaunchEnergyModel.js';
+import { captureTakeoffContext } from './core/TakeoffContext.js';
 
 // Compatibility exports while call sites migrate to LaunchEnergyModel directly.
 export const UNIFIED_RAMP_FEEL = LAUNCH_ENERGY;
@@ -51,26 +51,26 @@ export class UnifiedRampFeelSkillStreetPhysics extends StableRampReturnSkillStre
   }
 
   takeoff(impulse = 0, transition = null) {
-    const wasGrounded = Boolean(this.grounded);
-    const currentBoost = wasGrounded
-      ? rampLaunchBonus({
-        speed: this.velocity?.length?.() || 0,
-        normalY: this.normal?.y ?? 1,
-        verticalSpeed: this.velocity?.y ?? 0,
-      })
-      : 0;
-    const rememberedBoost = this.rampLaunchMemoryTime > 0 ? this.rampLaunchMemory : 0;
-    const rampBonus = Math.max(currentBoost, rememberedBoost);
-    const rampContext = Boolean(transition) || rampBonus > 0;
+    const context = captureTakeoffContext({
+      grounded: this.grounded,
+      normal: this.normal,
+      velocity: this.velocity,
+      forward: this.forward,
+      travelDirection: this.travelDirection,
+      heading: this.heading,
+      stance: this.stance,
+      requestedImpulse: impulse,
+      transition,
+      rampLaunchMemory: this.rampLaunchMemory,
+      rampLaunchMemoryTime: this.rampLaunchMemoryTime,
+      rampExitIntentTime: this.rampExitIntentTime,
+    });
 
-    const result = super.takeoff(composeLaunchImpulse({
-      ollieImpulse: impulse,
-      rampBonus,
-    }), transition);
+    const result = super.takeoff(context.composedImpulse, transition);
 
     // StableRampReturn uses this bit to apply identical no-auto-yaw/re-entry
     // semantics even when a generic lip became flat on the exact takeoff frame.
-    if (rampContext) this.airTakeoffFromRamp = true;
+    if (context.rampContext) this.airTakeoffFromRamp = true;
     this.rampLaunchMemory = 0;
     this.rampLaunchMemoryTime = 0;
     return result;
