@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
+import { resolveDeckAwareTransferLaunch } from './core/TransferLaunchResult.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -115,7 +116,7 @@ export function scanDeckTransferTarget(surface, frame, config = DECK_AWARE_EXIT)
   };
 }
 
-/** Choose horizontal launch speed from real target distance and airtime. */
+/** Compatibility helper retained for tests/tuning; runtime uses TransferLaunchResult. */
 export function deckAwareLaunchSpeed(targetDistance, verticalSpeed, config = DECK_AWARE_EXIT) {
   const vertical = Math.max(0.1, Math.abs(Number(verticalSpeed) || 0));
   const airTime = Math.max(0.28, (2 * vertical) / Math.max(PHYSICS.gravity, 0.1));
@@ -147,47 +148,33 @@ export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySki
     const air = this.transitionAir;
     if (!air?.transferring || !air.frame || !air.exitControl) return;
 
+    // Geometry evidence stays local: this is the actual collision-deck scan. The
+    // canonical result model owns only the decision/application after that scan.
     const deck = scanDeckTransferTarget(this.surface, air.frame);
-    if (!deck) {
-      // No verified deck behind this coping: holding Up must never launch into
-      // empty space. Keep a controlled same-wall return regardless of held Up.
-      air.exitControl = {
-        geometryAware: true,
-        abortToReturn: true,
-        targetPoint: air.frame.returnTarget.clone(),
-      };
-      air.mode = 'return';
-      const tangent = air.frame.copingTangent.clone()
-        .multiplyScalar((air.lateralVelocity || 0) * 0.35);
-      const inward = air.frame.rampInward.clone().multiplyScalar(0.34).add(tangent);
-      this.velocity.x = inward.x;
-      this.velocity.z = inward.z;
-      return;
-    }
-
-    const verticalSpeed = clamp(air.exitControl.verticalSpeed,
-      DECK_AWARE_EXIT.launchVerticalMin, DECK_AWARE_EXIT.launchVerticalMax);
-    const horizontalSpeed = deckAwareLaunchSpeed(deck.targetDistance, verticalSpeed);
-    air.exitControl = {
-      ...air.exitControl,
-      ...deck,
-      geometryAware: true,
-      abortToReturn: false,
-      horizontalSpeed,
-      verticalSpeed,
+    const plan = {
+      active: true,
+      mode: air.mode,
+      transferring: air.transferring,
+      exitControl: { ...air.exitControl },
+      launchVertical: air.launchVertical,
+      launchHorizontal: air.launchHorizontal?.clone?.() || new THREE.Vector3(),
+      velocity: this.velocity.clone(),
     };
-    air.launchVertical = verticalSpeed;
+    const result = resolveDeckAwareTransferLaunch({
+      plan,
+      frame: air.frame,
+      deck,
+      lateralVelocity: air.lateralVelocity,
+      gravity: PHYSICS.gravity,
+      config: DECK_AWARE_EXIT,
+    });
+    if (!result?.active) return;
 
-    const towardTarget = horizontal(deck.targetPoint.clone().sub(air.frame.lipPoint));
-    if (towardTarget.lengthSq() < 1e-8) towardTarget.copy(deck.direction);
-    towardTarget.normalize();
-    const lateral = air.frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * 0.10);
-    const launch = towardTarget.multiplyScalar(horizontalSpeed).add(lateral);
-    this.velocity.x = launch.x;
-    this.velocity.z = launch.z;
-    this.velocity.y = verticalSpeed;
-    air.launchHorizontal = launch.clone();
+    air.mode = result.mode;
+    air.exitControl = { ...result.exitControl };
+    air.launchVertical = result.launchVertical;
+    if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
+    this.velocity.copy(result.velocity);
   }
 
   advanceControlledTransfer(air, dt) {
