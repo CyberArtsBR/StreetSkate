@@ -1,4 +1,5 @@
 import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
+import { evaluateLandingYawInvariant } from './core/OrientationInvariant.js';
 
 /**
  * Final gameplay authority for yaw.
@@ -12,6 +13,12 @@ import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetP
  * layer so older helpers cannot reintroduce a hidden 90-degree snap.
  */
 export class NoAutomaticYawSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysics {
+  reset(position = this.spawn, heading = 0) {
+    super.reset(position, heading);
+    this.landingYawInvariantViolations = 0;
+    this.lastLandingYawInvariant = null;
+  }
+
   /** No wall, ledge, rail or stair contact may request an automatic turn. */
   detectGroundWallImpact() {
     return null;
@@ -26,14 +33,25 @@ export class NoAutomaticYawSkillStreetPhysics extends UnifiedRampFeelSkillStreet
    * Landing may change pitch/roll through the support normal, but never yaw.
    * `this.heading` already includes any explicit Q/E/L1/R1 spin performed in air,
    * so preserving it keeps real tricks while eliminating contact-driven snaps.
+   *
+   * Phase 1 now records the lower-layer attempted yaw before restoring the player
+   * heading. This keeps current behavior while making hidden writers observable
+   * so they can be removed instead of permanently relying on an undo layer.
    */
   land(support) {
     const playerHeading = this.heading;
     const landed = super.land(support);
     if (!landed) return false;
 
-    this.heading = playerHeading;
-    this.airHeading = playerHeading;
+    const invariant = evaluateLandingYawInvariant({
+      playerHeading,
+      lowerLayerHeading: this.heading,
+    });
+    this.lastLandingYawInvariant = invariant;
+    if (invariant.violated) this.landingYawInvariantViolations += 1;
+
+    this.heading = invariant.preservedHeading;
+    this.airHeading = invariant.preservedHeading;
     this.groundDirection();
     return true;
   }
