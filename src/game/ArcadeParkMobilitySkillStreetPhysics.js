@@ -121,9 +121,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     this.rampReentrySteerLock = 0;
   }
 
-  /** Transition contact alignment is yaw-inert by architecture. */
-  autoAlignOriginalTransition() {}
-
   land(support) {
     if (this.deferLandingPostHooks) return super.land(support);
 
@@ -135,13 +132,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
       this.rampReentrySteerLock = ARCADE_PARK_MOBILITY.rampReentrySteerLock;
     }
     return landed;
-  }
-
-  detectGroundWallImpact(dt) {
-    // Compatibility method only. MomentumRoll and final NoAutomaticYaw both make
-    // automatic wall-turn detection inert, so this cannot become a yaw source.
-    if ((this.rampReentrySteerLock || 0) > 0) return null;
-    return super.detectGroundWallImpact(dt);
   }
 
   magneticRailCapture(trick) {
