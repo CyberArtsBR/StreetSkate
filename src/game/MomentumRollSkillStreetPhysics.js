@@ -3,7 +3,6 @@ import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.j
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
 
-const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 
 export const MOMENTUM_ROLL = Object.freeze({
@@ -30,8 +29,8 @@ export const MOMENTUM_ROLL = Object.freeze({
   rampExitMinRise: 0.06,
   rampLipBoost: 0.9,
 
-  // Arcade wall recovery. The rider only reacts to a meaningful frontal hit,
-  // then turns onto the wall tangent that preserves the most incoming momentum.
+  // Deprecated wall-response tuning retained only while collision migration and
+  // old QA helpers are being removed. These values no longer authorize yaw.
   wallImpactMinSpeed: 3.2,
   wallImpactMinApproach: 0.48,
   wallRecoverySpeedScale: 0.72,
@@ -112,16 +111,9 @@ function horizontalDirection(source, fallback = null) {
   return result.set(0, 0, -1);
 }
 
-function headingFrom(direction, fallback = 0) {
-  const x = direction.x, z = direction.z;
-  if (x * x + z * z < 1e-8) return fallback;
-  return Math.atan2(-x, -z);
-}
-
 /**
- * Pick one of the two directions parallel to a wall. The chosen tangent is the
- * one that keeps the largest component of the incoming world-space travel. A
- * perfectly head-on tie uses steering intent only as a tie breaker.
+ * Deprecated geometry helper retained for migration tests only. It does NOT
+ * authorize heading changes anywhere in gameplay.
  */
 export function chooseWallRecoveryDirection(velocity, wallNormal, steer = 0) {
   const incoming = horizontalDirection(velocity);
@@ -136,6 +128,7 @@ export function chooseWallRecoveryDirection(velocity, wallNormal, steer = 0) {
   return scoreA >= scoreB ? a : b;
 }
 
+/** Deprecated speed helper retained for migration tests only. */
 export function wallRecoverySpeed(speed, config = MOMENTUM_ROLL) {
   const magnitude = Math.max(0, Number(speed) || 0);
   if (magnitude <= 0) return 0;
@@ -152,6 +145,10 @@ export function wallRecoverySpeed(speed, config = MOMENTUM_ROLL) {
  * A 180 changes their relationship but must not rotate travelDirection. Camera
  * remains travel-oriented. Steering is ALSO travel/camera-oriented: pressing
  * left always curves left on screen, whether the deck is regular or fakie.
+ *
+ * Wall/contact geometry has zero yaw authority. The former automatic wall
+ * recovery path has been deleted from stepGround; collision response may later
+ * correct position/velocity through CollisionResolver, never heading.
  */
 export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
@@ -194,8 +191,8 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
 
   /**
    * Preserve Up intent through the last contact frame. If this is an authored
-   * coping transition, tag the edge so TransitionGuide launches outward on frame
-   * one instead of first pulling inward and reversing later.
+   * coping transition, tag the edge so TransitionController launches outward on
+   * frame one instead of first pulling inward and reversing later.
    */
   takeoff(impulse = 0, transition = null) {
     const exitRequested = (this.rampExitIntentTime || 0) > 0;
@@ -216,57 +213,14 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     return true;
   }
 
-  detectGroundWallImpact(dt) {
-    if (!this.grounded || this.grind || this.wallRide || this.bailTime > 0 || this.wallImpactCooldown > 0) return null;
-
-    const horizontalVelocity = this.velocity.clone().setY(0);
-    const speed = horizontalVelocity.length();
-    if (speed < MOMENTUM_ROLL.wallImpactMinSpeed) return null;
-    const direction = horizontalVelocity.multiplyScalar(1 / speed);
-
-    // Probe from torso/board-center height. The distance is only the next fixed
-    // step plus body clearance, so this behaves like impact recovery rather than
-    // obstacle avoidance several metres in advance.
-    const origin = this.position.clone().addScaledVector(UP, 0.58).addScaledVector(direction, 0.04);
-    const reach = Math.max(0.24, speed * dt + MOMENTUM_ROLL.wallProbePadding);
-    const ray = this.surface.ray;
-    ray.set(origin, direction);
-    ray.far = reach;
-
-    for (const hit of ray.intersectObjects(this.surface.meshes, false)) {
-      if (hit.object?.userData?.railId) continue;
-      const normal = this.surface.normal(hit, new THREE.Vector3());
-      if (Math.abs(normal.y) > 0.30) continue;
-      if (normal.dot(direction) > 0) normal.negate();
-      const approach = -normal.dot(direction);
-      if (approach < MOMENTUM_ROLL.wallImpactMinApproach) continue;
-      return { point: hit.point.clone(), normal, approach, speed };
-    }
+  /** Automatic wall-turn detection has no runtime authority. */
+  detectGroundWallImpact() {
     return null;
   }
 
-  applyWallRecovery(hit) {
-    if (!hit) return false;
-    const incomingTravel = horizontalDirection(this.velocity, this.travelDirection);
-    const tangent = chooseWallRecoveryDirection(incomingTravel, hit.normal, this.steer);
-    const speed = wallRecoverySpeed(hit.speed);
-    const travelSign = this.rollingSign < 0 ? -1 : 1;
-    const deckForward = tangent.clone().multiplyScalar(travelSign);
-
-    this.heading = headingFrom(deckForward, this.heading);
-    this.groundDirection();
-    this.velocity.copy(this.forward).multiplyScalar(speed * travelSign);
-    this.travelDirection.copy(horizontalDirection(this.velocity, tangent));
-    this.fakie = travelSign < 0;
-
-    const crossY = incomingTravel.x * tangent.z - incomingTravel.z * tangent.x;
-    this.wallImpactSide = Math.sign(crossY) || 1;
-    this.wallImpactTime = MOMENTUM_ROLL.wallImpactDuration;
-    this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
-    this.wallImpactCooldown = MOMENTUM_ROLL.wallImpactCooldown;
-    this.manual = null;
-    this.flatland = null;
-    return true;
+  /** Contact recovery may never rewrite deck heading. */
+  applyWallRecovery() {
+    return false;
   }
 
   stepGround(dt, input = {}, drive = 0) {
@@ -282,9 +236,6 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     })) {
       this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
     }
-
-    const wallHit = this.detectGroundWallImpact(dt);
-    if (wallHit) this.applyWallRecovery(wallHit);
 
     const threshold = MOMENTUM_ROLL.signMemoryThreshold;
     const measuredSigned = this.velocity.dot(this.forward);
