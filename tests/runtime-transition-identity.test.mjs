@@ -44,6 +44,31 @@ function airborneFrom(edge) {
   return physics;
 }
 
+test('final runtime filters vert rails through TransitionController but keeps all grind rails', () => {
+  const authored = {
+    name: '04 / eastern quarter coping',
+    points: [[-3, 2, 0], [3, 2, 0]],
+    radius: 0.06,
+  };
+  const grindOnly = {
+    name: '07 / angled rail',
+    points: [[-2, 0.8, -2], [2, 0.8, 2]],
+    radius: 0.05,
+  };
+  const physics = new StatefulSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [authored, grindOnly],
+  });
+
+  assert.deepEqual(physics.transitionController.rails.map(rail => rail.name), [authored.name]);
+  assert.equal(physics.transitions.edges.length, 1);
+  assert.deepEqual(
+    physics.railNetwork.rails.map(rail => rail.name),
+    [authored.name, grindOnly.name],
+  );
+});
+
 test('authored quarter transitionAir carries canonical transition identity', () => {
   const physics = airborneFrom(transitionEdge('04 / eastern quarter coping'));
   assert.ok(physics.transitionAir);
