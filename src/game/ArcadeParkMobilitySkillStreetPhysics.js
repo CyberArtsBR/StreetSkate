@@ -125,6 +125,8 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
   autoAlignOriginalTransition() {}
 
   land(support) {
+    if (this.deferLandingPostHooks) return super.land(support);
+
     const wasTransitionAir = Boolean(this.transitionAir);
     const slopedTouchdown = Math.abs(support?.normal?.y ?? 1)
       < ARCADE_PARK_MOBILITY.rampReentrySlopeY;
