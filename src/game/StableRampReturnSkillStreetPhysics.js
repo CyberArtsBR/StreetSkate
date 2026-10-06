@@ -125,7 +125,17 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     const context = captureLandingPostContext(this, support, {
       rampReentrySlopeY: ARCADE_PARK_MOBILITY.rampReentrySlopeY,
     });
-    const landed = super.land(support);
+
+    // Direct subsystem instances should match the final runtime: acceptance and
+    // geometry routing still execute below, but legacy post hooks are deferred so
+    // orientation/travel/re-entry bookkeeping is composed exactly once here.
+    this.deferLandingPostHooks = true;
+    let landed = false;
+    try {
+      landed = super.land(support);
+    } finally {
+      this.deferLandingPostHooks = false;
+    }
     if (!landed) return false;
 
     applyLandingPostPipeline(this, support, context, {
