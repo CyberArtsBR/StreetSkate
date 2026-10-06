@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { MomentumRollSkillStreetPhysics, MOMENTUM_ROLL } from './MomentumRollSkillStreetPhysics.js';
 import {
-  transitionAlignmentThreshold,
-  transitionFlipLandingMode,
+  evaluateTransitionLanding,
   transitionLandingSupportMode,
-} from './BowlLandingSkillStreetPhysics.js';
+} from './core/LandingResult.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -240,48 +239,35 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
   }
 
   land(support) {
-    if (this.airTime < 0.075 && this.velocity.y > 0.05) return false;
-
-    let supportMode = transitionLandingSupportMode(support);
-    const deckExitTouchdown = supportMode === 'reject'
+    const detectedSupportMode = transitionLandingSupportMode(support);
+    const deckExitTouchdown = detectedSupportMode === 'reject'
       && isControlledDeckExitTouchdown(support, this.transitionAir);
-    if (deckExitTouchdown) supportMode = 'deckExit';
-    if (supportMode === 'reject') return false;
+    const landing = evaluateTransitionLanding({
+      support,
+      position: this.position,
+      velocity: this.velocity,
+      forward: this.forward,
+      airTime: this.airTime,
+      flipProgress: this.flipState?.progress ?? null,
+      maxLandingCorrection: PHYSICS.maxLandingCorrection,
+      supportModeOverride: deckExitTouchdown ? 'deckExit' : null,
+    });
 
-    const partialTouchdown = supportMode !== 'full';
-    const rulesMode = supportMode === 'deckExit' ? 'truckFirst' : supportMode;
+    // Preserve legacy side-effect order: catch first, then a possible alignment
+    // bail. All acceptance thresholds now come from canonical LandingResult.
+    if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
 
-    this.ensureBoardSafetyScratch();
-    const correction = this._supportCorrection.copy(support.position).sub(this.position);
-    let correctionLimit = PHYSICS.maxLandingCorrection;
-    if (supportMode === 'truckFirst') correctionLimit = Math.max(correctionLimit, 0.34);
-    if (supportMode === 'wheelFirst' || supportMode === 'deckExit') {
-      correctionLimit = Math.max(correctionLimit, 0.42);
-    }
-    if (correction.length() > correctionLimit) return false;
-
-    const boardForward = this._deckProbeDelta.copy(this.forward).projectOnPlane(support.normal);
-    if (boardForward.lengthSq() < 1e-7) return false;
-    boardForward.normalize();
-
-    const planar = this._deckProbeTo.copy(this.velocity).projectOnPlane(support.normal);
-    const planarSpeed = planar.length();
-    let alignment = 1;
-    if (planarSpeed > 0.18) {
-      const tangent = this._deckProbeFrom.copy(planar).multiplyScalar(1 / planarSpeed);
-      alignment = boardForward.dot(tangent);
-    }
-
-    const flipMode = this.flipState
-      ? transitionFlipLandingMode(this.flipState.progress, support.normal.y, rulesMode)
-      : 'clear';
-    if (flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
-
-    const alignmentThreshold = transitionAlignmentThreshold(support.normal.y, rulesMode);
-    if ((planarSpeed > 0.18 && Math.abs(alignment) < alignmentThreshold) || flipMode === 'bail') {
-      this.bail('BAIL · align your board before landing');
+    if (!landing.accepted) {
+      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
       return false;
     }
+
+    const {
+      partialTouchdown,
+      boardForward,
+      planarVelocity: planar,
+      planarSpeed,
+    } = landing;
 
     const halfTurns = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180);
     const spin = halfTurns * 180;
