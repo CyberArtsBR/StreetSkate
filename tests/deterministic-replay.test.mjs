@@ -61,6 +61,22 @@ test('replay baseline never emits non-finite canonical gameplay state', () => {
   }
 });
 
+test('replay baseline never permits contact-driven landing yaw', () => {
+  const replay = runDeterministicReplay({ controller: physics(), segments: baselineTape });
+  for (const snapshot of replay.snapshots) {
+    assert.equal(
+      snapshot.state.landingYawInvariantViolations,
+      0,
+      `contact-driven landing yaw violation at fixed frame ${snapshot.frame}`,
+    );
+    assert.notEqual(
+      snapshot.state.lastLandingYawViolated,
+      true,
+      `landing yaw invariant reported a violation at fixed frame ${snapshot.frame}`,
+    );
+  }
+});
+
 test('multi-frame replay segments emit edge-triggered inputs only once', () => {
   class ProbeController {
     constructor() { this.events = []; }
