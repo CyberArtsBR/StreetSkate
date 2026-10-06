@@ -57,20 +57,13 @@ export function rampReturnFacing({ takeoffFacing, airSpin = 0 } = {}) {
   return facing;
 }
 
-/** Fakie/stance is explicit-trick driven, never inferred from passive return. */
-export function rampReturnFakie(previousFakie = false, airSpin = 0) {
-  return rampReturnHalfTurns(airSpin) % 2 === 1
-    ? !Boolean(previousFakie)
-    : Boolean(previousFakie);
-}
-
 /**
- * Final ramp-air authority:
- * - steering input / analog smoothing NEVER becomes airborne yaw;
- * - this applies to authored vert AND generic ramps/kickers/banks;
+ * Ramp-air orientation authority during the Phase 1 migration:
+ * - steering / analog smoothing NEVER becomes airborne yaw;
  * - passive ramp air freezes the takeoff heading until explicit spin is pressed;
- * - touchdown preserves that airborne facing exactly;
- * - dedicated wall recovery is the only automatic ~90-degree turn in the game.
+ * - touchdown yaw is takeoff facing + explicit spin only;
+ * - fakie is NOT stored/restored here anymore. It is derived after touchdown by
+ *   canonical TravelState from final deck heading versus actual travel.
  */
 export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
@@ -80,7 +73,6 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     this.airTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
     this.airTakeoffFacing.copy(this.rampTakeoffFacing);
     this.airTakeoffHeading = heading;
-    this.airTakeoffFakie = Boolean(this.fakie);
     this.airTakeoffStance = Number(this.stance) || 1;
     this.airTakeoffFromRamp = false;
   }
@@ -90,13 +82,11 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     const takeoffNormalY = Math.abs(this.normal?.y ?? 1);
     const takeoffFacing = horizontal(this.forward, this.travelDirection);
     const takeoffHeading = headingFrom(takeoffFacing, this.heading);
-    const takeoffFakie = Boolean(this.fakie);
     const takeoffStance = Number(this.stance) || 1;
     const rampTakeoff = Boolean(transition) || (wasGrounded && takeoffNormalY < 0.995);
 
     this.airTakeoffFacing.copy(takeoffFacing);
     this.airTakeoffHeading = takeoffHeading;
-    this.airTakeoffFakie = takeoffFakie;
     this.airTakeoffStance = takeoffStance;
     this.airTakeoffFromRamp = rampTakeoff;
 
@@ -104,7 +94,6 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
 
     if (this.transitionAir?.frame) {
       this.transitionAir.frame.takeoffFacing = takeoffFacing.clone();
-      this.transitionAir.frame.takeoffFakie = takeoffFakie;
       this.transitionAir.frame.takeoffStance = takeoffStance;
       this.transitionAir.frame.takeoffHeading = takeoffHeading;
     }
@@ -142,9 +131,6 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     const takeoffFacing = activeAir?.frame?.takeoffFacing
       || this.airTakeoffFacing
       || this.forward;
-    const previousFakie = activeAir?.frame?.takeoffFakie
-      ?? this.airTakeoffFakie
-      ?? Boolean(this.fakie);
     const takeoffStance = activeAir?.frame?.takeoffStance
       ?? this.airTakeoffStance
       ?? (Number(this.stance) || 1);
@@ -171,10 +157,8 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
       if (incomingSpeed > 0.18 && this.forward.lengthSq() > EPSILON) {
         const travelSign = incomingPlanar.dot(this.forward) < 0 ? -1 : 1;
         this.velocity.copy(this.forward).multiplyScalar(incomingSpeed * travelSign);
-        this.rollingSign = travelSign;
       }
 
-      this.fakie = rampReturnFakie(previousFakie, landingSpin);
       this.stance = halfTurns % 2 === 1 ? -takeoffStance : takeoffStance;
       this.rampReentrySteerLock = Math.max(
         this.rampReentrySteerLock || 0,
@@ -182,27 +166,10 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
       );
     }
 
+    // Final deck heading and final velocity now define travel sign and fakie in
+    // exactly one place. No ramp-specific boolean restore can contradict them.
+    this.syncTravelDirection({ preserveIfSlow: true });
     this.airTakeoffFromRamp = false;
     return true;
-  }
-
-  syncTravelDirection(options = {}) {
-    const explicitFakie = Boolean(this.fakie);
-    const result = super.syncTravelDirection(options);
-    this.fakie = explicitFakie;
-    return result;
-  }
-
-  resolveMotion(before, beforeUp, input = {}) {
-    const explicitFakie = Boolean(this.fakie);
-    super.resolveMotion(before, beforeUp, input);
-    this.fakie = explicitFakie;
-  }
-
-  applyWallRecovery(hit) {
-    const explicitFakie = Boolean(this.fakie);
-    const recovered = super.applyWallRecovery(hit);
-    this.fakie = explicitFakie;
-    return recovered;
   }
 }
