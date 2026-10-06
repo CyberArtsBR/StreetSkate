@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MomentumRollSkillStreetPhysics, MOMENTUM_ROLL } from './MomentumRollSkillStreetPhysics.js';
+import { applyAcceptedLanding } from './core/LandingExecutor.js';
 import {
   evaluateTransitionLanding,
   transitionLandingSupportMode,
@@ -37,12 +38,6 @@ export const RAMP_WALL_SAFETY = Object.freeze({
 
 function horizontal(vector) {
   return vector.clone().setY(0);
-}
-
-function headingFrom(direction, fallback = 0) {
-  const x = direction.x, z = direction.z;
-  if (x * x + z * z < 1e-8) return fallback;
-  return Math.atan2(-x, -z);
 }
 
 function accelerateToward(current, target, maxDelta) {
@@ -262,40 +257,9 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       return false;
     }
 
-    const {
-      partialTouchdown,
-      boardForward,
-      planarVelocity: planar,
-      planarSpeed,
-    } = landing;
-
-    const halfTurns = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180);
-    const spin = halfTurns * 180;
-
-    this.position.copy(support.position);
-    this.normal.copy(support.normal);
-    this.heading = headingFrom(boardForward, this.heading);
-    this.groundDirection();
-
-    if (spin >= 180) this.recordTrick(`${spin}°`, spin);
-    if (halfTurns % 2 === 1) this.stance *= -1;
-
-    this.setMovementState(MOVEMENT_STATE.GROUND);
-    this.coyote = 0;
-    this.justLanded = true;
-    this.transitionAir = null;
-    this.wallRide = null;
-    this.lastWheelSupport = support;
-    this.transitionLandingGrace = partialTouchdown
-      ? 0.16
-      : (Math.abs(support.normal.y) < 0.995 ? 0.07 : 0);
-
-    if (planarSpeed > 0.0001) this.velocity.copy(planar);
-    else this.velocity.set(0, 0, 0);
-    this.flipState = null;
-    this.grabState = null;
-    this.airSpin = 0;
-    this.stableGroundTime = 0;
-    return true;
+    return applyAcceptedLanding(this, support, landing, {
+      partialGrace: 0.16,
+      slopedGrace: 0.07,
+    });
   }
 }
