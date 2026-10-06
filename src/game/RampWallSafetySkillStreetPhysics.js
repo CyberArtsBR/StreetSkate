@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MomentumRollSkillStreetPhysics, MOMENTUM_ROLL } from './MomentumRollSkillStreetPhysics.js';
+import { MomentumRollSkillStreetPhysics } from './MomentumRollSkillStreetPhysics.js';
 import { applyAcceptedLanding } from './core/LandingExecutor.js';
 import {
   evaluateTransitionLanding,
@@ -11,9 +11,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
 
 export const RAMP_WALL_SAFETY = Object.freeze({
-  // A grounded wall recovery is a FLAT-ground collision response. If the board
-  // is already climbing a transition, the near-vertical ramp ahead must never
-  // be interpreted as a wall and rotate the skater 90 degrees.
+  // Legacy wall-classification thresholds remain exported for geometry QA only.
+  // Runtime collision response no longer owns yaw or performs wall-turn probes.
   wallGroundMinY: 0.94,
   wallMaxVerticalSpeed: 0.9,
   wallFaceMaxY: 0.04,
@@ -47,6 +46,7 @@ function accelerateToward(current, target, maxDelta) {
   return current.clone().addScaledVector(correction, maxDelta / length);
 }
 
+/** Legacy geometry classifier kept for regression tests; it has no yaw authority. */
 export function wallRecoveryContextAllows({
   groundNormalY = 1,
   verticalSpeed = 0,
@@ -98,62 +98,10 @@ export function isControlledDeckExitTouchdown(support, transitionAir) {
 }
 
 /**
- * Video-regression safety layer:
- *  - steep ramps cannot trigger the 90-degree wall-recovery turn;
- *  - genuine near-vertical walls still can;
- *  - Up/coping transfers are range-bounded and decelerate over the deck;
- *  - the first partial wheel contact on a flat deck can bridge into a full landing.
+ * Transition/deck-exit safety layer. Wall-turn detection was removed in Phase 1:
+ * collision can correct position/velocity but never owns horizontal yaw.
  */
 export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhysics {
-  detectGroundWallImpact(dt) {
-    if (!this.grounded || this.grind || this.wallRide || this.bailTime > 0 || this.wallImpactCooldown > 0) return null;
-
-    // The strongest discriminator from the captured regression: while climbing a
-    // transition the rider already has a tilted support normal and meaningful Y
-    // velocity. Wall recovery must not even probe in that state.
-    if (!wallRecoveryContextAllows({
-      groundNormalY: this.normal.y,
-      verticalSpeed: this.velocity.y,
-      hitNormalY: 0,
-    })) return null;
-
-    const horizontalVelocity = horizontal(this.velocity);
-    const speed = horizontalVelocity.length();
-    if (speed < MOMENTUM_ROLL.wallImpactMinSpeed) return null;
-    const direction = horizontalVelocity.multiplyScalar(1 / speed);
-    const reach = Math.max(0.24, speed * dt + RAMP_WALL_SAFETY.wallProbePadding);
-    const ray = this.surface.ray;
-
-    // Probe low first. A ramp intersects this ray on its rideable slope before a
-    // higher ray reaches its nearly vertical lip. If that happens, abort wall
-    // recovery for this frame instead of continuing upward and finding a fake wall.
-    for (const height of [RAMP_WALL_SAFETY.wallProbeLow, RAMP_WALL_SAFETY.wallProbeHigh]) {
-      const origin = this.position.clone().addScaledVector(UP, height).addScaledVector(direction, 0.04);
-      ray.set(origin, direction);
-      ray.far = reach;
-      for (const hit of ray.intersectObjects(this.surface.meshes, false)) {
-        if (hit.object?.userData?.railId) continue;
-        const normal = this.surface.normal(hit, new THREE.Vector3());
-        if (normal.dot(direction) > 0) normal.negate();
-
-        const ny = Math.abs(normal.y);
-        const solid = hit.object?.userData?.surface === 'solid';
-        if (!solid && ny > RAMP_WALL_SAFETY.transitionFaceMinY
-          && ny < RAMP_WALL_SAFETY.transitionFaceMaxY) return null;
-        if (!wallRecoveryContextAllows({
-          groundNormalY: this.normal.y,
-          verticalSpeed: this.velocity.y,
-          hitNormalY: normal.y,
-        })) continue;
-
-        const approach = -normal.dot(direction);
-        if (approach < MOMENTUM_ROLL.wallImpactMinApproach) continue;
-        return { point: hit.point.clone(), normal, approach, speed };
-      }
-    }
-    return null;
-  }
-
   takeoff(impulse = 0, transition = null) {
     super.takeoff(impulse, transition);
     const air = this.transitionAir;
