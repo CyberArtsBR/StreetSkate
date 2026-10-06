@@ -32,13 +32,6 @@ function horizontal(vector) {
   return vector.clone().setY(0);
 }
 
-function headingFromHorizontal(direction, fallback = 0) {
-  const flat = horizontal(direction);
-  if (flat.lengthSq() < 1e-8) return fallback;
-  flat.normalize();
-  return Math.atan2(-flat.x, -flat.z);
-}
-
 export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
   if (!control?.found || !Number.isFinite(control.usableWidth)) return false;
   const required = Math.max(config.minSafeDeckWidth,
@@ -76,12 +69,17 @@ export function supportMatchesOriginalTransition(support, air,
   return true;
 }
 
+/**
+ * Legacy classification helper retained for tests/migration only. It no longer
+ * authorizes an automatic heading correction at touchdown.
+ */
 export function transitionSpinAlignmentErrorDeg(airSpin = 0) {
   const degrees = Math.abs(Number(airSpin) || 0) * 180 / Math.PI;
   const remainder = degrees % 180;
   return Math.min(remainder, 180 - remainder);
 }
 
+/** Legacy compatibility classifier; contact yaw alignment itself is removed. */
 export function canAutoAlignTransitionLanding(airSpin = 0,
   config = SAFE_COPING_EXIT) {
   return transitionSpinAlignmentErrorDeg(airSpin) <= config.autoAlignSpinToleranceDeg;
@@ -114,8 +112,7 @@ export function originalTransitionSweep(surface, from, to, air,
  *  - narrow decks must fit the real board before a straight-out transfer is allowed;
  *  - missed transfers can reconnect to the original quarter/bowl;
  *  - vert return is swept using the transition normal, not only world UP;
- *  - 0/180/360-style returns auto-align to the tangent, while 90-degree landings
- *    can still bail like a skate game should.
+ *  - re-entry contact may correct position/velocity but never horizontal yaw.
  */
 export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStreetPhysics {
   takeoff(impulse = 0, transition = null) {
@@ -145,25 +142,8 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     this.velocity.y = retainedVertical;
   }
 
-  autoAlignOriginalTransition(support, air) {
-    if (!supportMatchesOriginalTransition(support, air)) return;
-    if (!canAutoAlignTransitionLanding(this.airSpin)) return;
-
-    const travel = this.velocity.clone().projectOnPlane(support.normal);
-    if (travel.lengthSq() < 0.03) return;
-    travel.normalize();
-
-    const board = this.forward.clone().projectOnPlane(support.normal);
-    let travelSign = 1;
-    if (board.lengthSq() > 1e-8) {
-      board.normalize();
-      travelSign = board.dot(travel) < 0 ? -1 : 1;
-    }
-
-    const desiredBoard = travel.multiplyScalar(travelSign);
-    this.heading = headingFromHorizontal(desiredBoard, this.heading);
-    this.airDirection();
-  }
+  /** Contact alignment is intentionally inert: only player input may change yaw. */
+  autoAlignOriginalTransition() {}
 
   land(support) {
     const air = this.transitionAir;
@@ -173,6 +153,7 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     const route = resolveLandingRoute({ originalTransition });
 
     if (route === LANDING_ROUTE.ORIGINAL_TRANSITION) {
+      // Keep the call as a compatibility seam; it is deliberately yaw-inert.
       this.autoAlignOriginalTransition(support, air);
 
       // Any verified contact with the original ramp outranks deck-transfer
