@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
+import { resolveTravelState } from './core/TravelState.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -167,17 +168,27 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
     this.wallImpactSide = 0;
   }
 
+  /**
+   * Phase 1 migration: direction/sign/fakie are now resolved by one canonical
+   * pure helper. Legacy fields remain populated so upper systems keep their
+   * current API while duplicate travel math is removed incrementally.
+   */
   syncTravelDirection({ preserveIfSlow = true } = {}) {
     this.travelDirection ||= new THREE.Vector3(0, 0, -1);
-    const horizontalVelocity = this.velocity.clone();
-    horizontalVelocity.y = 0;
-    if (horizontalVelocity.lengthSq() > MOMENTUM_ROLL.signMemoryThreshold ** 2) {
-      this.travelDirection.copy(horizontalVelocity.normalize());
-    } else if (!preserveIfSlow) {
-      const deckTravel = this.forward.clone().multiplyScalar(this.rollingSign < 0 ? -1 : 1);
-      this.travelDirection.copy(horizontalDirection(deckTravel, this.travelDirection));
-    }
-    this.fakie = this.rollingSign < 0;
+    const state = resolveTravelState({
+      velocity: this.velocity,
+      deckHeading: this.heading,
+      previousDirection: this.travelDirection,
+      previousSign: this.rollingSign,
+      preserveDirectionIfSlow: preserveIfSlow,
+      config: {
+        signMemoryThreshold: MOMENTUM_ROLL.signMemoryThreshold,
+        directionThreshold: MOMENTUM_ROLL.signMemoryThreshold,
+      },
+    });
+    this.travelDirection.copy(state.travelDirection);
+    this.rollingSign = state.rollingSign;
+    this.fakie = state.fakie;
     return this.travelDirection;
   }
 
