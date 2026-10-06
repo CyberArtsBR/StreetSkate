@@ -7,8 +7,11 @@ import {
   explicitAirHalfTurns,
   headingFromFacing,
   rampLandingFacing,
-  resolveRampLandingOrientation,
 } from './core/LandingOrientation.js';
+import {
+  applyLandingPostPipeline,
+  captureLandingPostContext,
+} from './core/LandingPostPipeline.js';
 
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
@@ -119,53 +122,16 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
   land(support) {
     if (this.deferLandingPostHooks) return super.land(support);
 
-    const activeAir = this.transitionAir;
-    const wasRampAir = Boolean(activeAir) || Boolean(this.airTakeoffFromRamp);
-    const takeoffFacing = activeAir?.frame?.takeoffFacing
-      || this.airTakeoffFacing
-      || this.forward;
-    const takeoffStance = activeAir?.frame?.takeoffStance
-      ?? this.airTakeoffStance
-      ?? (Number(this.stance) || 1);
-    const landingSpin = Number(this.airSpin) || 0;
-    const orientation = resolveRampLandingOrientation({
-      takeoffFacing,
-      takeoffStance,
-      airSpin: landingSpin,
-      fallbackHeading: this.heading,
+    const context = captureLandingPostContext(this, support, {
+      rampReentrySlopeY: ARCADE_PARK_MOBILITY.rampReentrySlopeY,
     });
-
-    // Preserve the actual incoming tangent before lower layers settle contact.
-    // This is the travel reference; it must never be used to invent board yaw.
-    const incomingPlanar = this.velocity.clone().projectOnPlane(support.normal);
-    const incomingSpeed = incomingPlanar.length();
-
     const landed = super.land(support);
     if (!landed) return false;
 
-    if (wasRampAir) {
-      // Authoritative touchdown rule: board yaw is takeoff facing + explicit trick
-      // spin only. Surface projection may tilt the board in pitch/roll, but can
-      // NEVER rotate it sideways around world Y at contact.
-      this.heading = orientation.heading;
-      this.groundDirection();
-
-      if (incomingSpeed > 0.18 && this.forward.lengthSq() > EPSILON) {
-        const travelSign = incomingPlanar.dot(this.forward) < 0 ? -1 : 1;
-        this.velocity.copy(this.forward).multiplyScalar(incomingSpeed * travelSign);
-      }
-
-      this.stance = orientation.stance;
-      this.rampReentrySteerLock = Math.max(
-        this.rampReentrySteerLock || 0,
-        ARCADE_PARK_MOBILITY.rampReentrySteerLock,
-      );
-    }
-
-    // Final deck heading and final velocity now define travel sign and fakie in
-    // exactly one place. No ramp-specific boolean restore can contradict them.
-    this.syncTravelDirection({ preserveIfSlow: true });
-    this.airTakeoffFromRamp = false;
+    applyLandingPostPipeline(this, support, context, {
+      lowerLayerHeading: this.heading,
+      rampReentrySteerLock: ARCADE_PARK_MOBILITY.rampReentrySteerLock,
+    });
     return true;
   }
 }
