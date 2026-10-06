@@ -13,6 +13,7 @@ import {
   OLLIE_COMMAND,
   interpretOllieRelease,
 } from '../input/InputInterpreter.js';
+import { authoredTransitionIdentity } from './transitions/TransitionController.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -114,8 +115,14 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     this.pumpQuality = pumpTimingQuality(this.pumpPhase);
     this.pumpTangentSpeed = tangentSpeed;
 
-    const nearCoping = this.grounded && this.movementState === MOVEMENT_STATE.GROUND
-      ? Boolean(this.transitions.approachAt(this.position, this.normal, this.velocity)) : false;
+    const legacyApproach = this.grounded && this.movementState === MOVEMENT_STATE.GROUND
+      ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
+    const approachIdentity = authoredTransitionIdentity(legacyApproach);
+    const nearCoping = Boolean(
+      legacyApproach
+      && approachIdentity.mapped
+      && approachIdentity.supportsVert,
+    );
     this.pumpEligible = Boolean(eligibility.eligible && !nearCoping);
 
     if (input.ollieHeld && this.pumpEligible) this.pumpHoldTime += dt;
@@ -159,7 +166,9 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
         deltaSpeed: this.pumpLastDeltaSpeed, tangentSpeed: this.pumpTangentSpeed,
         cooldown: this.pumpCooldown, holdTime: this.pumpHoldTime,
         landingWindow: this.pumpLandingWindow, landingImpact: this.pumpLandingImpact,
-        nearCoping, releaseCommand,
+        nearCoping,
+        transitionId: approachIdentity.transitionId,
+        releaseCommand,
       };
     }
   }
@@ -194,7 +203,18 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     this.pumpEligible = false;
     this.pumpHoldTime = 0;
     this.pumpPreviousNormal = null;
-    super.takeoff(impulse, transition);
+    const result = super.takeoff(impulse, transition);
+
+    if (this.transitionAir) {
+      const identity = authoredTransitionIdentity(this.transitionAir);
+      if (identity.mapped) {
+        this.transitionAir.transitionId = identity.transitionId;
+        this.transitionAir.transitionType = identity.type;
+        this.transitionAir.supportsTransfer = identity.supportsTransfer;
+        this.transitionAir.supportsPump = identity.supportsPump;
+      }
+    }
+    return result;
   }
 
   land(support) {
