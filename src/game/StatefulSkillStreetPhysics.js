@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics as BaseStatefulSkillStreetPhysics } from './BaseStatefulSkillStreetPhysics.js';
+import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
   PUMP_CONFIG,
@@ -14,6 +15,10 @@ import {
   interpretOllieRelease,
 } from '../input/InputInterpreter.js';
 import { TransitionController } from './transitions/TransitionController.js';
+import {
+  applyLandingPostPipeline,
+  captureLandingPostContext,
+} from './core/LandingPostPipeline.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -211,12 +216,27 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
   }
 
   land(support) {
-    const impactSpeed = Math.max(0, -this.velocity.dot(support.normal));
-    const landed = super.land(support);
+    if (this.deferLandingPostHooks) return super.land(support);
+
+    const context = captureLandingPostContext(this, support, {
+      rampReentrySlopeY: ARCADE_PARK_MOBILITY.rampReentrySlopeY,
+    });
+
+    this.deferLandingPostHooks = true;
+    let landed = false;
+    try {
+      landed = super.land(support);
+    } finally {
+      this.deferLandingPostHooks = false;
+    }
     if (!landed) return false;
-    this.pumpLandingWindow = PUMP_CONFIG.landingWindow;
-    this.pumpLandingImpact = clamp(impactSpeed / 8, 0, 1);
-    this.pumpPreviousNormal = support.normal.clone();
+
+    const lowerLayerHeading = this.heading;
+    applyLandingPostPipeline(this, support, context, {
+      lowerLayerHeading,
+      rampReentrySteerLock: ARCADE_PARK_MOBILITY.rampReentrySteerLock,
+      pumpLandingWindow: PUMP_CONFIG.landingWindow,
+    });
     return true;
   }
 }
