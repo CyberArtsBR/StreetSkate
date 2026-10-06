@@ -96,3 +96,34 @@ test('passive ramp return keeps takeoff yaw and becomes fakie without contact ya
   assert.equal(p.fakie, true, 'same-yaw return should be fakie relative to reversed travel');
   assert.ok(p.velocity.z > 0, 'return travel should descend opposite the deck nose');
 });
+
+test('final direct landing performs one immediate travel sync through post pipeline', () => {
+  const p = physics();
+  const s = support(new THREE.Vector3(0, 0.72, 0.694));
+  p.position.copy(s.position).addScaledVector(s.normal, 0.04);
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.airTime = 0.45;
+  p.heading = 0;
+  p.airHeading = 0;
+  p.airTakeoffFromRamp = true;
+  p.airTakeoffFacing.set(0, 0, -1);
+  p.airTakeoffStance = 1;
+  p.airSpin = 0;
+  p.groundDirection();
+  p.velocity.copy(new THREE.Vector3(0, 0, 1).projectOnPlane(s.normal).normalize())
+    .multiplyScalar(5)
+    .addScaledVector(s.normal, -1);
+
+  const originalSync = p.syncTravelDirection.bind(p);
+  let syncCalls = 0;
+  p.syncTravelDirection = (...args) => {
+    syncCalls += 1;
+    return originalSync(...args);
+  };
+
+  assert.equal(p.land(s), true);
+  assert.equal(syncCalls, 1,
+    'nested legacy land hooks must defer immediate travel sync to LandingPostPipeline');
+  assert.equal(p.fakie, true);
+  assert.equal(p.landingYawInvariantViolations, 0);
+});
