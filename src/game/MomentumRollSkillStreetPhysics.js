@@ -210,17 +210,9 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
   }
 
   land(support) {
-    const previousTravel = this.travelDirection?.clone?.() || null;
     const landed = super.land(support);
     if (!landed) return false;
-
-    const signedSpeed = this.velocity.dot(this.forward);
-    if (Math.abs(signedSpeed) > MOMENTUM_ROLL.signMemoryThreshold) {
-      this.rollingSign = signedSpeed < 0 ? -1 : 1;
-    }
-    this.fakie = this.rollingSign < 0;
-    this.travelDirection ||= new THREE.Vector3();
-    this.travelDirection.copy(horizontalDirection(this.velocity, previousTravel));
+    this.syncTravelDirection();
     return true;
   }
 
@@ -355,10 +347,7 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
 
   resolveMotion(before, beforeUp, input = {}) {
     super.resolveMotion(before, beforeUp, input);
-    if (this.grounded) {
-      this.fakie = this.rollingSign < 0;
-      this.syncTravelDirection();
-    }
+    if (this.grounded) this.syncTravelDirection();
     if (!this.grounded) this.autoPushActive = false;
   }
 }
