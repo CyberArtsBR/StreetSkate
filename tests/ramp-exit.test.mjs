@@ -63,15 +63,26 @@ test('flat seams and downhill partial contacts never masquerade as ramp takeoff'
 });
 
 test('authored coping accepts a realistic averaged wheel normal and buffered Up launches outward', () => {
-  const guide = new TransitionGuide([{ name: 'Quarter coping', points: [[-3, 2, 0], [3, 2, 0]] }]);
+  const guide = new TransitionGuide([{
+    name: '04 / eastern quarter coping',
+    points: [[-3, 2, 0], [3, 2, 0]],
+  }]);
   const position = new THREE.Vector3(0, 1.72, 0.34);
   const normal = new THREE.Vector3(0, 0.82, 0.57).normalize();
   const velocity = new THREE.Vector3(0, 5.1, -7.4);
   const edge = guide.launchAt(position, normal, velocity);
-  assert.ok(edge, 'coping capture should tolerate averaged wheel normal');
+  assert.ok(edge, 'authored transition capture should tolerate averaged wheel normal');
   edge.exitRequested = true;
   const air = guide.begin(position, velocity, edge, { boardForward: new THREE.Vector3(0, 0, -1) });
   assert.equal(air.transferring, true);
   assert.ok(velocity.clone().setY(0).dot(edge.deckOutward) > 4.5, 'launch should begin outward, not inward');
   assert.ok(velocity.y > 3, 'outward transfer must retain usable airtime');
+});
+
+test('an arbitrary rail name containing coping is not a transition without authored metadata', () => {
+  const guide = new TransitionGuide([{
+    name: 'Random coping decoration',
+    points: [[-3, 2, 0], [3, 2, 0]],
+  }]);
+  assert.equal(guide.edges.length, 0);
 });
