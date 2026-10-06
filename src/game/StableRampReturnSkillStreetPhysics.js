@@ -3,6 +3,12 @@ import {
   WallContactAuthoritySkillStreetPhysics,
 } from './WallContactAuthoritySkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
+import {
+  explicitAirHalfTurns,
+  headingFromFacing,
+  rampLandingFacing,
+  resolveRampLandingOrientation,
+} from './core/LandingOrientation.js';
 
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
@@ -16,12 +22,6 @@ function horizontal(source, fallback = null) {
     if (out.lengthSq() > EPSILON) return out.normalize();
   }
   return out.set(0, 0, -1);
-}
-
-function headingFrom(direction, fallback = 0) {
-  const flat = horizontal(direction);
-  if (flat.lengthSq() < EPSILON) return fallback;
-  return Math.atan2(-flat.x, -flat.z);
 }
 
 function angleDelta(from, to) {
@@ -39,22 +39,13 @@ export function naturalRampReturnProgress() {
   return 0;
 }
 
-/** Count only deliberate player half-turns. */
-export function rampReturnHalfTurns(airSpin = 0) {
-  const degrees = Math.abs(Number(airSpin) || 0) * 180 / Math.PI;
-  return Math.floor((degrees + 25) / 180);
-}
+/** Backwards-compatible exports now backed by the canonical orientation model. */
+export const rampReturnHalfTurns = explicitAirHalfTurns;
+export const rampReturnFacing = rampLandingFacing;
 
 /** Air rotation comes only from the explicit spin channel. */
 export function transitionAirSpinInput(input = {}) {
   return clamp(Number(input.spin) || 0, -1, 1);
-}
-
-/** Passive return preserves takeoff facing; only an explicit odd 180 reverses it. */
-export function rampReturnFacing({ takeoffFacing, airSpin = 0 } = {}) {
-  const facing = horizontal(takeoffFacing);
-  if (rampReturnHalfTurns(airSpin) % 2 === 1) facing.negate();
-  return facing;
 }
 
 /**
@@ -81,7 +72,7 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
     const wasGrounded = Boolean(this.grounded);
     const takeoffNormalY = Math.abs(this.normal?.y ?? 1);
     const takeoffFacing = horizontal(this.forward, this.travelDirection);
-    const takeoffHeading = headingFrom(takeoffFacing, this.heading);
+    const takeoffHeading = headingFromFacing(takeoffFacing, this.heading);
     const takeoffStance = Number(this.stance) || 1;
     const rampTakeoff = Boolean(transition) || (wasGrounded && takeoffNormalY < 0.995);
 
@@ -135,14 +126,17 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
       ?? this.airTakeoffStance
       ?? (Number(this.stance) || 1);
     const landingSpin = Number(this.airSpin) || 0;
-    const halfTurns = rampReturnHalfTurns(landingSpin);
+    const orientation = resolveRampLandingOrientation({
+      takeoffFacing,
+      takeoffStance,
+      airSpin: landingSpin,
+      fallbackHeading: this.heading,
+    });
 
     // Preserve the actual incoming tangent before lower layers settle contact.
     // This is the travel reference; it must never be used to invent board yaw.
     const incomingPlanar = this.velocity.clone().projectOnPlane(support.normal);
     const incomingSpeed = incomingPlanar.length();
-    const desiredFacing = rampReturnFacing({ takeoffFacing, airSpin: landingSpin });
-    const desiredHeading = headingFrom(desiredFacing, this.heading);
 
     const landed = super.land(support);
     if (!landed) return false;
@@ -151,7 +145,7 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
       // Authoritative touchdown rule: board yaw is takeoff facing + explicit trick
       // spin only. Surface projection may tilt the board in pitch/roll, but can
       // NEVER rotate it sideways around world Y at contact.
-      this.heading = desiredHeading;
+      this.heading = orientation.heading;
       this.groundDirection();
 
       if (incomingSpeed > 0.18 && this.forward.lengthSq() > EPSILON) {
@@ -159,7 +153,7 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
         this.velocity.copy(this.forward).multiplyScalar(incomingSpeed * travelSign);
       }
 
-      this.stance = halfTurns % 2 === 1 ? -takeoffStance : takeoffStance;
+      this.stance = orientation.stance;
       this.rampReentrySteerLock = Math.max(
         this.rampReentrySteerLock || 0,
         ARCADE_PARK_MOBILITY.rampReentrySteerLock,
