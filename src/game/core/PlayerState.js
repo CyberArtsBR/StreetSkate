@@ -48,6 +48,7 @@ export class PlayerState {
     this.mode = 'AIR';
     this.grounded = false;
     this.transitionId = null;
+    this.transitionType = null;
     this.grind = null;
     this.manual = null;
   }
@@ -82,11 +83,10 @@ export class PlayerState {
     this.mode = controller?.movementState ?? this.mode;
     this.grounded = Boolean(controller?.grounded);
     this.transitionId = controller?.transitionAir?.transitionId
-      ?? controller?.transitionAir?.id
-      ?? controller?.transitionAir?.edge?.id
-      ?? controller?.transitionAir?.edge?.rail?.name
       ?? controller?.transitionAir?.frame?.transitionId
-      ?? controller?.transitionAir?.frame?.railName
+      ?? null;
+    this.transitionType = controller?.transitionAir?.transitionType
+      ?? controller?.transitionAir?.frame?.transitionType
       ?? null;
     this.grind = controller?.grind?.trick?.name ?? null;
     this.manual = controller?.manual ?? null;
@@ -105,6 +105,7 @@ export class PlayerState {
       mode: this.mode,
       grounded: this.grounded,
       transitionId: this.transitionId,
+      transitionType: this.transitionType,
       grind: this.grind,
       manual: this.manual,
     };
