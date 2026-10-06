@@ -1,20 +1,12 @@
 import * as THREE from 'three';
-import { PlayerState, deckForwardFromHeading } from './PlayerState.js';
+import { PlayerState } from './PlayerState.js';
+import { resolveTravelState } from './TravelState.js';
 
 const EPSILON = 1e-8;
 export const STATE_INVARIANT_CONFIG = Object.freeze({
   travelSpeedThreshold: 0.25,
   rollingSignThreshold: 0.18,
 });
-
-function horizontalVelocity(controller, out = new THREE.Vector3()) {
-  out.set(
-    Number(controller?.velocity?.x) || 0,
-    0,
-    Number(controller?.velocity?.z) || 0,
-  );
-  return out;
-}
 
 function addViolation(list, code, details = {}) {
   list.push({ code, ...details });
@@ -24,9 +16,9 @@ function addViolation(list, code, details = {}) {
  * Shadow-mode migration validator.
  *
  * This function is deliberately read-only. It compares the legacy inheritance
- * runtime with the new canonical PlayerState model and reports contradictions,
- * but never repairs them. Once replay parity is proven, these violations become
- * removal targets for the duplicated legacy writers.
+ * runtime with the new canonical PlayerState/TravelState model and reports
+ * contradictions, but never repairs them. Once replay parity is proven, these
+ * violations become removal targets for duplicated legacy writers.
  */
 export function legacyStateViolations(
   controller,
@@ -59,27 +51,36 @@ export function legacyStateViolations(
     addViolation(violations, 'GROUNDED_WITH_TRANSITION_AIR', { mode });
   }
 
-  const planarVelocity = horizontalVelocity(controller);
-  const planarSpeed = planarVelocity.length();
+  const expectedTravel = resolveTravelState({
+    velocity: controller?.velocity,
+    deckHeading: canonicalState.deckHeading,
+    previousDirection: controller?.travelDirection,
+    previousSign: controller?.rollingSign,
+    config: {
+      signMemoryThreshold: config.rollingSignThreshold,
+      directionThreshold: config.travelSpeedThreshold,
+    },
+  });
+  const planarSpeed = expectedTravel.planarSpeed;
+
   if (planarSpeed > config.travelSpeedThreshold) {
     const legacyFakie = Boolean(controller?.fakie);
-    if (legacyFakie !== canonicalState.fakie) {
+    if (legacyFakie !== expectedTravel.fakie) {
       addViolation(violations, 'FAKIE_DIVERGENCE', {
         legacyFakie,
-        canonicalFakie: canonicalState.fakie,
+        canonicalFakie: expectedTravel.fakie,
         planarSpeed,
       });
     }
   }
 
   if (planarSpeed > config.rollingSignThreshold) {
-    const deckForward = deckForwardFromHeading(canonicalState.deckHeading);
-    const expectedSign = planarVelocity.dot(deckForward) < 0 ? -1 : 1;
     const actualSign = Number(controller?.rollingSign);
-    if (Number.isFinite(actualSign) && Math.sign(actualSign || 1) !== expectedSign) {
+    if (Number.isFinite(actualSign)
+      && Math.sign(actualSign || 1) !== expectedTravel.rollingSign) {
       addViolation(violations, 'ROLLING_SIGN_DIVERGENCE', {
         legacyRollingSign: actualSign,
-        expectedRollingSign: expectedSign,
+        expectedRollingSign: expectedTravel.rollingSign,
         planarSpeed,
       });
     }
@@ -94,11 +95,9 @@ export function legacyStateViolations(
     );
     if (travel.lengthSq() > EPSILON) {
       travel.normalize();
-      const velocityDirection = planarVelocity.clone().normalize();
-      if (travel.dot(velocityDirection) < 0.25) {
-        addViolation(violations, 'TRAVEL_DIRECTION_STALE', {
-          alignment: travel.dot(velocityDirection),
-        });
+      const alignment = travel.dot(expectedTravel.travelDirection);
+      if (alignment < 0.25) {
+        addViolation(violations, 'TRAVEL_DIRECTION_STALE', { alignment });
       }
     }
   }
