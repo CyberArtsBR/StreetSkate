@@ -141,6 +141,9 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
  * Final ramp-exit layer driven by real deck geometry captured from the collision
  * mesh. It prevents narrow quarter-pipe decks from launching the rider off their
  * back edge and rejects lower/outer geometry as a false late landing.
+ *
+ * Transfer flight stepping is inherited from RampWallSafety, which now owns one
+ * canonical TransferFlightResult executor for generic, deck-target and abort-return.
  */
 export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySkillStreetPhysics {
   takeoff(impulse = 0, transition = null) {
@@ -175,58 +178,6 @@ export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySki
     air.launchVertical = result.launchVertical;
     if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
     this.velocity.copy(result.velocity);
-  }
-
-  advanceControlledTransfer(air, dt) {
-    const control = air?.exitControl;
-    if (!control?.geometryAware) {
-      super.advanceControlledTransfer(air, dt);
-      return;
-    }
-
-    air.age += dt;
-    if (this.velocity.y <= 0) air.apexPassed = true;
-
-    if (control.abortToReturn) {
-      const current = horizontal(this.velocity);
-      let desired;
-      if (!air.apexPassed) {
-        desired = air.frame.rampInward.clone().multiplyScalar(0.30)
-          .addScaledVector(air.frame.copingTangent,
-            (air.lateralVelocity || 0) * Math.exp(-1.8 * air.age) * 0.25);
-      } else {
-        desired = horizontal(air.frame.returnTarget.clone().sub(this.position)).multiplyScalar(4.4);
-        if (desired.length() > 5.6) desired.setLength(5.6);
-      }
-      const delta = desired.clone().sub(current);
-      const maxDelta = (air.apexPassed ? 24 : 10) * dt;
-      if (delta.length() > maxDelta) delta.setLength(maxDelta);
-      const next = current.add(delta);
-      this.velocity.x = next.x;
-      this.velocity.z = next.z;
-      air.returnError = horizontal(air.frame.returnTarget.clone().sub(this.position)).length();
-      return;
-    }
-
-    const target = control.targetPoint;
-    const toTarget = horizontal(target.clone().sub(this.position));
-    const distance = toTarget.length();
-    let desired = new THREE.Vector3();
-    if (distance > 1e-5) {
-      const desiredSpeed = air.apexPassed
-        ? clamp(distance * 3.0, 0.20, 2.25)
-        : clamp(distance * 2.0, 0.55, control.horizontalSpeed);
-      desired.copy(toTarget).multiplyScalar(desiredSpeed / distance);
-    }
-
-    const current = horizontal(this.velocity);
-    const delta = desired.sub(current);
-    const maxDelta = (air.apexPassed ? 36 : 24) * dt;
-    if (delta.length() > maxDelta) delta.setLength(maxDelta);
-    const next = current.add(delta);
-    this.velocity.x = next.x;
-    this.velocity.z = next.z;
-    air.returnError = distance;
   }
 
   land(support) {
