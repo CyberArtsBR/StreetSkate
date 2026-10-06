@@ -5,13 +5,13 @@ import {
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
 import {
   explicitAirHalfTurns,
-  headingFromFacing,
   rampLandingFacing,
 } from './core/LandingOrientation.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
 } from './core/LandingPostPipeline.js';
+import { captureTakeoffContext } from './core/TakeoffContext.js';
 
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
@@ -72,24 +72,35 @@ export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkil
   }
 
   takeoff(impulse = 0, transition = null) {
-    const wasGrounded = Boolean(this.grounded);
-    const takeoffNormalY = Math.abs(this.normal?.y ?? 1);
-    const takeoffFacing = horizontal(this.forward, this.travelDirection);
-    const takeoffHeading = headingFromFacing(takeoffFacing, this.heading);
-    const takeoffStance = Number(this.stance) || 1;
-    const rampTakeoff = Boolean(transition) || (wasGrounded && takeoffNormalY < 0.995);
+    // Energy composition is owned by UnifiedRampFeel above this layer. Here the
+    // shared context is consumed only for pre-launch orientation/ramp semantics;
+    // the received impulse must pass through unchanged.
+    const context = captureTakeoffContext({
+      grounded: this.grounded,
+      normal: this.normal,
+      velocity: this.velocity,
+      forward: this.forward,
+      travelDirection: this.travelDirection,
+      heading: this.heading,
+      stance: this.stance,
+      requestedImpulse: impulse,
+      transition,
+      rampLaunchMemory: this.rampLaunchMemory,
+      rampLaunchMemoryTime: this.rampLaunchMemoryTime,
+      rampExitIntentTime: this.rampExitIntentTime,
+    });
 
-    this.airTakeoffFacing.copy(takeoffFacing);
-    this.airTakeoffHeading = takeoffHeading;
-    this.airTakeoffStance = takeoffStance;
-    this.airTakeoffFromRamp = rampTakeoff;
+    this.airTakeoffFacing.copy(context.takeoffFacing);
+    this.airTakeoffHeading = context.takeoffHeading;
+    this.airTakeoffStance = context.takeoffStance;
+    this.airTakeoffFromRamp = context.rampContext;
 
     const result = super.takeoff(impulse, transition);
 
     if (this.transitionAir?.frame) {
-      this.transitionAir.frame.takeoffFacing = takeoffFacing.clone();
-      this.transitionAir.frame.takeoffStance = takeoffStance;
-      this.transitionAir.frame.takeoffHeading = takeoffHeading;
+      this.transitionAir.frame.takeoffFacing = context.takeoffFacing.clone();
+      this.transitionAir.frame.takeoffStance = context.takeoffStance;
+      this.transitionAir.frame.takeoffHeading = context.takeoffHeading;
     }
     return result;
   }
