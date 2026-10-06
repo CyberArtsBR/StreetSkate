@@ -48,6 +48,7 @@ function evaluate(overrides = {}) {
     airTime: overrides.airTime ?? 0.34,
     flipProgress: overrides.flipProgress ?? 0.58,
     maxLandingCorrection: 0.22,
+    supportModeOverride: overrides.supportModeOverride ?? null,
   });
 }
 
@@ -88,6 +89,26 @@ test('canonical result accepts forgiving single-wheel transition catch', () => {
   assert.equal(result.partialTouchdown, true);
   assert.equal(result.flipMode, 'autoCatch');
   assert.equal(result.shouldBail, false);
+});
+
+test('verified deck exit overrides flat partial-support rejection', () => {
+  const landingSupport = support({
+    count: 1,
+    front: 1,
+    rear: 0,
+    normal: new THREE.Vector3(0, 1, 0),
+  });
+  const result = evaluate({
+    support: landingSupport,
+    supportModeOverride: 'deckExit',
+    flipProgress: 0.24,
+  });
+  assert.equal(result.accepted, true);
+  assert.equal(result.supportMode, 'deckExit');
+  assert.equal(result.rulesMode, 'truckFirst');
+  assert.equal(result.partialTouchdown, true);
+  assert.equal(result.correctionLimit, 0.42);
+  assert.equal(result.flipMode, 'autoCatch');
 });
 
 test('flat partial support is rejected without triggering a bail', () => {
