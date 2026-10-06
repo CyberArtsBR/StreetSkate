@@ -1,11 +1,23 @@
 import * as THREE from 'three';
+import { TransitionGuide } from '../TransitionGuide.js';
 import {
   compileTransitionMetadata,
   PRODUCTION_TRANSITION_AUTHORING,
 } from './TransitionMetadata.js';
 
+const UP = new THREE.Vector3(0, 1, 0);
+const CAPTURE_SCALE = 1.3;
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
+
+function horizontal(vector) {
+  return vector.clone().setY(0);
+}
+
+function safeNormal(vector, fallback) {
+  if (!vector || vector.lengthSq() < EPSILON) return fallback.clone();
+  return vector.clone().normalize();
+}
 
 function nearestPointOnSegmentXZ(position, a, b, out = new THREE.Vector3()) {
   const ab = b.clone().sub(a);
@@ -60,11 +72,12 @@ export function authoredTransitionIdentity(
 }
 
 /**
- * Phase 1 transition semantic authority.
+ * Phase 1 transition authority.
  *
- * It now owns which rails are allowed to become transitions plus canonical
- * metadata/identity. TransitionGuide still owns the validated local trajectory
- * geometry until a later migration slice proves begin/advance parity.
+ * The controller now owns semantic rail selection AND approach/launch detection.
+ * The validated TransitionGuide remains only as a temporary trajectory delegate
+ * for begin/advance/presentationNormal. This splits migration at a deterministic
+ * seam: detection can move first without changing established air motion.
  */
 export class TransitionController {
   constructor({ rails = [], authoring = PRODUCTION_TRANSITION_AUTHORING } = {}) {
@@ -72,6 +85,29 @@ export class TransitionController {
     this.transitions = compileTransitionMetadata(this.rails, authoring);
     this.byId = new Map(this.transitions.map(transition => [transition.id, transition]));
     this.byRailName = new Map(this.transitions.map(transition => [transition.sourceRail, transition]));
+    this.geometryGuide = new TransitionGuide(this.rails);
+
+    this.edges = [];
+    for (const transition of this.transitions) {
+      const path = transition.lipPath;
+      for (let i = 1; i < path.length; i++) {
+        const a = path[i - 1].clone();
+        const b = path[i].clone();
+        const tangent = horizontal(b.clone().sub(a));
+        if (tangent.lengthSq() < EPSILON) continue;
+        this.edges.push({
+          a,
+          b,
+          tangent: tangent.normalize(),
+          name: transition.sourceRail,
+          transitionId: transition.id,
+          transitionType: transition.type,
+          supportsVert: transition.supportsVert,
+          supportsTransfer: transition.supportsTransfer,
+          supportsPump: transition.supportsPump,
+        });
+      }
+    }
   }
 
   get(id) {
@@ -110,6 +146,102 @@ export class TransitionController {
       }
     }
     return best;
+  }
+
+  candidate(position, normal, velocity, {
+    maxGap,
+    below,
+    above,
+    maxNormalY,
+    minAlignment,
+  }) {
+    if (!normal || normal.y > maxNormalY) return null;
+    const rampInward = horizontal(normal);
+    if (rampInward.lengthSq() < EPSILON) return null;
+    rampInward.normalize();
+    const deckOutward = rampInward.clone().negate();
+    const travel = horizontal(velocity);
+    if (travel.lengthSq() > 0.001 && travel.normalize().dot(deckOutward) < minAlignment) return null;
+
+    let closest = null;
+    let distance = maxGap;
+    for (const edgeInfo of this.edges) {
+      const edge = edgeInfo.b.clone().sub(edgeInfo.a).setY(0);
+      const t = clamp(
+        position.clone().sub(edgeInfo.a).setY(0).dot(edge) / Math.max(edge.lengthSq(), EPSILON),
+        0,
+        1,
+      );
+      const lipPoint = edgeInfo.a.clone().lerp(edgeInfo.b, t);
+      const gap = horizontal(position.clone().sub(lipPoint)).length();
+      const lipSurfaceY = lipPoint.y - 0.025;
+      if (gap >= distance || position.y < lipSurfaceY - below || position.y > lipSurfaceY + above) continue;
+
+      let copingTangent = edgeInfo.tangent.clone();
+      copingTangent.addScaledVector(rampInward, -copingTangent.dot(rampInward));
+      copingTangent = safeNormal(copingTangent, edgeInfo.tangent);
+      closest = {
+        lipPoint,
+        copingTangent,
+        rampInward: rampInward.clone(),
+        deckOutward: deckOutward.clone(),
+        surfaceNormal: safeNormal(normal, UP),
+        name: edgeInfo.name,
+        gap,
+        transitionId: edgeInfo.transitionId,
+        transitionType: edgeInfo.transitionType,
+        supportsVert: edgeInfo.supportsVert,
+        supportsTransfer: edgeInfo.supportsTransfer,
+        supportsPump: edgeInfo.supportsPump,
+      };
+      distance = gap;
+    }
+    return closest;
+  }
+
+  approachAt(position, normal, velocity) {
+    if (velocity.y < 0.05) return null;
+    return this.candidate(position, normal, velocity, {
+      maxGap: 1.7 * CAPTURE_SCALE,
+      below: 1.9 * CAPTURE_SCALE,
+      above: 0.32 * CAPTURE_SCALE,
+      maxNormalY: 0.9,
+      minAlignment: 0.06,
+    });
+  }
+
+  launchAt(position, normal, velocity) {
+    if (velocity.y <= -0.05) return null;
+    return this.candidate(position, normal, velocity, {
+      maxGap: 0.62 * CAPTURE_SCALE,
+      below: 0.48 * CAPTURE_SCALE,
+      above: 0.34 * CAPTURE_SCALE,
+      maxNormalY: 0.84,
+      minAlignment: 0.05,
+    });
+  }
+
+  /** Trajectory execution remains delegated until its own parity migration. */
+  begin(position, velocity, edge, options = {}) {
+    const air = this.geometryGuide.begin(position, velocity, edge, options);
+    const identity = this.inspectLegacyCandidate(edge);
+    if (identity.mapped) {
+      air.transitionId = identity.transitionId;
+      air.transitionType = identity.type;
+      air.supportsTransfer = identity.supportsTransfer;
+      air.supportsPump = identity.supportsPump;
+      air.frame.transitionId = identity.transitionId;
+      air.frame.transitionType = identity.type;
+    }
+    return air;
+  }
+
+  advance(air, position, velocity, input = {}, dt) {
+    return this.geometryGuide.advance(air, position, velocity, input, dt);
+  }
+
+  presentationNormal(air, verticalSpeed) {
+    return this.geometryGuide.presentationNormal(air, verticalSpeed);
   }
 
   /** Map a legacy TransitionGuide result to canonical metadata without mutation. */
