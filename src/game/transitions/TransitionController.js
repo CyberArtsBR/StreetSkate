@@ -18,6 +18,35 @@ function nearestPointOnSegmentXZ(position, a, b, out = new THREE.Vector3()) {
   return out.copy(a).lerp(b, t);
 }
 
+function legacySourceName(candidate) {
+  return candidate?.name
+    ?? candidate?.copingName
+    ?? candidate?.edge?.name
+    ?? null;
+}
+
+/**
+ * Semantic bridge used while TransitionGuide still owns trajectory geometry.
+ * It is side-effect free: the legacy candidate is only classified against the
+ * explicit production authoring table, never mutated or accepted by name regex.
+ */
+export function authoredTransitionIdentity(
+  candidate,
+  authoring = PRODUCTION_TRANSITION_AUTHORING,
+) {
+  const sourceName = legacySourceName(candidate);
+  const authored = sourceName ? authoring[sourceName] : null;
+  return {
+    sourceName,
+    transitionId: authored?.id ?? null,
+    type: authored?.type ?? null,
+    supportsVert: Boolean(authored?.supportsVert),
+    supportsTransfer: Boolean(authored?.supportsTransfer),
+    supportsPump: Boolean(authored?.supportsPump),
+    mapped: Boolean(authored),
+  };
+}
+
 /**
  * Phase 1 shadow transition authority.
  *
@@ -73,11 +102,11 @@ export class TransitionController {
 
   /** Map a legacy TransitionGuide result to canonical metadata without mutation. */
   inspectLegacyCandidate(candidate) {
-    if (!candidate) return null;
-    const sourceName = candidate.name ?? candidate.copingName ?? candidate.edge?.name ?? null;
-    const transition = sourceName ? this.forRail(sourceName) : null;
+    const identity = authoredTransitionIdentity(candidate);
+    if (!identity.mapped) return identity;
+    const transition = this.forRail(identity.sourceName);
     return {
-      sourceName,
+      ...identity,
       transitionId: transition?.id ?? null,
       type: transition?.type ?? null,
       mapped: Boolean(transition),
