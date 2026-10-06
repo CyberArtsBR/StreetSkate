@@ -24,6 +24,13 @@ export function transitionLandingSupportMode(support) {
   return 'reject';
 }
 
+export function stableLandingSupportMode(support) {
+  const count = support?.count || 0;
+  const front = Boolean(support?.frontSupported);
+  const rear = Boolean(support?.rearSupported);
+  return count >= 2 && front && rear ? 'full' : 'reject';
+}
+
 export function transitionFlipLandingMode(progress, normalY = 1, contactMode = 'full') {
   if (!Number.isFinite(progress)) return 'clear';
   if (progress >= 0.88) return 'clear';
@@ -39,6 +46,14 @@ export function transitionFlipLandingMode(progress, normalY = 1, contactMode = '
   return progress >= threshold ? 'autoCatch' : 'bail';
 }
 
+/** Preserve the validated flat/base flip-catch behavior from StableBoardContact. */
+export function stableFlipLandingMode(progress, normalY = 1) {
+  if (!Number.isFinite(progress)) return 'clear';
+  if (progress <= 0.12 || progress >= 0.88) return 'clear';
+  const catchThreshold = Math.abs(normalY) < 0.985 ? 0.62 : 0.72;
+  return progress >= catchThreshold ? 'autoCatch' : 'bail';
+}
+
 export function transitionAlignmentThreshold(normalY = 1, contactMode = 'full') {
   const mode = contactMode === true ? 'truckFirst' : contactMode;
   const ny = Math.abs(normalY);
@@ -50,83 +65,60 @@ export function transitionAlignmentThreshold(normalY = 1, contactMode = 'full') 
   return 0.44;
 }
 
-/**
- * Pure landing decision boundary extracted from the legacy BowlLanding layer.
- * It never mutates physics. The caller applies an accepted result or triggers a
- * bail/reject exactly as before. This becomes the future BoardContact ->
- * LandingResult seam while Phase 1 still preserves the inheritance runtime.
- *
- * `supportModeOverride` exists only for an already-verified special contact such
- * as the controlled flat-deck `deckExit` bridge. Geometry-specific layers decide
- * whether that override is valid; all correction/alignment/flip rules still live
- * here in one place.
- */
-export function evaluateTransitionLanding({
+function rejected(rejectReason, supportMode = 'reject', extra = {}) {
+  return {
+    accepted: false,
+    shouldBail: false,
+    rejectReason,
+    supportMode,
+    rulesMode: supportMode,
+    ...extra,
+  };
+}
+
+/** Shared pure geometry/safety evaluation. It never mutates gameplay state. */
+function evaluateLandingCore({
   support,
   position,
   velocity,
   forward,
-  airTime = 0,
-  flipProgress = null,
-  maxLandingCorrection = 0.22,
-  supportModeOverride = null,
+  airTime,
+  flipProgress,
+  supportMode,
+  rulesMode = supportMode,
+  partialTouchdown = supportMode !== 'full',
+  correctionLimit = 0.22,
+  alignmentThreshold = 0.44,
+  flipMode = 'clear',
 } = {}) {
   const verticalSpeed = Number(velocity?.y) || 0;
   if (airTime < 0.075 && verticalSpeed > 0.05) {
-    return {
-      accepted: false,
-      shouldBail: false,
-      rejectReason: LANDING_REJECT_REASON.YOUNG_UPWARD,
-      supportMode: 'reject',
-      rulesMode: 'reject',
-    };
+    return rejected(LANDING_REJECT_REASON.YOUNG_UPWARD, 'reject');
   }
 
-  const supportMode = supportModeOverride || transitionLandingSupportMode(support);
   if (supportMode === 'reject' || !support?.position || !support?.normal) {
-    return {
-      accepted: false,
-      shouldBail: false,
-      rejectReason: LANDING_REJECT_REASON.SUPPORT,
-      supportMode,
-      rulesMode: supportMode,
-    };
+    return rejected(LANDING_REJECT_REASON.SUPPORT, supportMode, { rulesMode });
   }
 
-  const rulesMode = supportMode === 'deckExit' ? 'truckFirst' : supportMode;
-  const partialTouchdown = supportMode !== 'full';
   const correction = support.position.clone().sub(position || new THREE.Vector3());
-  let correctionLimit = maxLandingCorrection;
-  if (supportMode === 'truckFirst') correctionLimit = Math.max(correctionLimit, 0.34);
-  if (supportMode === 'wheelFirst' || supportMode === 'deckExit') {
-    correctionLimit = Math.max(correctionLimit, 0.42);
-  }
   if (correction.length() > correctionLimit) {
-    return {
-      accepted: false,
-      shouldBail: false,
-      rejectReason: LANDING_REJECT_REASON.CORRECTION,
-      supportMode,
+    return rejected(LANDING_REJECT_REASON.CORRECTION, supportMode, {
       rulesMode,
       partialTouchdown,
       correction,
       correctionLimit,
-    };
+    });
   }
 
   const boardForward = (forward?.clone?.() || new THREE.Vector3(0, 0, -1))
     .projectOnPlane(support.normal);
   if (boardForward.lengthSq() < 1e-7) {
-    return {
-      accepted: false,
-      shouldBail: false,
-      rejectReason: LANDING_REJECT_REASON.BOARD_FORWARD,
-      supportMode,
+    return rejected(LANDING_REJECT_REASON.BOARD_FORWARD, supportMode, {
       rulesMode,
       partialTouchdown,
       correction,
       correctionLimit,
-    };
+    });
   }
   boardForward.normalize();
 
@@ -139,13 +131,8 @@ export function evaluateTransitionLanding({
     alignment = boardForward.dot(tangent);
   }
 
-  const flipMode = Number.isFinite(flipProgress)
-    ? transitionFlipLandingMode(flipProgress, support.normal.y, rulesMode)
-    : 'clear';
-  const alignmentThreshold = transitionAlignmentThreshold(support.normal.y, rulesMode);
   const alignmentUnsafe = planarSpeed > 0.18 && Math.abs(alignment) < alignmentThreshold;
   const flipUnsafe = flipMode === 'bail';
-
   if (alignmentUnsafe || flipUnsafe) {
     return {
       accepted: false,
@@ -181,4 +168,80 @@ export function evaluateTransitionLanding({
     flipMode,
     alignmentThreshold,
   };
+}
+
+/**
+ * Pure landing decision boundary extracted from the legacy BowlLanding layer.
+ * `supportModeOverride` is only for an already-verified special contact such as
+ * controlled flat-deck `deckExit`; geometry-specific layers authorize it.
+ */
+export function evaluateTransitionLanding({
+  support,
+  position,
+  velocity,
+  forward,
+  airTime = 0,
+  flipProgress = null,
+  maxLandingCorrection = 0.22,
+  supportModeOverride = null,
+} = {}) {
+  const supportMode = supportModeOverride || transitionLandingSupportMode(support);
+  const rulesMode = supportMode === 'deckExit' ? 'truckFirst' : supportMode;
+  let correctionLimit = maxLandingCorrection;
+  if (supportMode === 'truckFirst') correctionLimit = Math.max(correctionLimit, 0.34);
+  if (supportMode === 'wheelFirst' || supportMode === 'deckExit') {
+    correctionLimit = Math.max(correctionLimit, 0.42);
+  }
+  const flipMode = Number.isFinite(flipProgress) && support?.normal
+    ? transitionFlipLandingMode(flipProgress, support.normal.y, rulesMode)
+    : 'clear';
+  const alignmentThreshold = support?.normal
+    ? transitionAlignmentThreshold(support.normal.y, rulesMode)
+    : 0.44;
+
+  return evaluateLandingCore({
+    support,
+    position,
+    velocity,
+    forward,
+    airTime,
+    flipProgress,
+    supportMode,
+    rulesMode,
+    partialTouchdown: supportMode !== 'full',
+    correctionLimit,
+    alignmentThreshold,
+    flipMode,
+  });
+}
+
+/** Canonical result for the stricter legacy/base flat-air landing path. */
+export function evaluateStableLanding({
+  support,
+  position,
+  velocity,
+  forward,
+  airTime = 0,
+  flipProgress = null,
+  maxLandingCorrection = 0.22,
+} = {}) {
+  const supportMode = stableLandingSupportMode(support);
+  const flipMode = Number.isFinite(flipProgress) && support?.normal
+    ? stableFlipLandingMode(flipProgress, support.normal.y)
+    : 'clear';
+
+  return evaluateLandingCore({
+    support,
+    position,
+    velocity,
+    forward,
+    airTime,
+    flipProgress,
+    supportMode,
+    rulesMode: supportMode,
+    partialTouchdown: false,
+    correctionLimit: maxLandingCorrection,
+    alignmentThreshold: 0.44,
+    flipMode,
+  });
 }
