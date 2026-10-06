@@ -7,11 +7,12 @@ import { SkateTricks } from '../src/game/SkateTricks.js';
 const DT = 1 / 120;
 const GRAVITY = 20;
 const UP = new THREE.Vector3(0, 1, 0);
+const QUARTER_NAME = '04 / eastern quarter coping';
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
 function quarterGuide() {
-  return new TransitionGuide([{ name: 'Quarter coping', points: [[-3, 2, 0], [3, 2, 0]] }]);
+  return new TransitionGuide([{ name: QUARTER_NAME, points: [[-3, 2, 0], [3, 2, 0]] }]);
 }
 
 function quarterSetup(speed = 8, boost = 0) {
@@ -107,7 +108,7 @@ test('1 normal quarter-pipe approach', () => {
     new THREE.Vector3(0, 5.5, -3),
   );
   assert(candidate);
-  assert.equal(candidate.name, 'Quarter coping');
+  assert.equal(candidate.name, QUARTER_NAME);
 });
 
 test('2 low-speed quarter approach', () => {
@@ -251,7 +252,7 @@ test('16 normal vert never launches forward across deck without Up', () => {
 
 test('17 same-wall return targets the original local coping frame', () => {
   const result = simulateQuarter({ speed: 9 });
-  assert.equal(result.air.copingName, 'Quarter coping');
+  assert.equal(result.air.copingName, QUARTER_NAME);
   assert(result.descendingLip);
   const error = result.descendingLip.clone().setY(0).distanceTo(result.air.frame.returnTarget.clone().setY(0));
   assert(error < 0.8, `return target miss too large: ${error}`);
