@@ -36,6 +36,7 @@ export function captureGameplayState(controller) {
   const support = controller?.lastWheelSupport || null;
   const transitionAir = controller?.transitionAir || null;
   const travel = controller?.travelDirection || null;
+  const yawInvariant = controller?.lastLandingYawInvariant || null;
 
   return {
     position: vectorArray(controller?.position),
@@ -63,6 +64,10 @@ export function captureGameplayState(controller) {
     manual: controller?.manual ?? null,
     wallRideActive: Boolean(controller?.wallRide),
     bailActive: Number(controller?.bailTime || 0) > 0,
+
+    landingYawInvariantViolations: Number(controller?.landingYawInvariantViolations || 0),
+    lastLandingYawDelta: roundNumber(yawInvariant?.delta),
+    lastLandingYawViolated: yawInvariant ? Boolean(yawInvariant.violated) : null,
 
     wheelSupport: support ? {
       supported: Boolean(support.supported),
