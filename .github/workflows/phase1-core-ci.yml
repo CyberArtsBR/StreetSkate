@@ -1,0 +1,40 @@
+name: Phase 1 Core CI
+
+on:
+  push:
+    branches:
+      - refactor/core-skate-controller-v1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit and replay tests
+        run: npm test
+
+      - name: Board / vert / pump verification
+        run: npm run verify:physics
+
+      - name: Production bundle
+        run: npx vite build
