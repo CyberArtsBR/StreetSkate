@@ -1,12 +1,5 @@
 import { MOVEMENT_STATE } from '../StreetPhysics.js';
 
-function headingFrom(direction, fallback = 0) {
-  const x = direction?.x || 0;
-  const z = direction?.z || 0;
-  if (x * x + z * z < 1e-8) return Number(fallback) || 0;
-  return Math.atan2(-x, -z);
-}
-
 /**
  * Apply one already-accepted LandingResult to the legacy runtime.
  *
@@ -15,6 +8,11 @@ function headingFrom(direction, fallback = 0) {
  * common state mutation once that decision has been made. It is the first
  * composition-style replacement for duplicated `land()` bodies in the old
  * inheritance tower.
+ *
+ * IMPORTANT: boardForward is an alignment-validation vector only. Projecting it
+ * onto a steep/curved support normal and converting it back into heading was a
+ * historical source of sideways (~90°) snaps. Contact may tilt pitch/roll through
+ * the support normal, but horizontal yaw remains exactly player-authored.
  */
 export function applyAcceptedLanding(controller, support, landing, {
   partialGrace = 0.14,
@@ -32,10 +30,11 @@ export function applyAcceptedLanding(controller, support, landing, {
 
   const halfTurns = Math.floor((Math.abs(Number(controller.airSpin) || 0) * 180 / Math.PI + 25) / 180);
   const spin = halfTurns * 180;
+  const preservedHeading = controller.heading;
 
   controller.position.copy(support.position);
   controller.normal.copy(support.normal);
-  controller.heading = headingFrom(boardForward, controller.heading);
+  controller.heading = preservedHeading;
   controller.groundDirection();
 
   if (spin >= 180) controller.recordTrick(`${spin}°`, spin);
