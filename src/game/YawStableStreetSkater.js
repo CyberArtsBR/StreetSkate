@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { StreetSkater } from './StreetSkater.js';
 import { PlayerState } from './core/PlayerState.js';
 import { legacyStateViolations } from './core/LegacyStateInvariants.js';
+import { TransitionController } from './transitions/TransitionController.js';
 
 const EPSILON = 1e-8;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -68,8 +69,9 @@ export function yawStableSurfaceBasis(
  * horizontal yaw.
  *
  * Phase 1 also mirrors the legacy runtime into PlayerState and records invariant
- * violations in shadow mode. This observer is strictly read-only: it does not
- * normalize, repair or feed any canonical value back into gameplay yet.
+ * violations in shadow mode. TransitionController is also shadow-only here: it
+ * observes explicit production transition metadata but does not drive takeoff or
+ * landing until replay parity is proven.
  */
 export class YawStableStreetSkater extends StreetSkater {
   constructor(options) {
@@ -77,6 +79,8 @@ export class YawStableStreetSkater extends StreetSkater {
     this._yawStableUp = new THREE.Vector3(0, 1, 0);
     this.playerState = new PlayerState().syncFromLegacy(this);
     this.stateViolations = [];
+    this.transitionController = new TransitionController({ rails: options?.rails || [] });
+    this.shadowTransition = null;
   }
 
   update(delta, input, elapsed) {
@@ -94,10 +98,12 @@ export class YawStableStreetSkater extends StreetSkater {
 
     this.playerState.syncFromLegacy(this);
     this.stateViolations = legacyStateViolations(this, this.playerState);
+    this.shadowTransition = this.transitionController.nearestLip(this.position, 2.5);
 
     if (this.debugEnabled && this.debugElement) {
       const canonical = this.playerState;
       const codes = this.stateViolations.map(entry => entry.code);
+      const transition = this.shadowTransition;
       this.debugElement.textContent += [
         '',
         '--- PHASE 1 CANONICAL ---',
@@ -105,6 +111,8 @@ export class YawStableStreetSkater extends StreetSkater {
         `TRAVEL       ${canonical.travelDirection.toArray().map(n => n.toFixed(3)).join(', ')}`,
         `FAKIE        ${canonical.fakie}`,
         `STATE CHECK  ${codes.length ? codes.join(', ') : 'OK'}`,
+        `SHADOW RAMP  ${transition ? `${transition.transition.id} / ${transition.transition.type}` : '—'}`,
+        `RAMP GAP     ${transition ? transition.gap.toFixed(3) : '—'}`,
       ].join('\n');
     }
     return result;
