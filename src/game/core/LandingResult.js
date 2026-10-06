@@ -55,6 +55,11 @@ export function transitionAlignmentThreshold(normalY = 1, contactMode = 'full') 
  * It never mutates physics. The caller applies an accepted result or triggers a
  * bail/reject exactly as before. This becomes the future BoardContact ->
  * LandingResult seam while Phase 1 still preserves the inheritance runtime.
+ *
+ * `supportModeOverride` exists only for an already-verified special contact such
+ * as the controlled flat-deck `deckExit` bridge. Geometry-specific layers decide
+ * whether that override is valid; all correction/alignment/flip rules still live
+ * here in one place.
  */
 export function evaluateTransitionLanding({
   support,
@@ -64,6 +69,7 @@ export function evaluateTransitionLanding({
   airTime = 0,
   flipProgress = null,
   maxLandingCorrection = 0.22,
+  supportModeOverride = null,
 } = {}) {
   const verticalSpeed = Number(velocity?.y) || 0;
   if (airTime < 0.075 && verticalSpeed > 0.05) {
@@ -72,30 +78,36 @@ export function evaluateTransitionLanding({
       shouldBail: false,
       rejectReason: LANDING_REJECT_REASON.YOUNG_UPWARD,
       supportMode: 'reject',
+      rulesMode: 'reject',
     };
   }
 
-  const supportMode = transitionLandingSupportMode(support);
+  const supportMode = supportModeOverride || transitionLandingSupportMode(support);
   if (supportMode === 'reject' || !support?.position || !support?.normal) {
     return {
       accepted: false,
       shouldBail: false,
       rejectReason: LANDING_REJECT_REASON.SUPPORT,
       supportMode,
+      rulesMode: supportMode,
     };
   }
 
+  const rulesMode = supportMode === 'deckExit' ? 'truckFirst' : supportMode;
   const partialTouchdown = supportMode !== 'full';
   const correction = support.position.clone().sub(position || new THREE.Vector3());
   let correctionLimit = maxLandingCorrection;
   if (supportMode === 'truckFirst') correctionLimit = Math.max(correctionLimit, 0.34);
-  if (supportMode === 'wheelFirst') correctionLimit = Math.max(correctionLimit, 0.42);
+  if (supportMode === 'wheelFirst' || supportMode === 'deckExit') {
+    correctionLimit = Math.max(correctionLimit, 0.42);
+  }
   if (correction.length() > correctionLimit) {
     return {
       accepted: false,
       shouldBail: false,
       rejectReason: LANDING_REJECT_REASON.CORRECTION,
       supportMode,
+      rulesMode,
       partialTouchdown,
       correction,
       correctionLimit,
@@ -110,6 +122,7 @@ export function evaluateTransitionLanding({
       shouldBail: false,
       rejectReason: LANDING_REJECT_REASON.BOARD_FORWARD,
       supportMode,
+      rulesMode,
       partialTouchdown,
       correction,
       correctionLimit,
@@ -127,9 +140,9 @@ export function evaluateTransitionLanding({
   }
 
   const flipMode = Number.isFinite(flipProgress)
-    ? transitionFlipLandingMode(flipProgress, support.normal.y, supportMode)
+    ? transitionFlipLandingMode(flipProgress, support.normal.y, rulesMode)
     : 'clear';
-  const alignmentThreshold = transitionAlignmentThreshold(support.normal.y, supportMode);
+  const alignmentThreshold = transitionAlignmentThreshold(support.normal.y, rulesMode);
   const alignmentUnsafe = planarSpeed > 0.18 && Math.abs(alignment) < alignmentThreshold;
   const flipUnsafe = flipMode === 'bail';
 
@@ -139,6 +152,7 @@ export function evaluateTransitionLanding({
       shouldBail: true,
       rejectReason: flipUnsafe ? LANDING_REJECT_REASON.FLIP : LANDING_REJECT_REASON.ALIGNMENT,
       supportMode,
+      rulesMode,
       partialTouchdown,
       correction,
       correctionLimit,
@@ -156,6 +170,7 @@ export function evaluateTransitionLanding({
     shouldBail: false,
     rejectReason: null,
     supportMode,
+    rulesMode,
     partialTouchdown,
     correction,
     correctionLimit,
