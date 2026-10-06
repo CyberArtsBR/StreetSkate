@@ -4,11 +4,14 @@ import * as THREE from 'three';
 import {
   ARCADE_PARK_MOBILITY,
   arcadeGrindEligibility,
-  arcadeRampAirBoost,
   arcadeTurnGain,
   rampReentrySteerScale,
   transitionReturnBoardDirection,
 } from '../src/game/ArcadeParkMobilitySkillStreetPhysics.js';
+import {
+  LAUNCH_ENERGY,
+  rampLaunchBonus,
+} from '../src/game/core/LaunchEnergyModel.js';
 import { grindProfile } from '../src/game/SkateSystems.js';
 
 test('THPS rail magnet catches an ascending rider below a handrail', () => {
@@ -36,21 +39,21 @@ test('rail magnet still rejects rails that are clearly out of reach', () => {
   }), false);
 });
 
-test('ramp boost adds real airtime on a small rising ramp', () => {
-  const boost = arcadeRampAirBoost({ speed: 9.5, normalY: 0.86, verticalSpeed: 2.1 });
-  assert.ok(boost >= 2.0, `expected useful small-ramp boost, got ${boost}`);
+test('single launch energy model adds real airtime on a small rising ramp', () => {
+  const boost = rampLaunchBonus({ speed: 9.5, normalY: 0.86, verticalSpeed: 2.1 });
+  assert.ok(boost >= 3.0, `expected useful small-ramp boost, got ${boost}`);
 });
 
-test('steep fast ramp gets more airtime than a shallow slower ramp', () => {
-  const shallow = arcadeRampAirBoost({ speed: 7, normalY: 0.91, verticalSpeed: 1.2 });
-  const steep = arcadeRampAirBoost({ speed: 12.5, normalY: 0.42, verticalSpeed: 5.5 });
+test('steep fast ramp gets more launch energy than a shallow slower ramp', () => {
+  const shallow = rampLaunchBonus({ speed: 7, normalY: 0.91, verticalSpeed: 1.2 });
+  const steep = rampLaunchBonus({ speed: 12.5, normalY: 0.42, verticalSpeed: 5.5 });
   assert.ok(steep > shallow, `steep ${steep} should exceed shallow ${shallow}`);
-  assert.ok(steep <= ARCADE_PARK_MOBILITY.rampBoostMax + 1e-9);
+  assert.ok(steep <= LAUNCH_ENERGY.boostMax + 1e-9);
 });
 
-test('flat ground and descending ramps do not receive ramp launch boost', () => {
-  assert.equal(arcadeRampAirBoost({ speed: 12, normalY: 1, verticalSpeed: 0 }), 0);
-  assert.equal(arcadeRampAirBoost({ speed: 12, normalY: 0.6, verticalSpeed: -1 }), 0);
+test('flat ground and descending ramps do not receive ramp launch bonus', () => {
+  assert.equal(rampLaunchBonus({ speed: 12, normalY: 1, verticalSpeed: 0 }), 0);
+  assert.equal(rampLaunchBonus({ speed: 12, normalY: 0.6, verticalSpeed: -1 }), 0);
 });
 
 test('park-speed steering gain produces a much tighter carve', () => {
@@ -72,7 +75,7 @@ test('steep ramp return heading is locked to authored ramp axis, not tiny latera
   assert.ok(Math.abs(direction.x) < 1e-6, `lateral drift leaked into heading: ${direction.x}`);
 });
 
-test('180 return keeps same ramp travel axis but reverses deck facing for fakie', () => {
+test('180 return keeps same ramp travel axis but reverses deck facing', () => {
   const regular = transitionReturnBoardDirection({
     rampInward: new THREE.Vector3(0, 0, 1),
     rollingSign: 1,
