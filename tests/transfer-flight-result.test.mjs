@@ -104,7 +104,7 @@ function deckController() {
   });
 }
 
-function compareLegacyStep({ controller, air, position, velocity, dt }) {
+function compareCanonicalStep({ controller, air, position, velocity, dt }) {
   const sourceAir = cloneAir(air);
   const sourcePosition = position.clone();
   const sourceVelocity = velocity.clone();
@@ -118,19 +118,34 @@ function compareLegacyStep({ controller, air, position, velocity, dt }) {
 
   controller.position.copy(position);
   controller.velocity.copy(velocity);
-  const legacyAir = cloneAir(air);
-  controller.advanceControlledTransfer(legacyAir, dt);
+  const runtimeAir = cloneAir(air);
+  controller.advanceControlledTransfer(runtimeAir, dt);
 
   assert.equal(expected.active, true);
-  near(legacyAir.age, expected.age);
-  assert.equal(legacyAir.apexPassed, expected.apexPassed);
-  near(legacyAir.returnError, expected.returnError);
+  near(runtimeAir.age, expected.age);
+  assert.equal(runtimeAir.apexPassed, expected.apexPassed);
+  near(runtimeAir.returnError, expected.returnError);
   vectorNear(controller.velocity, expected.velocity);
   return expected;
 }
 
-test('generic pre-apex transfer matches current RampWallSafety fixed-step behavior', () => {
-  const expected = compareLegacyStep({
+test('DeckAware does not own a second transfer-flight method', () => {
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      DeckAwareRampExitSkillStreetPhysics.prototype,
+      'advanceControlledTransfer',
+    ),
+    false,
+    'DeckAware must inherit the single RampWallSafety transfer-flight authority',
+  );
+  assert.equal(
+    DeckAwareRampExitSkillStreetPhysics.prototype.advanceControlledTransfer,
+    RampWallSafetySkillStreetPhysics.prototype.advanceControlledTransfer,
+  );
+});
+
+test('generic pre-apex transfer matches canonical fixed-step behavior', () => {
+  const expected = compareCanonicalStep({
     controller: rampController(),
     air: genericAir({ apexPassed: false }),
     position: new THREE.Vector3(0.12, 2.8, -0.62),
@@ -141,8 +156,8 @@ test('generic pre-apex transfer matches current RampWallSafety fixed-step behavi
   assert.equal(expected.apexPassed, false);
 });
 
-test('generic post-apex transfer matches current RampWallSafety fixed-step behavior', () => {
-  const expected = compareLegacyStep({
+test('generic post-apex transfer matches canonical fixed-step behavior', () => {
+  const expected = compareCanonicalStep({
     controller: rampController(),
     air: genericAir({ apexPassed: true }),
     position: new THREE.Vector3(-0.08, 2.35, -1.22),
@@ -153,8 +168,8 @@ test('generic post-apex transfer matches current RampWallSafety fixed-step behav
   assert.equal(expected.apexPassed, true);
 });
 
-test('geometry-aware deck target matches current DeckAware pre-apex flight behavior', () => {
-  const expected = compareLegacyStep({
+test('geometry-aware deck target uses the same inherited pre-apex flight authority', () => {
+  const expected = compareCanonicalStep({
     controller: deckController(),
     air: deckAir({ abortToReturn: false, apexPassed: false }),
     position: new THREE.Vector3(0.10, 2.6, -0.30),
@@ -164,8 +179,8 @@ test('geometry-aware deck target matches current DeckAware pre-apex flight behav
   assert.equal(expected.branch, 'deck-target');
 });
 
-test('geometry-aware deck target matches current DeckAware post-apex flight behavior', () => {
-  const expected = compareLegacyStep({
+test('geometry-aware deck target uses the same inherited post-apex flight authority', () => {
+  const expected = compareCanonicalStep({
     controller: deckController(),
     air: deckAir({ abortToReturn: false, apexPassed: true }),
     position: new THREE.Vector3(0.05, 2.32, -0.62),
@@ -175,8 +190,8 @@ test('geometry-aware deck target matches current DeckAware post-apex flight beha
   assert.equal(expected.branch, 'deck-target');
 });
 
-test('abort-to-return matches current DeckAware post-apex return behavior', () => {
-  const expected = compareLegacyStep({
+test('abort-to-return uses the same inherited post-apex flight authority', () => {
+  const expected = compareCanonicalStep({
     controller: deckController(),
     air: deckAir({ abortToReturn: true, apexPassed: true }),
     position: new THREE.Vector3(-0.10, 2.28, -0.18),
@@ -186,8 +201,8 @@ test('abort-to-return matches current DeckAware post-apex return behavior', () =
   assert.equal(expected.branch, 'abort-return');
 });
 
-test('abort-to-return matches current DeckAware rising return behavior', () => {
-  const expected = compareLegacyStep({
+test('abort-to-return uses the same inherited rising flight authority', () => {
+  const expected = compareCanonicalStep({
     controller: deckController(),
     air: deckAir({ abortToReturn: true, apexPassed: false }),
     position: new THREE.Vector3(0.06, 2.7, -0.15),
