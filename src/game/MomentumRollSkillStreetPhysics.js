@@ -6,9 +6,8 @@ import { resolveGroundStepStart } from './core/GroundStepResult.js';
 import {
   GROUND_MOTOR,
   automaticPushAcceleration,
-  groundSteeringDelta,
   passiveRollingResistance,
-  resolveGroundPropulsion,
+  resolveGroundMotion,
   transitionGravityScale,
 } from './core/GroundMotor.js';
 import {
@@ -212,41 +211,30 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     if (this.manual) this.updateManualBalance(dt, input, speed);
     if (this.bailTime) return;
 
-    // GroundMotor owns player-authored steering math; contact geometry has no yaw
-    // field and therefore cannot manufacture a horizontal turn.
-    const steeringContext = {
+    // One pure GroundMotor transaction owns deliberate steering plus tangent
+    // propulsion. Contact geometry still owns only clearance/support/collision.
+    const motionContext = {
+      heading: this.heading,
+      normal: this.normal,
+      speedState,
       steer: this.steer,
-      speed,
       manual: Boolean(this.manual),
       reentryRemaining: this.rampReentrySteerLock,
-      dt,
-      config: MOMENTUM_ROLL,
-    };
-    const headingDelta = this.coreController
-      ? this.coreController.resolveGroundSteering(steeringContext)
-      : groundSteeringDelta(steeringContext);
-    this.heading += headingDelta;
-    this.groundDirection();
-
-    const motorContext = {
-      speed,
-      travelSign: speedState.travelSign,
-      forwardY: this.forward.y,
-      normalY: this.normal.y,
       drive,
       brake: input.brake,
-      manual: Boolean(this.manual),
       dt,
       gravity: PHYSICS.gravity,
       brakeDecel: PHYSICS.brake,
       config: MOMENTUM_ROLL,
     };
-    const motor = this.coreController
-      ? this.coreController.resolveGroundPropulsion(motorContext)
-      : resolveGroundPropulsion(motorContext);
-    this.autoPushActive = motor.autoPushActive;
-    speed = motor.nextSpeed;
-    this.velocity.copy(this.forward).multiplyScalar(speed);
+    const motion = this.coreController
+      ? this.coreController.resolveGroundMotion(motionContext)
+      : resolveGroundMotion(motionContext);
+    this.heading = motion.heading;
+    this.forward.copy(motion.forward);
+    this.autoPushActive = motion.propulsion.autoPushActive;
+    speed = motion.speed;
+    this.velocity.copy(motion.velocity);
     // Keep the collision's slide vector instead of accelerating into the same
     // wall again next frame. Steering still belongs entirely to the player.
     if (this.wallSlideTime > 0 && this.wallSlideNormal) {
