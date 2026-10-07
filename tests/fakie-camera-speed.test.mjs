@@ -62,7 +62,7 @@ test('camera keeps previous travel side if fakie rider briefly becomes nearly st
   assert.ok(direction.z < -0.999, 'camera should not orbit 180 merely because fakie speed becomes small');
 });
 
-test('Tony Hawk chase camera keeps one high fixed aerial angle', () => {
+test('fixed world-axis camera keeps the current compact chase dimensions', () => {
   const player = { position: new THREE.Vector3(2, 3, 4) };
   const direction = new THREE.Vector3(0, 0, -1);
   const frame = fixedChaseFrame(player, direction);
@@ -71,9 +71,10 @@ test('Tony Hawk chase camera keeps one high fixed aerial angle', () => {
   cameraToTarget.y = 0;
   const angleDeg = Math.atan2(vertical, cameraToTarget.length()) * 180 / Math.PI;
 
-  assert.equal(THPS_CAMERA.distance, 7.0);
-  assert.equal(THPS_CAMERA.height, 6.0);
-  assert.ok(angleDeg > 34 && angleDeg < 39, `fixed aerial angle should be about 36°, got ${angleDeg}`);
+  assert.equal(THPS_CAMERA.distance, 5.8);
+  assert.equal(THPS_CAMERA.height, 1.55);
+  assert.ok(angleDeg > 13 && angleDeg < 15,
+    `fixed compact chase angle should be about 14°, got ${angleDeg}`);
 });
 
 test('regular and fakie use the exact same camera frame for the same world travel direction', () => {
