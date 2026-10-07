@@ -1,6 +1,31 @@
 import * as THREE from 'three';
 import { buildExtendedCollisionRoot, countParkTriangles } from '../game/ExtendedParkCollision.js';
 
+export function extensionHalfpipeRails() {
+  return [
+    [1, 6.74, -9.04, 7.30, 61.0, 76.8],
+    [2, 6.69, 36.94, 53.30, 60.9, 76.7],
+  ].flatMap(([area, y, z0, z1, west, east]) => [
+    ['west', west],
+    ['east', east],
+  ].map(([side, x]) => ({
+    name: `Extension halfpipe ${area} ${side} coping`,
+    radius: 0.055,
+    points: [[x, y, z0], [x, y, z1]],
+  })));
+}
+
+export function appendExtensionHalfpipeRails(manifest) {
+  manifest.rails ||= [];
+  const existing = new Set(manifest.rails.map(rail => rail?.name).filter(Boolean));
+  for (const rail of extensionHalfpipeRails()) {
+    if (existing.has(rail.name)) continue;
+    manifest.rails.push(rail);
+    existing.add(rail.name);
+  }
+  return manifest.rails;
+}
+
 // Remove only the old east perimeter fence at the seam with the new slabs.
 // The quarter-pipe behind it and every other perimeter remain intact.
 function openEastPassage(root) {
@@ -48,15 +73,7 @@ export function assembleExpandedPark(activePark, legacyPark, legacyCollision, ma
     manifest.rails.push({ name: railId, radius: 0.06,
       points: [[box.min.x, center.y, center.z], [box.max.x, center.y, center.z]] });
   });
-  for (const [area, y, z0, z1, west, east] of [
-    [1, 6.74, -9.04, 7.30, 61.0, 76.8],
-    [2, 6.69, 36.94, 53.30, 60.9, 76.7],
-  ]) {
-    for (const [side, x] of [['west', west], ['east', east]]) {
-      manifest.rails.push({ name: `Extension halfpipe ${area} ${side} coping`, radius: 0.055,
-        points: [[x, y, z0], [x, y, z1]] });
-    }
-  }
+  appendExtensionHalfpipeRails(manifest);
   manifest.worldBounds = { min: [-33.65, -3.15, -22.65], max: [101.65, 8, 68.65] };
   manifest.playableRegions = [
     { minX: -33.65, maxX: 34.4, minZ: -22.65, maxZ: 22.65 },
