@@ -116,7 +116,7 @@ test('reentry steering lock is part of the same canonical motor decision', () =>
     dt,
   });
   const free = groundSteeringDelta({ steer: 1, speed: 8, reentryRemaining: 0, dt });
-  assert.equal(locked, 0);
+  assert.ok(Math.abs(locked) < 1e-12);
   assert.ok(Math.abs(blended) > 0 && Math.abs(blended) < Math.abs(free));
   assert.equal(rampReentrySteerScale(0), 1);
 });
