@@ -1,5 +1,7 @@
 import { MOVEMENT_STATE } from './StreetPhysics.js';
 import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
+import { PlayerState } from './core/PlayerState.js';
+import { legacyStateViolations } from './core/LegacyStateInvariants.js';
 
 /**
  * Keeps the explicit movement-state contract synchronized with the skill layer.
@@ -11,6 +13,10 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
     super.reset(position, heading);
     this.landingYawInvariantViolations = 0;
     this.lastLandingYawInvariant = null;
+    this.playerState ||= new PlayerState();
+    this.stateInvariantViolations = [];
+    this.syncMovementState();
+    this.syncCanonicalState();
   }
 
   syncMovementState() {
@@ -23,15 +29,26 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
     return this.movementState;
   }
 
+  syncCanonicalState() {
+    this.playerState ||= new PlayerState();
+    this.playerState.syncFromLegacy(this);
+    this.stateInvariantViolations = legacyStateViolations(this, this.playerState);
+    return this.playerState;
+  }
+
   advance(delta, input = {}) {
     this.syncMovementState();
+    this.syncCanonicalState();
     super.advance(delta, input);
     this.syncMovementState();
+    this.syncCanonicalState();
   }
 
   step(dt, input) {
     this.syncMovementState();
+    this.syncCanonicalState();
     super.step(dt, input);
     this.syncMovementState();
+    this.syncCanonicalState();
   }
 }
