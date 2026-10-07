@@ -1,21 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { TransitionGuide, wantsRampExit } from '../src/game/TransitionGuide.js';
-import { authoredTransitionRails } from '../src/game/transitions/TransitionController.js';
+import { wantsVertTransfer } from '../src/input/InputInterpreter.js';
+import { TransitionController } from '../src/game/transitions/TransitionController.js';
 import { shouldReleaseRampLip } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { shouldBufferRampExit } from '../src/game/MomentumRollSkillStreetPhysics.js';
 
-test('Up is a contextual ramp-exit command', () => {
-  assert.equal(wantsRampExit({ drive: 1 }), true);
-  assert.equal(wantsRampExit({ drive: 0, directionTaps: ['up'] }), true);
-  assert.equal(wantsRampExit({ drive: 0 }), false);
+test('Ctrl/L2 is the explicit vert-exit command; Up tap is only accepted after apex', () => {
+  assert.equal(wantsVertTransfer({ vertExit: true }, { apexPassed: false }), true);
+  assert.equal(wantsVertTransfer({ directionTaps: ['up'] }, { apexPassed: false }), false);
+  assert.equal(wantsVertTransfer({ directionTaps: ['up'] }, { apexPassed: true }), true);
+  assert.equal(wantsVertTransfer({ drive: 1 }, { apexPassed: true }), false);
 });
 
-test('Up only buffers while actually climbing a sloped surface', () => {
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 0.86, verticalSpeed: 4 }), true);
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 1, verticalSpeed: 4 }), false);
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 0.86, verticalSpeed: -1 }), false);
+test('vert-exit buffer only arms while actually climbing a sloped surface', () => {
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 0.86, verticalSpeed: 4 }), true);
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 1, verticalSpeed: 4 }), false);
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 0.86, verticalSpeed: -1 }), false);
 });
 
 test('regular riding releases when front truck clears an uphill lip', () => {
@@ -64,10 +65,10 @@ test('flat seams and downhill partial contacts never masquerade as ramp takeoff'
 });
 
 test('authored coping accepts a realistic averaged wheel normal and buffered Up launches outward', () => {
-  const guide = new TransitionGuide(authoredTransitionRails([{
+  const guide = new TransitionController({ rails: [{
     name: '04 / eastern quarter coping',
     points: [[-3, 2, 0], [3, 2, 0]],
-  }]));
+  }] });
   const position = new THREE.Vector3(0, 1.72, 0.34);
   const normal = new THREE.Vector3(0, 0.82, 0.57).normalize();
   const velocity = new THREE.Vector3(0, 5.1, -7.4);
@@ -80,20 +81,11 @@ test('authored coping accepts a realistic averaged wheel normal and buffered Up 
   assert.ok(velocity.y > 3, 'outward transfer must retain usable airtime');
 });
 
-test('transition controller rejects arbitrary coping names before geometry guide sees them', () => {
-  const rails = authoredTransitionRails([{
+test('transition controller rejects arbitrary coping names before geometry is considered', () => {
+  const controller = new TransitionController({ rails: [{
     name: 'Random coping decoration',
     points: [[-3, 2, 0], [3, 2, 0]],
-  }]);
-  assert.equal(rails.length, 0);
-  const guide = new TransitionGuide(rails);
-  assert.equal(guide.edges.length, 0);
-});
-
-test('geometry guide itself is semantic-agnostic after Phase 1 handoff', () => {
-  const guide = new TransitionGuide([{
-    name: 'synthetic test lip',
-    points: [[-3, 2, 0], [3, 2, 0]],
-  }]);
-  assert.equal(guide.edges.length, 1);
+  }] });
+  assert.equal(controller.transitions.length, 0);
+  assert.equal(controller.edges.length, 0);
 });
