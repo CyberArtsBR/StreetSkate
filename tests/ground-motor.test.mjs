@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
   GROUND_MOTOR,
+  arcadeTurnGain,
   automaticPushAcceleration,
   groundSteeringDelta,
   passiveRollingResistance,
+  rampReentrySteerScale,
   resolveGroundPropulsion,
   signedGroundSpeed,
   transitionGravityScale,
@@ -87,13 +89,36 @@ test('transition gravity preserves validated uphill/downhill scaling', () => {
   }), 1);
 });
 
-test('ground steering is player-authored and slows its turn rate at park speed', () => {
+test('ground steering owns the complete park carve curve', () => {
   const dt = 1 / 120;
   const low = Math.abs(groundSteeringDelta({ steer: 1, speed: 0, dt }));
   const park = Math.abs(groundSteeringDelta({ steer: 1, speed: 12, dt }));
+  const expectedLow = GROUND_MOTOR.turnGainLowSpeed * GROUND_MOTOR.steerRateLowSpeed * dt;
+  const expectedPark = arcadeTurnGain(12)
+    * GROUND_MOTOR.steerRateHighSpeed * dt;
   assert.ok(low > park);
-  assert.ok(Math.abs(low - 2.7 * dt) < 1e-9);
-  assert.ok(Math.abs(park - 1.2 * dt) < 1e-9);
+  assert.ok(Math.abs(low - expectedLow) < 1e-9);
+  assert.ok(Math.abs(park - expectedPark) < 1e-9);
+});
+
+test('reentry steering lock is part of the same canonical motor decision', () => {
+  const dt = 1 / 120;
+  const locked = groundSteeringDelta({
+    steer: 1,
+    speed: 8,
+    reentryRemaining: GROUND_MOTOR.rampReentrySteerLock - 0.03,
+    dt,
+  });
+  const blended = groundSteeringDelta({
+    steer: 1,
+    speed: 8,
+    reentryRemaining: GROUND_MOTOR.rampReentrySteerLock - 0.13,
+    dt,
+  });
+  const free = groundSteeringDelta({ steer: 1, speed: 8, reentryRemaining: 0, dt });
+  assert.equal(locked, 0);
+  assert.ok(Math.abs(blended) > 0 && Math.abs(blended) < Math.abs(free));
+  assert.equal(rampReentrySteerScale(0), 1);
 });
 
 test('rolling resistance stays at the validated low-drag values', () => {
