@@ -191,17 +191,6 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     return result;
   }
 
-  land(support) {
-    // In the final controller the ordered post-landing pipeline owns the immediate
-    // travel/fakie sync. Direct subsystem instances keep the historical hook.
-    if (this.deferLandingPostHooks) return super.land(support);
-
-    const landed = super.land(support);
-    if (!landed) return false;
-    this.syncTravelDirection();
-    return true;
-  }
-
   /** Automatic wall-turn detection has no runtime authority. */
   detectGroundWallImpact() {
     return null;
