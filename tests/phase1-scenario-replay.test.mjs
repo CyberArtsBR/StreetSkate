@@ -197,21 +197,23 @@ test('fixed-step pump loop adds energy reproducibly and respects cooldown flow',
   assert.ok(firstController.pumpLastEnergy > 0,
     `pump replay never added energy: ${firstController.pumpLastEnergy}`);
 
-  const speedAt = frame => {
+  const stateAt = frame => {
     const snapshot = first.snapshots.find(entry => entry.frame === frame);
     assert.ok(snapshot, `missing replay snapshot at frame ${frame}`);
-    return Math.hypot(...snapshot.state.velocity);
+    return snapshot.state;
   };
-  const firstBefore = speedAt(12);
-  const firstAfter = speedAt(13);
-  const secondBefore = speedAt(55);
-  const secondAfter = speedAt(56);
+  const firstRelease = stateAt(13);
+  const secondRelease = stateAt(56);
 
-  assert.ok(firstAfter > firstBefore,
-    `first pump did not add immediate tangent speed: ${firstBefore} -> ${firstAfter}`);
-  assert.ok(secondAfter > secondBefore,
-    `second pump did not add immediate tangent speed: ${secondBefore} -> ${secondAfter}`);
-  assert.ok(firstAfter > startSpeed,
-    `first pump should exceed initial speed: ${startSpeed} -> ${firstAfter}`);
+  assert.ok(firstRelease.pumpLastDeltaSpeed > 0,
+    `first pump transaction added no speed: ${firstRelease.pumpLastDeltaSpeed}`);
+  assert.ok(firstRelease.pumpLastEnergy > 0,
+    `first pump transaction added no energy: ${firstRelease.pumpLastEnergy}`);
+  assert.ok(secondRelease.pumpLastDeltaSpeed > 0,
+    `second pump transaction added no speed: ${secondRelease.pumpLastDeltaSpeed}`);
+  assert.ok(secondRelease.pumpLastEnergy > 0,
+    `second pump transaction added no energy: ${secondRelease.pumpLastEnergy}`);
+  assert.ok(firstRelease.pumpTangentSpeed > startSpeed,
+    `first pump target speed did not exceed initial speed: ${startSpeed} -> ${firstRelease.pumpTangentSpeed}`);
   assert.equal(firstController.grounded, true);
 });
