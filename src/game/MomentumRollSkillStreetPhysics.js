@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BowlLandingSkillStreetPhysics } from './BowlLandingSkillStreetPhysics.js';
+import { StableBoardContactSkillStreetPhysics } from './StableBoardContactSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
 
@@ -150,7 +150,7 @@ export function wallRecoverySpeed(speed, config = MOMENTUM_ROLL) {
  * recovery path has been deleted from stepGround; collision response may later
  * correct position/velocity through CollisionResolver, never heading.
  */
-export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysics {
+export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
     this.rollingSign = 1;
