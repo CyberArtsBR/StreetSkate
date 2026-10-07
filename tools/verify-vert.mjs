@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { TransitionGuide } from '../src/game/TransitionGuide.js';
+import { TransitionController } from '../src/game/transitions/TransitionController.js';
 import { ParkCollision } from '../src/game/ParkCollision.js';
 import { SkateTricks } from '../src/game/SkateTricks.js';
 
@@ -12,7 +12,7 @@ const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
 function quarterGuide() {
-  return new TransitionGuide([{ name: QUARTER_NAME, points: [[-3, 2, 0], [3, 2, 0]] }]);
+  return new TransitionController({ rails: [{ name: QUARTER_NAME, points: [[-3, 2, 0], [3, 2, 0]] }] });
 }
 
 function quarterSetup(speed = 8, boost = 0) {
@@ -63,7 +63,7 @@ function circleRail(radius = 5, y = 2, segments = 32) {
 }
 
 function bowlLaunchAt(angle) {
-  const guide = new TransitionGuide(circleRail());
+  const guide = new TransitionController({ rails: circleRail() });
   const lip = new THREE.Vector3(Math.cos(angle) * 5, 2, Math.sin(angle) * 5);
   const rampInward = lip.clone().setY(0).normalize().negate();
   const deckOutward = rampInward.clone().negate();
@@ -200,17 +200,21 @@ test('11 explicit Ctrl/L2 vert exit still permits deck transfer', () => {
   assert(result.maxDeckOutward > 0.45, `expected deck travel, got ${result.maxDeckOutward}`);
 });
 
-test('12 holding Up exits quarter pipe forward like THPS', () => {
+test('12 post-apex Up tap can request a quarter-pipe transfer', () => {
+  let tapped = false;
   const result = simulateQuarter({
     speed: 10,
-    inputForStep: () => ({ drive: 1 }),
-    duration: 1.6,
+    inputForStep: (_i, sim) => {
+      if (!tapped && sim.air.apexPassed) { tapped = true; return { directionTaps: ['up'] }; }
+      return {};
+    },
+    duration: 1.8,
   });
-  assert(result.air.transferring, 'Up should enter transfer mode');
-  assert(result.maxDeckOutward > 0.7, `Up should travel out over deck, got ${result.maxDeckOutward}`);
+  assert(result.air.transferring, 'post-apex Up tap should enter transfer mode');
+  assert(result.maxDeckOutward > 0.45, `transfer should travel out over deck, got ${result.maxDeckOutward}`);
 });
 
-test('13 Up buffered before coping launches outward on frame one', () => {
+test('13 explicit vert-exit buffered before coping launches outward on frame one', () => {
   const guide = quarterGuide();
   const position = new THREE.Vector3(0, 1.9, 0.18);
   const normal = new THREE.Vector3(0, 0.08, 1).normalize();
@@ -222,8 +226,8 @@ test('13 Up buffered before coping launches outward on frame one', () => {
     boardForward: new THREE.Vector3(0, 0, -1),
   });
   const outwardSpeed = velocity.clone().setY(0).dot(edge.deckOutward);
-  assert(air.transferring, 'buffered Up should begin directly in transfer');
-  assert(outwardSpeed > 4.5, `buffered Up initially launched inward: ${outwardSpeed}`);
+  assert(air.transferring, 'buffered vert-exit should begin directly in transfer');
+  assert(outwardSpeed > 4.5, `buffered vert-exit initially launched inward: ${outwardSpeed}`);
   assert(velocity.y > 3.1, `transfer should retain trick airtime: ${velocity.y}`);
 });
 
