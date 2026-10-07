@@ -4,7 +4,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
-import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';\nimport { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
+import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
+import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { assembleExpandedPark } from './park/ExpandedPark.js';
 import './style.css';
@@ -301,5 +302,6 @@ renderer.setAnimationLoop(() => {
     }
     if (mode === 'explore') controls.update();
   }
-  transitionDebug?.update(skater);\n  renderer.render(scene, camera);
+  transitionDebug?.update(skater);
+  renderer.render(scene, camera);
 });
