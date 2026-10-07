@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
-import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -145,28 +144,6 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
  * canonical TransferFlightResult executor for generic, deck-target and abort-return.
  */
 export class DeckAwareRampExitSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
-  land(support) {
-    const air = this.transitionAir;
-    const control = air?.exitControl;
-    const deckTargetMatches = supportMatchesDeckTarget(support, air);
-    const route = resolveLandingRoute({
-      geometryAware: Boolean(control?.geometryAware),
-      abortToReturn: Boolean(control?.abortToReturn),
-      deckTargetMatches,
-    });
-
-    if (route === LANDING_ROUTE.ABORT_TO_RETURN) {
-      const transferring = air.transferring;
-      air.transferring = false;
-      const landed = super.land(support);
-      if (!landed && this.transitionAir === air) air.transferring = transferring;
-      return landed;
-    }
-
-    if (route === LANDING_ROUTE.REJECT_DECK_TARGET) return false;
-    return super.land(support);
-  }
-
   stepAir(dt, input, drive, before) {
     const controlledAir = this.transitionAir;
     super.stepAir(dt, input, drive, before);
