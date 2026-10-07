@@ -172,6 +172,15 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
    */
   syncTravelDirection({ preserveIfSlow = true } = {}) {
     this.travelDirection ||= new THREE.Vector3(0, 0, -1);
+    if (this.coreController) {
+      this.coreController.syncTravel(this, {
+        preserveIfSlow,
+        signMemoryThreshold: MOMENTUM_ROLL.signMemoryThreshold,
+        directionThreshold: MOMENTUM_ROLL.signMemoryThreshold,
+      });
+      return this.travelDirection;
+    }
+
     const state = resolveTravelState({
       velocity: this.velocity,
       deckHeading: this.heading,
