@@ -109,7 +109,9 @@ try {
       `park asset failed: ${response.status} ${response.url}`);
   }
 
+  await page.bringToFront();
   await page.evaluate(() => window.focus());
+  await page.waitForFunction(() => document.hasFocus() && !document.hidden, null, { timeout: 5_000 });
   const start = await page.evaluate(() => ({
     y: window.streetSkate.skater.position.y,
     grounded: window.streetSkate.skater.grounded,
