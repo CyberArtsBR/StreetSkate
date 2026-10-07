@@ -32,6 +32,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       state: 'IDLE', previousState: 'IDLE', stateTime: 0, physicsState: 'IDLE',
       pushClock: 0, pushPhase: 0, pushWeight: 0, popTime: 0, landingTime: 0,
       landingSeverity: 0, flipPhase: null, activeTrick: '', pumpState: 'OFF', vertState: 'OFF',
+      grabWeight: 0, grabPose: null,
     };
   }
 
@@ -115,9 +116,11 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
 
     const braking = grounded && speed > 0.35 && (Boolean(input.brake) || (!this.manual && (input.drive || 0) < -0.12));
     const pushDemand = grounded && !this.manual && !this.grind && !this.wallRide && !braking
-      && (input.drive || 0) > 0.16 && speed < this.config.maxSpeed * 0.985;
+      && (this.autoPushActive || (input.drive || 0) > 0.16)
+      && this.normal.y > 0.96 && this.charge < 0.05
+      && speed < this.config.maxSpeed * 0.985;
     if (pushDemand) {
-      const frequency = 1.25 + speedRatio * 1.65 + clamp((input.drive || 0), 0, 1) * 0.35;
+      const frequency = 1.1 + speedRatio * 0.65;
       p.pushClock += delta * frequency;
       p.pushPhase = p.pushClock % 1;
       p.pushWeight = p.pushPhase < 0.78 ? Math.sin((p.pushPhase / 0.78) * Math.PI) : 0;
@@ -194,6 +197,12 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     );
 
     const grabActive = Boolean(this.grabState && input.grabHeld);
+    const p = this.presentation;
+    if (grabActive) p.grabPose = { name: this.grabState.name };
+    p.grabWeight = THREE.MathUtils.lerp(p.grabWeight, grabActive ? 1 : 0,
+      1 - Math.exp(-14 * Math.max(0, delta)));
+    if (this.grounded || this.bailTime > 0) p.grabWeight = 0;
+    if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;
     const bailProgress = this.bailTime > 0 ? clamp(1 - this.bailTime / 0.9, 0, 1) : 0;
@@ -201,7 +210,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       presentation: this.presentation,
       flipState: this.flipState,
       flipPhase: this.presentation.flipPhase,
-      grabState: grabActive ? this.grabState : null,
+      grabState: p.grabPose,
+      grabWeight: p.grabWeight,
       manual: this.manual,
       manualBalance,
       grind: this.grind,

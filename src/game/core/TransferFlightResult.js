@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveVertReturnVelocity } from '../transitions/VertReturnFlight.js';
 
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
@@ -57,20 +58,9 @@ export function resolveTransferFlightStep({
   if (control.geometryAware) {
     if (control.abortToReturn) {
       branch = 'abort-return';
-      let desired;
-      if (!apexPassed) {
-        desired = frame.rampInward.clone().multiplyScalar(0.30)
-          .addScaledVector(frame.copingTangent,
-            (Number(air.lateralVelocity) || 0) * Math.exp(-1.8 * age) * 0.25);
-      } else {
-        desired = horizontal(frame.returnTarget.clone().sub(position)).multiplyScalar(4.4);
-        if (desired.length() > 5.6) desired.setLength(5.6);
-      }
-      const delta = desired.clone().sub(current);
-      const maxDelta = (apexPassed ? 24 : 10) * dt;
-      if (delta.length() > maxDelta) delta.setLength(maxDelta);
-      next = current.clone().add(delta);
-      returnError = horizontal(frame.returnTarget.clone().sub(position)).length();
+      const result = resolveVertReturnVelocity(air, position, velocity, dt);
+      next.copy(result.velocity).setY(0);
+      returnError = result.error;
     } else {
       branch = 'deck-target';
       const target = control.targetPoint;

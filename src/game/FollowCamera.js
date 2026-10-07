@@ -7,13 +7,20 @@ import {
 const UP = new THREE.Vector3(0, 1, 0);
 
 export const THPS_CAMERA = Object.freeze({
-  // High, wide, fixed-pitch chase view inspired by classic Tony Hawk games.
+  // Lower chase view; movement and vert context own the camera, never trick yaw.
   // The rig follows world travel, not the deck nose, so a 180 stays visually stable.
-  distance: 7.0,
-  height: 6.0,
+  distance: 5.8,
+  height: 2.6,
   anchorHeight: 1.15,
-  lookAhead: 1.6,
-  targetHeight: 0.90,
+  lookAhead: 1.1,
+  targetHeight: 1.0,
+  airDistance: 6.5,
+  airHeight: 3.1,
+  vertDistance: 6.8,
+  vertHeight: 3.3,
+  contextFollowRate: 5,
+  returnHoldTime: 0.35,
+  occlusionReleaseRate: 4,
 
   // Classic skate cameras do not instantly orbit behind the rider every time a
   // quarter pipe reverses world travel. Normal carving recenters deliberately;
@@ -101,31 +108,57 @@ export class FollowCamera {
     this.position = new THREE.Vector3();
     this.target = new THREE.Vector3();
     this.direction = new THREE.Vector3(0, 0, -1);
+    this.vertDirection = this.direction.clone();
+    this.wasReturning = false;
+    this.returnHold = 0;
+    this.distance = THPS_CAMERA.distance;
+    this.height = THPS_CAMERA.height;
+    this.occlusionDistance = null;
     this.initialized = false;
   }
 
   snap(player) {
     this.initialized = false;
+    this.wasReturning = false;
+    this.returnHold = 0;
+    this.distance = THPS_CAMERA.distance;
+    this.height = THPS_CAMERA.height;
+    this.occlusionDistance = null;
     this.update(player, 1, {});
   }
 
   update(player, dt, input = {}) {
-    // Intentionally ignore manual camera orbit/pitch input. The gameplay camera
-    // owns one fixed aerial angle so spins, fakie and vert never reframe the rider.
+    // Automatic chase follows travel with contextual air framing; deck spins and
+    // stance changes never orbit the camera around the rider.
     void input;
 
     const state = captureCameraState(player, {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
-    const followDirection = state.travelDirection;
+    if (state.transitionReturning && !this.wasReturning) this.vertDirection.copy(this.direction);
+    if (!state.transitionReturning && this.wasReturning) this.returnHold = THPS_CAMERA.returnHoldTime;
+    this.wasReturning = state.transitionReturning;
+    this.returnHold = Math.max(0, this.returnHold - dt);
+    const holdSide = state.transitionReturning || (state.grounded && this.returnHold > 0);
+    const followDirection = holdSide ? this.vertDirection : state.travelDirection;
     if (!this.initialized) this.direction.copy(followDirection);
     else {
       const rate = cameraDirectionRate(this.direction, followDirection);
       this.direction.copy(smoothCameraDirection(this.direction, followDirection, dt, rate));
     }
 
-    const frame = fixedChaseFrame(state, this.direction);
+    const desiredDistance = state.transitionReturning ? THPS_CAMERA.vertDistance
+      : !state.grounded ? THPS_CAMERA.airDistance : THPS_CAMERA.distance;
+    const desiredHeight = state.transitionReturning ? THPS_CAMERA.vertHeight
+      : !state.grounded ? THPS_CAMERA.airHeight : THPS_CAMERA.height;
+    const contextBlend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
+    this.distance = THREE.MathUtils.lerp(this.distance, desiredDistance, contextBlend);
+    this.height = THREE.MathUtils.lerp(this.height, desiredHeight, contextBlend);
+    const frame = fixedChaseFrame(state, this.direction, {
+      ...THPS_CAMERA, distance: this.distance, height: this.height,
+      lookAhead: holdSide ? 0.25 : THPS_CAMERA.lookAhead,
+    });
     if (!this.initialized) {
       this.position.copy(frame.desired);
       this.target.copy(frame.target);
@@ -145,7 +178,16 @@ export class FollowCamera {
     const resolvedPosition = player?.surface?.camera
       ? player.surface.camera(frame.anchor, this.position)
       : this.position;
-    this.camera.position.copy(resolvedPosition);
+    const eyeOffset = this.position.clone().sub(frame.anchor);
+    const clearDistance = resolvedPosition.distanceTo(frame.anchor);
+    if (this.occlusionDistance === null || clearDistance < this.occlusionDistance) {
+      this.occlusionDistance = clearDistance;
+    } else {
+      this.occlusionDistance = THREE.MathUtils.lerp(this.occlusionDistance, clearDistance,
+        1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
+    }
+    if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.min(clearDistance, this.occlusionDistance));
+    this.camera.position.copy(frame.anchor).add(eyeOffset);
     this.camera.lookAt(this.target);
   }
 }

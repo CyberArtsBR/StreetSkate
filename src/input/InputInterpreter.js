@@ -8,6 +8,11 @@ export const OLLIE_COMMAND = Object.freeze({
   AIR_RELEASE: 'AIR_RELEASE',
 });
 
+/** Held forward is approach/trick input. Only a new post-apex tap requests exit. */
+export function wantsVertTransfer(input = {}, { apexPassed = false } = {}) {
+  return Boolean(input.vertExit || (apexPassed && input.directionTaps?.includes?.('up')));
+}
+
 /**
  * Canonical semantic interpretation for one Ollie-button release.
  *

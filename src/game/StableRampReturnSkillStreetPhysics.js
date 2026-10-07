@@ -46,14 +46,14 @@ export function naturalRampReturnProgress() {
 export const rampReturnHalfTurns = explicitAirHalfTurns;
 export const rampReturnFacing = rampLandingFacing;
 
-/** Air rotation comes only from the explicit spin channel. */
+/** Direct directional input and bumpers rotate the rider; inertial steering does not. */
 export function transitionAirSpinInput(input = {}) {
-  return clamp(Number(input.spin) || 0, -1, 1);
+  return clamp((Number(input.spin) || 0) + (Number(input.steer) || 0), -1, 1);
 }
 
 /**
  * Ramp-air orientation authority during the Phase 1 migration:
- * - steering / analog smoothing NEVER becomes airborne yaw;
+ * - ground steering inertia / analog smoothing NEVER becomes airborne yaw;
  * - passive ramp air freezes the takeoff heading until explicit spin is pressed;
  * - touchdown yaw is takeoff facing + explicit spin only;
  * - fakie is NOT stored/restored here anymore. It is derived after touchdown by

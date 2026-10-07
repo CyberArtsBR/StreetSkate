@@ -13,6 +13,7 @@ export class SkateTricks {
     this.lastDirectionTap = null;
     this.pendingManual = null;
     this.pendingAirFlip = null;
+    this.pendingAirGrab = null;
     this.buttonBuffer = [];
     this.combo = [];
     this.comboBase = 0;
@@ -28,6 +29,7 @@ export class SkateTricks {
     this.buttonBuffer = this.buttonBuffer.filter(x => this.time - x.time <= COMBO_WINDOW);
     if (this.pendingManual && this.time > this.pendingManual.expires) this.pendingManual = null;
     if (this.pendingAirFlip && this.time > this.pendingAirFlip.expires) this.pendingAirFlip = null;
+    if (this.pendingAirGrab && this.time > this.pendingAirGrab.expires) this.pendingAirGrab = null;
     if (this.lastDirectionTap && this.time - this.lastDirectionTap.time > TAP_WINDOW) this.lastDirectionTap = null;
   }
 
@@ -65,6 +67,11 @@ export class SkateTricks {
       };
     }
 
+    if (context.grounded && !context.grinding && !context.manual && input.grabPressed) {
+      this.pendingAirGrab = { trick: { ...grabFor(direction) }, expires: this.time + AIR_FLIP_GRACE };
+    }
+    if (!input.grabHeld && !input.grabPressed) this.pendingAirGrab = null;
+
     if (!context.grounded && !context.grinding) {
       if (input.flipPressed) {
         events.flip = { ...flipFor(direction) };
@@ -73,11 +80,18 @@ export class SkateTricks {
         events.flip = { ...this.pendingAirFlip.trick };
         this.pendingAirFlip = null;
       }
-      if (input.grabPressed) events.grab = { ...grabFor(direction) };
+      if (input.grabPressed) {
+        events.grab = { ...grabFor(direction) };
+        this.pendingAirGrab = null;
+      } else if (input.grabHeld && this.pendingAirGrab) {
+        events.grab = { ...this.pendingAirGrab.trick };
+        this.pendingAirGrab = null;
+      }
       if (input.grindPressed) events.grind = { ...grindFor(direction, input.brake || input.vertExit) };
     }
     if (context.grinding) {
       this.pendingAirFlip = null;
+      this.pendingAirGrab = null;
       if (input.grindPressed) events.grindChange = { ...grindFor(direction, input.brake || input.vertExit) };
     }
 

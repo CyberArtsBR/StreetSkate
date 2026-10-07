@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
+import { flipMotion, GRAB_POSES } from '../character/TrickMotion.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -84,18 +85,19 @@ export class StreetBoard {
     return this.root.localToWorld(target);
   }
 
-  update({ airborne = false, flipState = null, grabState = null, manual = null, manualBalance = 0,
+  update({ airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grind = null, grindBalance = 0, wallRide = null, bail = false, bailProgress = 0,
     stance = 1, flatland = null, time = 0 }) {
     const grindPose = grind?.profile?.presentation;
     this.root.position.set(0,
       this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);
-    let x = grabState ? -0.045 : 0;
-    let y = 0;
-    let z = 0;
+    const grabPose = GRAB_POSES[grabState?.name] || [0, 0, 0];
+    let x = grabPose[0] * grabWeight;
+    let y = grabPose[1] * grabWeight;
+    let z = grabPose[2] * grabWeight;
 
     if (flipState) {
-      const p = clamp(flipState.progress, 0, 1);
+      const p = flipMotion(flipState.progress).rotation;
       x += p * Math.PI * 2 * (flipState.pitch || 0);
       y += p * Math.PI * 2 * (flipState.yaw || 0);
       z += p * Math.PI * 2 * (flipState.roll || 0);

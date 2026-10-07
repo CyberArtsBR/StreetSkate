@@ -57,11 +57,14 @@ export function captureCameraState(player, {
 
   return Object.freeze({
     position,
+    velocity: player?.velocity?.clone?.() || new THREE.Vector3(),
+    surfaceNormal: player?.normal?.clone?.() || new THREE.Vector3(0, 1, 0),
     travelDirection,
     grounded: Boolean(player?.grounded),
     fakie: Boolean(player?.fakie),
     movementState: player?.movementState ?? null,
     transitionActive: Boolean(player?.transitionAir),
+    transitionReturning: Boolean(player?.transitionAir && !player.transitionAir.transferring),
     grindActive: Boolean(player?.grind),
     manualActive: Boolean(player?.manual),
   });

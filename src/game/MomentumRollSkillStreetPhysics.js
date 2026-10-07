@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { StableBoardContactSkillStreetPhysics } from './StableBoardContactSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
+import { wantsVertTransfer } from '../input/InputInterpreter.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -20,9 +21,7 @@ export const MOMENTUM_ROLL = Object.freeze({
   uphillGravityScale: 0.38,
   downhillGravityScale: 1.0,
 
-  // Contextual THPS-style ramp exit. Up remains non-propulsive on flat ground;
-  // while climbing a transition it arms a short intent buffer that survives the
-  // final wheel/contact frames before the lip.
+  // Explicit transfer modifier survives the last wheel-contact frames.
   rampExitInputThreshold: 0.35,
   rampExitBuffer: 0.32,
   rampExitSlopeY: 0.992,
@@ -86,15 +85,14 @@ export function transitionGravityScale({
   return 1;
 }
 
-/** Up is contextual ramp intent, never flat-ground throttle. */
+/** A held approach direction must never arm an outward launch. */
 export function shouldBufferRampExit({
-  drive = 0,
-  tappedUp = false,
+  vertExit = false,
   normalY = 1,
   verticalSpeed = 0,
   config = MOMENTUM_ROLL,
 } = {}) {
-  const up = tappedUp || drive > config.rampExitInputThreshold;
+  const up = wantsVertTransfer({ vertExit });
   return Boolean(up
     && Math.abs(normalY) < config.rampExitSlopeY
     && verticalSpeed > config.rampExitMinRise);
@@ -200,7 +198,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   /**
-   * Preserve Up intent through the last contact frame. If this is an authored
+   * Preserve explicit exit intent through the last contact frame. If this is an authored
    * coping transition, tag the edge so TransitionController launches outward on
    * frame one instead of first pulling inward and reversing later.
    */
@@ -245,8 +243,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.rampExitIntentTime = Math.max(0, (this.rampExitIntentTime || 0) - dt);
 
     if (shouldBufferRampExit({
-      drive,
-      tappedUp: input.directionTaps?.includes?.('up'),
+      vertExit: input.vertExit,
       normalY: this.normal.y,
       verticalSpeed: this.velocity.y,
     })) {

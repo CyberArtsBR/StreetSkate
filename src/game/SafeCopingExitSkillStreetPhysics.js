@@ -8,6 +8,7 @@ import { RAMP_WALL_SAFETY } from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
+import { VERT_RETURN } from './transitions/VertReturnFlight.js';
 import {
   resolveTransferLaunchResult,
   transferDeckCanFit,
@@ -19,14 +20,14 @@ export const SAFE_COPING_EXIT = Object.freeze({
   minSafeDeckWidth: PRODUCTION_BOARD_CONTACT_RIG.deckLength + 0.36,
 
   recoveryOutwardMax: 0.34,
-  recoveryInwardMax: 5.4,
+  recoveryInwardMax: 2.4,
   recoveryAboveLip: 0.42,
   recoveryBelowLip: 5.6,
   recoveryNormalMinY: 0.035,
   recoveryNormalMaxY: 0.985,
-  recoveryNormalAlignment: 0.16,
-  recoverySnapRise: 0.46,
-  recoverySnapDrop: 0.72,
+  recoveryNormalAlignment: 0.45,
+  recoverySnapRise: 0.12,
+  recoverySnapDrop: 0.18,
 
   // Continuous transition re-entry. The main airborne wheel sweep is normally
   // enough, but vert return needs a second pass oriented by the actual transition
@@ -60,6 +61,8 @@ export function supportMatchesOriginalTransition(support, air,
   inward.normalize();
 
   const fromLip = support.position.clone().sub(air.frame.lipPoint);
+  const lateral = horizontal(fromLip).dot(air.frame.copingTangent);
+  if (Math.abs(lateral) > VERT_RETURN.contactCorridor) return false;
   const signedOutward = horizontal(fromLip).dot(outward);
   if (signedOutward > config.recoveryOutwardMax
     || signedOutward < -config.recoveryInwardMax) return false;
@@ -125,6 +128,11 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     super.takeoff(impulse, transition);
     const air = this.transitionAir;
     if (!air?.transferring || !air.frame) return;
+    this.prepareTransfer(air);
+  }
+
+  prepareTransfer(air, midair = false) {
+    if (!air?.frame || air.supportsTransfer === false) return false;
 
     // Single transfer-launch authority. Lower layers provide geometry services
     // and flight/landing behavior only; they no longer mutate launch state.
@@ -140,14 +148,21 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       deckConfig: DECK_AWARE_EXIT,
       copingConfig: SAFE_COPING_EXIT,
     });
-    if (!result?.active) return;
+    if (!result?.active) return false;
 
-    air.mode = result.mode;
-    air.transferring = result.transferring;
+    const rejected = Boolean(result.exitControl?.abortToReturn);
+    air.mode = rejected ? 'return' : result.mode;
+    air.transferring = !rejected && result.transferring;
+    air.transferRejected = rejected;
+    if (rejected) air.exitRequested = false;
     air.exitControl = result.exitControl ? { ...result.exitControl } : null;
-    air.launchVertical = result.launchVertical;
-    if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
-    this.velocity.copy(result.velocity);
+    // A transfer requested at the apex must not inject a second vertical jump.
+    if (!midair) {
+      air.launchVertical = result.launchVertical;
+      if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
+      this.velocity.copy(result.velocity);
+    }
+    return !rejected;
   }
 
   /** Contact alignment is intentionally inert: only player input may change yaw. */
@@ -246,7 +261,7 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       false,
     );
 
-    let support = resolved?.supported ? resolved : null;
+    let support = resolved?.supported && resolved.position.distanceTo(candidate) <= 0.18 ? resolved : null;
     if (!support || !supportMatchesOriginalTransition(support, activeAir)) {
       support = this.makeEmergencyTransitionSupport(hit);
     }
@@ -268,6 +283,10 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
 
   stepAir(dt, input, drive, before) {
     const activeAir = this.transitionAir;
+    if (activeAir && !activeAir.transferring
+      && this.transitions.requestTransfer(activeAir, input, this.velocity.y - PHYSICS.gravity * dt)) {
+      this.prepareTransfer(activeAir, true);
+    }
     super.stepAir(dt, input, drive, before);
 
     if (!activeAir || this.grounded || this.transitionAir !== activeAir) return;
@@ -282,7 +301,8 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       SAFE_COPING_EXIT.recoverySnapRise,
       SAFE_COPING_EXIT.recoverySnapDrop,
     );
-    if (!support?.supported || !supportMatchesOriginalTransition(support, activeAir)) return;
+    if (!support?.supported || support.position.distanceTo(this.position) > 0.18
+      || !supportMatchesOriginalTransition(support, activeAir)) return;
     this.land(support);
   }
 }

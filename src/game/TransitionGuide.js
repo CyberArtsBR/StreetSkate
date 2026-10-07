@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { wantsVertTransfer } from '../input/InputInterpreter.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const CAPTURE_SCALE = 1.3;
@@ -28,12 +29,8 @@ function accelerateToward(current, target, maxDelta) {
  * transition it means "leave the lip". A direction tap also counts so keyboard,
  * D-pad and analog all get the same deterministic behavior.
  */
-export function wantsRampExit(input = {}) {
-  return Boolean(
-    input.vertExit
-    || (Number(input.drive) || 0) > RAMP_EXIT_INPUT_THRESHOLD
-    || input.directionTaps?.includes?.('up')
-  );
+export function wantsRampExit(input = {}, context = {}) {
+  return wantsVertTransfer(input, context);
 }
 
 /**

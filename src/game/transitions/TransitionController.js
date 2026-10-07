@@ -3,10 +3,11 @@ import {
   compileTransitionMetadata,
   PRODUCTION_TRANSITION_AUTHORING,
 } from './TransitionMetadata.js';
+import { wantsVertTransfer } from '../../input/InputInterpreter.js';
+import { resolveVertReturnVelocity } from './VertReturnFlight.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const CAPTURE_SCALE = 1.3;
-const RAMP_EXIT_INPUT_THRESHOLD = 0.35;
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
 
@@ -248,13 +249,11 @@ export class TransitionController {
       launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
       launchVertical = clamp(launchVertical * 0.80, 3.2, 11.8);
     } else {
-      const inwardDrift = clamp(incomingSpeed * 0.055, 0.22, 0.85);
-      launchHorizontal = edge.copingTangent.clone().multiplyScalar(lateralVelocity)
-        .addScaledVector(edge.rampInward, inwardDrift);
+      launchHorizontal = edge.copingTangent.clone().multiplyScalar(clamp(lateralVelocity, -1.1, 1.1));
     }
     velocity.copy(launchHorizontal).addScaledVector(UP, launchVertical);
 
-    const returnTarget = edge.lipPoint.clone().addScaledVector(edge.rampInward, 0.26);
+    const returnTarget = edge.lipPoint.clone().addScaledVector(edge.rampInward, 0.30);
     returnTarget.y = edge.lipPoint.y - 0.035;
 
     const transition = edge?.transitionId ? this.get(edge.transitionId) : null;
@@ -294,18 +293,16 @@ export class TransitionController {
     return air;
   }
 
+  requestTransfer(air, input = {}, verticalSpeed = 0) {
+    if (verticalSpeed <= 0) air.apexPassed = true;
+    if (wantsVertTransfer(input, air)) air.exitRequested = true;
+    return Boolean(air.exitRequested && air.apexPassed && !air.transferRejected
+      && air.supportsTransfer !== false);
+  }
+
   advance(air, position, velocity, input = {}, dt) {
     air.age += dt;
-    if (velocity.y <= 0) air.apexPassed = true;
-
-    const upExit = (Number(input.drive) || 0) > RAMP_EXIT_INPUT_THRESHOLD
-      || input.directionTaps?.includes?.('up');
-    if (input.vertExit || upExit) air.exitRequested = true;
-
-    const canTransfer = upExit
-      ? air.age > 0.01
-      : air.apexPassed || (air.age > 0.18 && velocity.y < air.launchVertical * 0.48);
-    if (air.exitRequested && canTransfer && !air.transferring) {
+    if (this.requestTransfer(air, input, velocity.y) && !air.transferring) {
       air.mode = 'transfer';
       air.transferring = true;
     }
@@ -316,25 +313,13 @@ export class TransitionController {
       const exitSpeed = clamp(frame.incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
       const retainedLateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * 0.45);
       const desired = frame.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      const next = accelerateToward(currentHorizontal, desired, (upExit ? 48 : 30) * dt);
-      velocity.x = next.x;
-      velocity.z = next.z;
-    } else if (!air.apexPassed) {
-      const lateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * Math.exp(-1.25 * air.age));
-      const inward = frame.rampInward.clone().multiplyScalar(clamp(frame.incomingSpeed * 0.045, 0.18, 0.68));
-      const desired = inward.add(lateral);
-      const next = accelerateToward(currentHorizontal, desired, 7.5 * dt);
+      const next = accelerateToward(currentHorizontal, desired, 30 * dt);
       velocity.x = next.x;
       velocity.z = next.z;
     } else {
-      const error = horizontal(frame.returnTarget.clone().sub(position));
-      const desired = error.multiplyScalar(4.9);
-      desired.addScaledVector(frame.copingTangent, air.lateralVelocity * Math.exp(-2.2 * air.age) * 0.28);
-      if (desired.length() > 6.5) desired.setLength(6.5);
-      const returnAccel = clamp(17 + frame.incomingSpeed * 0.45, 18, 26);
-      const next = accelerateToward(currentHorizontal, desired, returnAccel * dt);
-      velocity.x = next.x;
-      velocity.z = next.z;
+      const result = resolveVertReturnVelocity(air, position, velocity, dt);
+      velocity.copy(result.velocity);
+      air.returnGuideLost = !result.guided;
     }
 
     air.returnError = horizontal(frame.returnTarget.clone().sub(position)).length();
