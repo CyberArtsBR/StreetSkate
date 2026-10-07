@@ -10,10 +10,7 @@ import {
   pumpEventTier,
   pumpTimingQuality,
 } from './PumpSystem.js';
-import {
-  OLLIE_COMMAND,
-  interpretOllieRelease,
-} from '../input/InputInterpreter.js';
+import { OLLIE_COMMAND } from '../input/InputInterpreter.js';
 import { CoreSkateController } from './core/CoreSkateController.js';
 import {
   applyLandingPostPipeline,
@@ -144,7 +141,7 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
 
     let releaseCommand = OLLIE_COMMAND.NONE;
     if (input.ollieReleased) {
-      releaseCommand = interpretOllieRelease({
+      releaseCommand = this.coreController.interpretOllieRelease({
         ollieReleased: true,
         grinding: false,
         grounded: this.grounded,
@@ -188,7 +185,7 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
 
   advance(delta, input = {}) {
     this.gameplayEvents = [];
-    const immediateCommand = interpretOllieRelease({
+    const immediateCommand = this.coreController.interpretOllieRelease({
       ollieReleased: Boolean(input.ollieReleased),
       grinding: Boolean(this.grind),
       grounded: this.grounded,
