@@ -241,10 +241,9 @@ export class MomentumRollSkillStreetPhysics extends BowlLandingSkillStreetPhysic
       this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
     }
 
-    const threshold = MOMENTUM_ROLL.signMemoryThreshold;
     const measuredSigned = this.velocity.dot(this.forward);
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
-      this.rollingSign = measuredSigned < -threshold ? -1 : 1;
+      this.syncTravelDirection();
     }
     const travelSign = this.rollingSign < 0 ? -1 : 1;
     let speed = Math.max(Math.abs(measuredSigned), this.velocity.length()) * travelSign;
