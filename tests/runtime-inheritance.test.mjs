@@ -85,3 +85,19 @@ test('final stateful runtime bypasses UnifiedRampFeel compatibility wrapper', as
   assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), StableRampReturnSkillStreetPhysics.prototype);
   assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), UnifiedRampFeelSkillStreetPhysics.prototype);
 });
+
+
+test('landing post-processing is not duplicated in arcade or momentum layers', async () => {
+  const { MomentumRollSkillStreetPhysics } = await import('../src/game/MomentumRollSkillStreetPhysics.js');
+
+  assert.equal(
+    Object.hasOwn(ArcadeParkMobilitySkillStreetPhysics.prototype, 'land'),
+    false,
+    'ArcadeParkMobility must not own landing post-processing',
+  );
+  assert.equal(
+    Object.hasOwn(MomentumRollSkillStreetPhysics.prototype, 'land'),
+    false,
+    'MomentumRoll must not own travel/fakie landing post-processing',
+  );
+});
