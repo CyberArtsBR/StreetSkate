@@ -12,6 +12,7 @@ import {
   signedGroundSpeed,
 } from './GroundMotor.js';
 import { resolveAirMotion } from './AirController.js';
+import { resolveMagneticGrindCapture } from './GrindCaptureController.js';
 import { resolveRuntimeMovementMode } from './MovementStateResolver.js';
 import { resolveGroundStepStart } from './GroundStepResult.js';
 import {
@@ -68,6 +69,10 @@ export class CoreSkateController {
 
   resolveAirMotion(context) {
     return resolveAirMotion(context);
+  }
+
+  resolveGrindCapture(context) {
+    return resolveMagneticGrindCapture(context);
   }
 
   resolveMovementMode(runtime) {
