@@ -257,6 +257,161 @@ try {
   assert.ok(maxY > start.y + 0.12,
     `ollie did not gain expected height: start=${start.y}, max=${maxY}`);
 
+  // Exercise a real authored production transition through the browser loop.
+  // The setup is discovered from the actual collision surface: for each authored
+  // vert lip, probe both sides for a real sloped rideable support, choose a
+  // climbing tangent, then let normal gameplay own approach -> air -> re-entry.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(240);
+  const transitionSetup = await page.evaluate(() => {
+    const state = window.streetSkate;
+    const skater = state?.skater;
+    const transitions = skater?.transitions?.transitions || [];
+    let best = null;
+
+    for (const transition of transitions) {
+      if (!transition?.supportsVert || !Array.isArray(transition.lipPath)
+        || transition.lipPath.length < 2) continue;
+      const path = transition.lipPath;
+      const stride = Math.max(1, Math.floor((path.length - 1) / 8));
+
+      for (let i = 1; i < path.length; i += stride) {
+        const a = path[i - 1];
+        const b = path[Math.min(i, path.length - 1)];
+        const tangent = b.clone().sub(a).setY(0);
+        if (tangent.lengthSq() < 1e-8) continue;
+        tangent.normalize();
+        const lip = a.clone().add(b).multiplyScalar(0.5);
+        const perpendicular = tangent.clone().set(tangent.z, 0, -tangent.x).normalize();
+
+        for (const sign of [1, -1]) {
+          for (const distance of [0.35, 0.55, 0.8, 1.05, 1.35]) {
+            const probe = lip.clone().addScaledVector(perpendicular, sign * distance);
+            probe.y = lip.y;
+            const support = skater.surface.ground(probe, 2.4, 4.8);
+            if (!support?.point || !support?.normal) continue;
+            const ny = Math.abs(support.normal.y);
+            if (ny <= 0.04 || ny >= 0.94) continue;
+
+            const deckOutward = support.normal.clone().setY(0);
+            if (deckOutward.lengthSq() < 1e-8) continue;
+            deckOutward.normalize().negate();
+            const boardForward = deckOutward.clone().projectOnPlane(support.normal);
+            if (boardForward.lengthSq() < 1e-8) continue;
+            boardForward.normalize();
+            if (boardForward.y <= 0.08) continue;
+
+            const score = boardForward.y * 4 - distance * 0.12;
+            if (!best || score > best.score) {
+              best = {
+                score,
+                transitionId: transition.id,
+                transitionType: transition.type,
+                lipHeight: lip.y,
+                supportPoint: support.point.clone(),
+                supportNormal: support.normal.clone(),
+                deckOutward,
+                boardForward,
+              };
+            }
+          }
+        }
+      }
+    }
+
+    if (!best) return { ok: false, reason: 'no authored vert lip exposed a real sloped collision support' };
+
+    skater.position.copy(best.supportPoint).addScaledVector(best.supportNormal, 0.015);
+    skater.normal.copy(best.supportNormal);
+    skater.heading = Math.atan2(-best.deckOutward.x, -best.deckOutward.z);
+    skater.groundDirection();
+    skater.velocity.copy(skater.forward).multiplyScalar(10.5);
+    skater.speed = skater.velocity.length();
+    skater.grounded = true;
+    skater.transitionAir = null;
+    skater.pendingBoardTransition = null;
+    skater.grind = null;
+    skater.manual = null;
+    skater.wallRide = null;
+    skater.bailTime = 0;
+    skater.airSpin = 0;
+    skater.steer = 0;
+    skater.rampExitIntentTime = 0;
+    skater.lastWheelSupport = null;
+    skater.syncMovementState?.();
+    skater.syncCanonicalState?.();
+
+    return {
+      ok: true,
+      transitionId: best.transitionId,
+      transitionType: best.transitionType,
+      lipHeight: best.lipHeight,
+      heading: skater.heading,
+      startY: skater.position.y,
+      startVelocity: skater.velocity.toArray(),
+      normal: skater.normal.toArray(),
+    };
+  });
+
+  assert.equal(transitionSetup.ok, true,
+    `could not prepare real authored transition smoke: ${JSON.stringify(transitionSetup)}`);
+  assert.ok(transitionSetup.startVelocity[1] > 0.5,
+    `transition setup is not climbing: ${JSON.stringify(transitionSetup)}`);
+
+  let transitionObserved = false;
+  let transitionId = null;
+  let transitionMaxY = transitionSetup.startY;
+  let transitionLanded = false;
+  let transitionFinal = null;
+
+  for (let i = 0; i < 220; i++) {
+    await page.waitForTimeout(20);
+    const sample = await page.evaluate(() => {
+      const skater = window.streetSkate.skater;
+      return {
+        y: skater.position.y,
+        heading: skater.heading,
+        grounded: skater.grounded,
+        transitionActive: Boolean(skater.transitionAir),
+        transitionId: skater.transitionAir?.transitionId ?? null,
+        movementState: skater.movementState,
+        fakie: Boolean(skater.fakie),
+        velocity: skater.velocity.toArray(),
+        yawViolations: skater.landingYawInvariantViolations || 0,
+        invariantCodes: (skater.stateInvariantViolations || []).map(entry => entry?.code).filter(Boolean),
+      };
+    });
+
+    transitionMaxY = Math.max(transitionMaxY, sample.y);
+    if (sample.transitionActive) {
+      transitionObserved = true;
+      transitionId ||= sample.transitionId;
+    }
+    assert.ok(sample.velocity.every(Number.isFinite), 'non-finite velocity during authored transition smoke');
+    assert.ok(Number.isFinite(sample.heading), 'non-finite heading during authored transition smoke');
+    assert.equal(sample.yawViolations, 0,
+      'authored transition smoke triggered a contact-driven yaw violation');
+    assert.deepEqual(sample.invariantCodes, [],
+      'authored transition smoke diverged canonical state');
+
+    if (transitionObserved && sample.grounded && !sample.transitionActive) {
+      transitionLanded = true;
+      transitionFinal = sample;
+      break;
+    }
+  }
+
+  assert.equal(transitionObserved, true,
+    `real transition never entered canonical transition air: ${JSON.stringify(transitionSetup)}`);
+  assert.equal(transitionId, transitionSetup.transitionId,
+    `wrong authored transition activated: expected ${transitionSetup.transitionId}, got ${transitionId}`);
+  assert.equal(transitionLanded, true,
+    `real transition did not reconnect within browser smoke window: ${JSON.stringify(transitionSetup)}`);
+  assert.ok(transitionMaxY > transitionSetup.lipHeight + 0.10,
+    `transition did not produce visible air above coping: lip=${transitionSetup.lipHeight}, max=${transitionMaxY}`);
+  assert.ok(Math.abs(angleDelta(transitionSetup.heading, transitionFinal.heading)) < 0.08,
+    `no-spin authored transition changed horizontal heading: ${transitionSetup.heading} -> ${transitionFinal.heading}`);
+
   const finalState = await page.evaluate(() => {
     const state = window.streetSkate;
     const skater = state.skater;
