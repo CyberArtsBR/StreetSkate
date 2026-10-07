@@ -22,17 +22,15 @@ The final skater still uses compatibility inheritance for migration safety, but 
 
 ```text
 StreetSkater
-   └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + landing post
-      └─ StableRampReturnSkillStreetPhysics  takeoff/landing orientation compatibility
-         └─ ArcadeParkMobility...            grind magnet + re-entry tuning compatibility
-            └─ SafeCopingExit...             single transition landing + transfer launch/re-entry
-               └─ DeckAwareRampExit...       real deck scan / verified deck catch
-                  └─ RampWallSafety...        single airborne + transfer-flight executor
-                     └─ MomentumRoll...       ground adapter + canonical travel sync
-                        └─ StableBoardContact... board support + explicit collision-result application
-                           └─ BoardContact...
-                              └─ SkillStreetPhysics
-                                 └─ StreetPhysics
+   └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + takeoff/landing post
+      └─ SafeCopingExit...                   single transition landing + transfer launch/re-entry
+         └─ DeckAwareRampExit...             real deck scan / verified deck catch
+            └─ RampWallSafety...              single airborne + transfer-flight executor
+               └─ MomentumRoll...             ground adapter + canonical travel sync
+                  └─ StableBoardContact...    board support + explicit collision-result application
+                     └─ BoardContact...
+                        └─ SkillStreetPhysics
+                           └─ StreetPhysics
 ```
 
 `NoAutomaticYawSkillStreetPhysics` still exists as a compatibility file but is no longer in the final runtime chain.
@@ -52,7 +50,7 @@ StreetSkater
 | movement mode priority | `CoreSkateController` + `MovementStateResolver` | `StatefulSkillStreetPhysics.syncMovementState()` applies result | mode priority is no longer duplicated in leaf logic |
 | ramp launch energy | `CoreSkateController` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.stepGround()/takeoff()` | `UnifiedRampFeel` compatibility wrapper bypassed |
 | transition-exit takeoff preparation / ramp energy | `CoreSkateController` + `TakeoffContext` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.takeoff()` | lower `MomentumRoll.takeoff()` adapter removed |
-| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | `StableRampReturn.takeoff()` applies canonical orientation context | duplicated pre-launch math removed |
+| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics.takeoff()` applies canonical orientation context | `StableRampReturn` bypassed by final runtime |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
 | real-deck transfer / missing-deck return decision | `TransferLaunchResult` | deck geometry evidence feeds the `SafeCopingExit` launch seam | scan remains geometry service; decision math centralized |
 | narrow/unsafe deck return decision | `TransferLaunchResult` | `SafeCopingExit.takeoff()` | deck-fit rule centralized |
@@ -60,8 +58,9 @@ StreetSkater
 | landing route priority | `LandingPolicy` | single `SafeCopingExit.land()` transition seam | DeckAware/RampWall nested landing routers removed |
 | landing acceptance / alignment / catch/bail | `LandingResult` | single transition seam + stable/base compatibility | duplicated transition acceptance bodies removed |
 | accepted touchdown state mutation | `LandingExecutor` | all accepted landing paths | projected support tangent cannot write yaw |
-| post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top runtime + direct StableRampReturn compatibility path | nested post hooks deferred; one execution per landing |
+| post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top `StatefulSkillStreetPhysics.land()` | `StableRampReturn` retained only for direct compatibility tests |
 | horizontal yaw invariant | player steering + explicit air spin only | orientation + replay invariants | wall/coping/contact auto-yaw removed |
+| grind capture / strict-first magnetic fallback / grind entry | `GrindCaptureController` + `CoreSkateController` | `SkillStreetPhysics.enterGrind()` adapter | `RailNetwork.capture()` retained as compatibility oracle only; `ArcadeParkMobility` override removed |
 | body continuous collision | `CoreSkateController` + `CollisionResolver` over validated `ParkCollision.move()` | `StableBoardContact.resolveMotion()` | collision result has no heading/yaw field |
 | four-wheel support | board contact solver | StableBoardContact / LandingResult | preserved from validated baseline |
 | camera input snapshot | `CameraState` | `FollowCamera` | presentation cannot mutate physics |
@@ -74,6 +73,7 @@ StreetSkater
 - `PlayerState`;
 - `TransitionController`;
 - `CollisionResolver`;
+- `GrindCaptureController` strict-first + THPS magnetic fallback and grind entry orchestration;
 - semantic Ollie/pump/vert/grind-out interpretation;
 - canonical travel synchronization;
 - canonical ground-step start transaction (timers, transition intent, signed speed);
@@ -209,6 +209,8 @@ Phase 1 does not delete every historical filename simply to shorten the tree. Th
 - `YawStableStreetSkater` compatibility alias; coping-safe basis lives in `StreetSkater`;
 - `BaseStatefulSkillStreetPhysics` compatibility wrapper outside final runtime;
 - `UnifiedRampFeelSkillStreetPhysics` compatibility wrapper outside final runtime;
+- `StableRampReturnSkillStreetPhysics` compatibility/regression class outside final runtime;
+- `ArcadeParkMobilitySkillStreetPhysics` compatibility alias to `SafeCopingExitSkillStreetPhysics`;
 - `BowlLandingSkillStreetPhysics` standalone compatibility/regression class outside final runtime;
 - `TransitionGuide` oracle;
 - pure legacy helpers used only for parity/tuning tests.
