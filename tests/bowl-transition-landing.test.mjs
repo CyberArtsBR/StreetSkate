@@ -6,7 +6,7 @@ import {
   transitionLandingSupportMode,
   transitionFlipLandingMode,
   transitionAlignmentThreshold,
-} from '../src/game/BowlLandingSkillStreetPhysics.js';
+} from '../src/game/core/LandingResult.js';
 import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 
 function floorWorld() {
