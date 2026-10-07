@@ -13,6 +13,8 @@ import {
 } from '../src/game/IntegratedRampSafetySkillStreetPhysics.js';
 import { DeckAwareRampExitSkillStreetPhysics } from '../src/game/DeckAwareRampExitSkillStreetPhysics.js';
 import { SafeCopingExitSkillStreetPhysics } from '../src/game/SafeCopingExitSkillStreetPhysics.js';
+import { StreetSkater } from '../src/game/StreetSkater.js';
+import { YawStableStreetSkater } from '../src/game/YawStableStreetSkater.js';
 
 test('wall authority compatibility alias is not a runtime prototype level', () => {
   assert.equal(WallContactAuthoritySkillStreetPhysics, ArcadeParkMobilitySkillStreetPhysics);
@@ -47,4 +49,9 @@ test('transfer launch has one runtime takeoff application seam', () => {
     true,
     'SafeCopingExit is the single transfer-launch application seam',
   );
+});
+
+
+test('yaw-stable presentation compatibility alias is not a runtime prototype level', () => {
+  assert.equal(YawStableStreetSkater, StreetSkater);
 });
