@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const ACTIVE_PARK_ASSET = '/assets/park/halfpipenew.glb';
+export const ACTIVE_PARK_ASSET = '/assets/park/halfnew.glb';
 export const LEGACY_VISUAL_PARK_ASSET = '/assets/park/insanity-inspired-park.glb';
 export const LEGACY_COLLISION_ASSET = '/assets/park/park-collision.glb';
 
@@ -26,4 +26,5 @@ export function activateParkTransition() {
   return ACTIVE_PARK_ASSET;
 }
 
-activateParkTransition();
+// The composition root explicitly loads and assembles both sectors. Do not
+// rewrite the legacy reference URL globally: it is needed for matching collision.

@@ -6,6 +6,7 @@ import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { assembleExpandedPark } from './park/ExpandedPark.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -28,7 +29,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.minDistance = 5;
-controls.maxDistance = 160;
+controls.maxDistance = 260;
 controls.maxPolarAngle = Math.PI * 0.485;
 controls.target.set(0, 0, 0);
 
@@ -162,17 +163,19 @@ function showError(error) {
 async function loadGame() {
   try {
     const loader = new GLTFLoader();
-    const [parkFile, collisionFile, parkManifest] = await Promise.all([
+    const [parkFile, collisionFile, parkManifest, expandedFile] = await Promise.all([
       loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
       loader.loadAsync('/assets/park/park-collision.glb'),
       fetch('/assets/park/park-manifest.json').then(r => {
         if (!r.ok) throw new Error('Park manifest unavailable');
         return r.json();
       }),
+      loader.loadAsync('/assets/park/halfnew.glb'),
     ]);
     manifest = parkManifest;
-    park = parkFile.scene;
-    collision = collisionFile.scene;
+    const expanded = assembleExpandedPark(expandedFile.scene, parkFile.scene, collisionFile.scene, manifest);
+    park = expanded.park;
+    collision = expanded.collision;
     const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
@@ -185,12 +188,22 @@ async function loadGame() {
     scene.add(park);
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
-    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
+    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails,
+      playableRegions: manifest.playableRegions }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
 
     document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
+    document.querySelector('.asset-meta > span').textContent = '136 × 92 m · 3 AREAS';
+    const center = new THREE.Vector3(34, 0, 23);
+    views.overview = { position: [155, 108, 165], target: center.toArray(), caption: 'Three connected areas', index: '01' };
+    views.top = { position: [34, 160, 23.01], target: center.toArray(), caption: 'All three skating areas', index: '—' };
+    sun.target.position.copy(center);
+    scene.add(sun.target);
+    sun.position.copy(center).add(new THREE.Vector3(-25, 65, 10));
+    Object.assign(sun.shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, far: 200 });
+    sun.shadow.camera.updateProjectionMatrix();
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');

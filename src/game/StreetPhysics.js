@@ -4,6 +4,7 @@ import { TransitionGuide } from './TransitionGuide.js';
 import { RailNetwork } from './RailNetwork.js';
 import { SkateTricks } from './SkateTricks.js';
 import { directionKey, grindFor } from './TrickCatalog.js';
+import { constrainToPark } from './ParkBoundaries.js';
 
 export const MOVEMENT_STATE = Object.freeze({
   GROUND: 'GROUND',
@@ -33,7 +34,8 @@ function headingFrom(direction, fallback = 0) {
 
 /** Metres, seconds, Y up, local -Z travel. Presentation never changes trajectory. */
 export class StreetPhysics {
-  constructor({ collision, spawn, rails = [] }) {
+  constructor({ collision, spawn, rails = [], playableRegions = null }) {
+    this.playableRegions = playableRegions;
     this.surface = new ParkCollision(collision);
     this.transitions = new TransitionGuide(rails);
     this.railNetwork = new RailNetwork(rails);
@@ -548,7 +550,7 @@ export class StreetPhysics {
     this.recordTrick('Wall Plant', 300);
   }
 
-  finishStep(dt) {
+  finishAirborneTrickScoring() {
     if (this.pendingOllieScore) {
       const jump = this.pendingOllieScore;
       if (!this.grounded && !this.bailTime && this.airTime >= 0.10
@@ -557,12 +559,11 @@ export class StreetPhysics {
         this.recordTrick('Ollie', 50);
       } else if (this.grounded || this.bailTime || this.grind) this.pendingOllieScore = null;
     }
-    for (const [axis, limit] of [['x', 33.2], ['z', 22.1]]) {
-      if (Math.abs(this.position[axis]) > limit) {
-        this.position[axis] = clamp(this.position[axis], -limit, limit);
-        this.velocity[axis] = 0;
-      }
-    }
+  }
+
+  finishStep(dt) {
+    this.finishAirborneTrickScoring();
+    constrainToPark(this);
     if (this.grounded && !this.manual && !this.grind && !this.bailTime) {
       this.stableGroundTime += dt;
       if (this.stableGroundTime > 0.38 && this.tricks.combo.length) this.settleCombo();

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { StreetPhysics, PHYSICS } from './StreetPhysics.js';
+import { constrainToPark } from './ParkBoundaries.js';
 import {
   GRIND_CAPTURE,
   createBalanceState,
@@ -369,12 +370,8 @@ export class SkillStreetPhysics extends StreetPhysics {
   }
 
   finishStep(dt) {
-    for (const [axis, limit] of [['x', 33.2], ['z', 22.1]]) {
-      if (Math.abs(this.position[axis]) > limit) {
-        this.position[axis] = clamp(this.position[axis], -limit, limit);
-        this.velocity[axis] = 0;
-      }
-    }
+    this.finishAirborneTrickScoring();
+    constrainToPark(this);
     if (this.grounded && !this.manual && !this.grind && !this.bailTime) {
       if (this.tricks.manualBridgePending()) this.stableGroundTime = 0;
       else {

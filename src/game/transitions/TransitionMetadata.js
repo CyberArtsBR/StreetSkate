@@ -21,6 +21,13 @@ export const TRANSITION_TYPE = Object.freeze({
  * those paths deterministically below.
  */
 export const PRODUCTION_TRANSITION_AUTHORING = Object.freeze({
+  ...Object.fromEntries([1, 2].flatMap(area => ['west', 'east'].map(side => [
+    `Extension halfpipe ${area} ${side} coping`, Object.freeze({
+      id: `extension-halfpipe-${area}-${side}`, type: TRANSITION_TYPE.VERT,
+      axisMode: 'LINEAR', supportsVert: true, supportsTransfer: true,
+      supportsPump: true, supportsLipTricks: true, cameraHint: 'VERT',
+    }),
+  ]))),
   'Bowl coping loop': Object.freeze({
     id: 'bowl-main',
     type: TRANSITION_TYPE.BOWL,
