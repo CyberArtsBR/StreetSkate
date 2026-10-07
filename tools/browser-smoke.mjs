@@ -152,7 +152,12 @@ try {
   assert.equal(steerStart.grounded, true, 'skater was not grounded before steering smoke');
 
   await page.keyboard.down('KeyD');
-  await page.waitForTimeout(420);
+  await page.waitForTimeout(120);
+  const steeringInput = await page.evaluate(() => window.streetSkate.captureInput?.() || null);
+  assert.ok(steeringInput, 'browser QA input snapshot unavailable during steering');
+  assert.ok(steeringInput.steer > 0.9,
+    `KeyD did not reach SkateInput as steer=+1: ${JSON.stringify(steeringInput)}`);
+  await page.waitForTimeout(300);
   await page.keyboard.up('KeyD');
   const steerEnd = await page.evaluate(() => {
     const state = window.streetSkate;
@@ -188,7 +193,12 @@ try {
   assert.ok(brakeStart.speed > 1.0, `insufficient speed before brake smoke: ${brakeStart.speed}`);
 
   await page.keyboard.down('KeyS');
-  await page.waitForTimeout(420);
+  await page.waitForTimeout(120);
+  const brakingInput = await page.evaluate(() => window.streetSkate.captureInput?.() || null);
+  assert.ok(brakingInput, 'browser QA input snapshot unavailable during braking');
+  assert.ok(brakingInput.drive < -0.9 || brakingInput.brake === true,
+    `KeyS did not reach SkateInput as brake/down input: ${JSON.stringify(brakingInput)}`);
+  await page.waitForTimeout(300);
   await page.keyboard.up('KeyS');
   const brakeEnd = await page.evaluate(() => ({
     speed: window.streetSkate.skater.velocity.length(),
