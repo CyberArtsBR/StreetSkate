@@ -149,6 +149,9 @@ export function resolveWheelReentryCandidate({
  */
 export function resolveSweepReentryCandidate({
   activeAir,
+  grounded = false,
+  sameAir = true,
+  velocityY = 0,
   surface,
   contact,
   before,
@@ -158,7 +161,8 @@ export function resolveSweepReentryCandidate({
   forward,
   config,
 } = {}) {
-  if (!activeAir?.frame || !surface || !contact || !before || !position || !velocity || !config) return null;
+  if (!continuousReentryEligible({ activeAir, grounded, sameAir, velocityY })) return null;
+  if (!surface || !contact || !before || !position || !velocity || !config) return null;
 
   const hit = originalTransitionSweep(surface, before, position, activeAir, config);
   if (!hit) return null;
