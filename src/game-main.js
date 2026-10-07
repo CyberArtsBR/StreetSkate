@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { YawStableStreetSkater } from './game/YawStableStreetSkater.js';
+import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -183,7 +183,7 @@ async function loadGame() {
     scene.add(park);
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
-    skater = await new YawStableStreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
+    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
