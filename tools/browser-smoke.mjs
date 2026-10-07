@@ -23,6 +23,13 @@ const pageErrors = [];
 const failedRequests = [];
 const parkResponses = [];
 
+function angleDelta(a, b) {
+  const tau = Math.PI * 2;
+  let d = (Number(b) || 0) - (Number(a) || 0);
+  d = ((d + Math.PI) % tau + tau) % tau - Math.PI;
+  return d;
+}
+
 page.on('console', message => {
   if (message.type() === 'error') consoleErrors.push(message.text());
 });
@@ -71,6 +78,9 @@ try {
       velocity: skater?.velocity?.toArray?.() || null,
       heading: Number(skater?.heading),
       yawViolations: Number(skater?.landingYawInvariantViolations || 0),
+      invariantCodes: (skater?.stateInvariantViolations || []).map(entry => entry?.code).filter(Boolean),
+      cameraPosition: state?.camera?.position?.toArray?.() || null,
+      cameraQuaternion: state?.camera?.quaternion?.toArray?.() || null,
       resources,
       rendererFrame: Number(state?.renderer?.info?.render?.frame || 0),
     };
@@ -86,6 +96,12 @@ try {
   assert.ok(Array.isArray(boot.velocity) && boot.velocity.every(Number.isFinite), 'skater velocity is not finite');
   assert.ok(Number.isFinite(boot.heading), 'skater heading is not finite');
   assert.equal(boot.yawViolations, 0, 'landing yaw invariant already violated during bootstrap');
+  assert.deepEqual(boot.invariantCodes, [], 'canonical state already diverged during bootstrap');
+  assert.ok(Array.isArray(boot.cameraPosition) && boot.cameraPosition.every(Number.isFinite),
+    'camera position is not finite at bootstrap');
+  assert.ok(Array.isArray(boot.cameraQuaternion) && boot.cameraQuaternion.every(Number.isFinite),
+    'camera quaternion is not finite at bootstrap');
+  assert.ok(boot.rendererFrame >= 0, 'renderer frame counter is invalid at bootstrap');
 
   const hasResource = pattern => boot.resources.some(url => pattern.test(url));
   assert.equal(
@@ -112,6 +128,69 @@ try {
   await page.bringToFront();
   await page.evaluate(() => window.focus());
   await page.waitForFunction(() => document.hasFocus() && !document.hidden, null, { timeout: 5_000 });
+
+  // Real browser-loop ground input validation. Let auto-push establish useful
+  // park speed, then prove steering owns yaw and brake owns speed.
+  await page.waitForTimeout(900);
+  const steerStart = await page.evaluate(() => {
+    const state = window.streetSkate;
+    const skater = state.skater;
+    return {
+      heading: skater.heading,
+      speed: skater.velocity.length(),
+      grounded: skater.grounded,
+      rendererFrame: state.renderer.info.render.frame,
+    };
+  });
+  assert.equal(steerStart.grounded, true, 'skater was not grounded before steering smoke');
+
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(420);
+  await page.keyboard.up('KeyD');
+  const steerEnd = await page.evaluate(() => {
+    const state = window.streetSkate;
+    const skater = state.skater;
+    return {
+      heading: skater.heading,
+      speed: skater.velocity.length(),
+      grounded: skater.grounded,
+      yawViolations: skater.landingYawInvariantViolations || 0,
+      invariantCodes: (skater.stateInvariantViolations || []).map(entry => entry?.code).filter(Boolean),
+      cameraPosition: state.camera.position.toArray(),
+      cameraQuaternion: state.camera.quaternion.toArray(),
+      rendererFrame: state.renderer.info.render.frame,
+    };
+  });
+  assert.equal(steerEnd.grounded, true, 'ground steering unexpectedly left the surface');
+  assert.ok(Math.abs(angleDelta(steerStart.heading, steerEnd.heading)) > 0.04,
+    `KeyD did not produce a meaningful player-authored yaw change: ${steerStart.heading} -> ${steerEnd.heading}`);
+  assert.equal(steerEnd.yawViolations, 0, 'steering smoke triggered a landing yaw violation');
+  assert.deepEqual(steerEnd.invariantCodes, [], 'steering smoke diverged canonical state');
+  assert.ok(steerEnd.cameraPosition.every(Number.isFinite), 'camera position became non-finite during steering');
+  assert.ok(steerEnd.cameraQuaternion.every(Number.isFinite), 'camera quaternion became non-finite during steering');
+
+  // Build speed again if needed, then verify the explicit brake removes energy.
+  await page.waitForTimeout(700);
+  const brakeStart = await page.evaluate(() => ({
+    speed: window.streetSkate.skater.velocity.length(),
+    grounded: window.streetSkate.skater.grounded,
+  }));
+  assert.equal(brakeStart.grounded, true, 'skater was not grounded before brake smoke');
+  assert.ok(brakeStart.speed > 1.0, `insufficient speed before brake smoke: ${brakeStart.speed}`);
+
+  await page.keyboard.down('ShiftLeft');
+  await page.waitForTimeout(420);
+  await page.keyboard.up('ShiftLeft');
+  const brakeEnd = await page.evaluate(() => ({
+    speed: window.streetSkate.skater.velocity.length(),
+    grounded: window.streetSkate.skater.grounded,
+    yawViolations: window.streetSkate.skater.landingYawInvariantViolations || 0,
+  }));
+  assert.equal(brakeEnd.grounded, true, 'braking unexpectedly left the surface');
+  assert.ok(brakeEnd.speed < brakeStart.speed - 0.35,
+    `brake did not remove enough speed: ${brakeStart.speed} -> ${brakeEnd.speed}`);
+  assert.equal(brakeEnd.yawViolations, 0, 'brake smoke triggered a landing yaw violation');
+
   const start = await page.evaluate(() => ({
     y: window.streetSkate.skater.position.y,
     grounded: window.streetSkate.skater.grounded,
@@ -142,6 +221,24 @@ try {
   assert.equal(observedAir, true, 'Space input never produced an airborne frame');
   assert.ok(maxY > start.y + 0.12,
     `ollie did not gain expected height: start=${start.y}, max=${maxY}`);
+
+  const finalState = await page.evaluate(() => {
+    const state = window.streetSkate;
+    const skater = state.skater;
+    return {
+      rendererFrame: state.renderer.info.render.frame,
+      cameraPosition: state.camera.position.toArray(),
+      cameraQuaternion: state.camera.quaternion.toArray(),
+      yawViolations: skater.landingYawInvariantViolations || 0,
+      invariantCodes: (skater.stateInvariantViolations || []).map(entry => entry?.code).filter(Boolean),
+    };
+  });
+  assert.ok(finalState.rendererFrame > steerStart.rendererFrame,
+    `renderer did not advance: ${steerStart.rendererFrame} -> ${finalState.rendererFrame}`);
+  assert.ok(finalState.cameraPosition.every(Number.isFinite), 'camera position non-finite after gameplay smoke');
+  assert.ok(finalState.cameraQuaternion.every(Number.isFinite), 'camera quaternion non-finite after gameplay smoke');
+  assert.equal(finalState.yawViolations, 0, 'browser gameplay smoke ended with landing yaw violations');
+  assert.deepEqual(finalState.invariantCodes, [], 'browser gameplay smoke ended with canonical state divergence');
 
   await page.screenshot({ path: screenshotPath, fullPage: true });
 
