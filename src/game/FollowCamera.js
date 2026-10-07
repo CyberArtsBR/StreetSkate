@@ -116,6 +116,7 @@ export class FollowCamera {
     this.occlusionDistance = null;
     this.clearanceCache = { fixedAxis: true };
     this.initialized = false;
+    this.mode = 'GROUND';
   }
 
   snap(player) {
@@ -138,6 +139,7 @@ export class FollowCamera {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
+    this.mode = state.mode;
     // World orientation is fixed. Only the tracked position translates the rig.
     // Neither ground steering, fakie, jumps nor spins may turn it behind the nose.
     this.direction.set(0, 0, -1);
@@ -170,5 +172,15 @@ export class FollowCamera {
     // face/hat. This changes presentation only and recovers as soon as space opens.
     if (player?.visual) player.visual.visible = this.camera.position.distanceTo(frame.anchor) > 1.15;
     this.camera.lookAt(this.target);
+  }
+
+  captureDebugState() {
+    return Object.freeze({
+      mode: this.mode,
+      direction: this.direction.clone(),
+      position: this.camera.position.clone(),
+      target: this.target.clone(),
+      occlusionDistance: this.occlusionDistance,
+    });
   }
 }
