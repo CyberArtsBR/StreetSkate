@@ -3,7 +3,7 @@ name: Phase 1 Core CI
 on:
   push:
     branches:
-      - refactor/core-skate-controller-v1
+      - 'refactor/core-skate-controller-v*'
   pull_request:
     branches:
       - main
