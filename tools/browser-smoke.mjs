@@ -48,7 +48,9 @@ page.on('response', response => {
 });
 
 try {
-  await page.goto(baseUrl, {
+  const qaUrl = new URL(baseUrl);
+  qaUrl.searchParams.set('qa', '1');
+  await page.goto(qaUrl.toString(), {
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
   });
@@ -138,10 +140,8 @@ try {
       `park asset failed: ${response.status} ${response.url}`);
   }
 
-  await page.bringToFront();
-  await page.evaluate(() => window.focus());
-  await page.waitForFunction(() => document.hasFocus() && !document.hidden, null, { timeout: 5_000 });
-
+  // ?qa=1 keeps the gameplay loop active in headless Chromium without weakening
+  // the normal production blur/visibility pause behavior.
   // Real browser-loop ground input validation. Let auto-push establish useful
   // park speed, then prove steering owns yaw and brake owns speed.
   await page.waitForTimeout(900);
