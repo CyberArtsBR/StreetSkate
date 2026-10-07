@@ -19,8 +19,6 @@ export {
   transitionGravityScale,
 } from './core/GroundMotor.js';
 
-const clamp = THREE.MathUtils.clamp;
-
 export const MOMENTUM_ROLL = Object.freeze({
   // Compatibility surface: movement tuning now comes from canonical GroundMotor.
   ...GROUND_MOTOR,
@@ -198,6 +196,8 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   stepGround(dt, input = {}, drive = 0) {
+    this.rampReentrySteerLock = Math.max(0,
+      (this.rampReentrySteerLock || 0) - dt);
     this.wallSlideTime = Math.max(0, (this.wallSlideTime || 0) - dt);
     this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
     this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
@@ -233,6 +233,8 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     const steeringContext = {
       steer: this.steer,
       speed,
+      manual: Boolean(this.manual),
+      reentryRemaining: this.rampReentrySteerLock,
       dt,
       config: MOMENTUM_ROLL,
     };
