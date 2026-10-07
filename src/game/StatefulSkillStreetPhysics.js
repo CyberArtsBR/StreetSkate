@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
+import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
   PUMP_CONFIG,
   computePumpEnergy,
