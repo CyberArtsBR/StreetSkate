@@ -11,7 +11,12 @@ import {
   signedGroundSpeed,
   transitionGravityScale,
 } from './core/GroundMotor.js';
-import { wantsVertTransfer } from '../input/InputInterpreter.js';
+import {
+  TRANSITION_INTENT,
+  advanceTransitionExitIntent,
+  applyTransitionExitIntentToCandidate,
+  shouldArmTransitionExit,
+} from './transitions/TransitionIntent.js';
 
 export {
   automaticPushAcceleration,
@@ -26,9 +31,9 @@ export const MOMENTUM_ROLL = Object.freeze({
 
   // Explicit transfer modifier survives the last wheel-contact frames.
   rampExitInputThreshold: 0.35,
-  rampExitBuffer: 0.32,
-  rampExitSlopeY: 0.992,
-  rampExitMinRise: 0.06,
+  rampExitBuffer: TRANSITION_INTENT.bufferTime,
+  rampExitSlopeY: TRANSITION_INTENT.slopeY,
+  rampExitMinRise: TRANSITION_INTENT.minRise,
   rampLipBoost: 0.9,
 
   // Deprecated wall-response tuning retained only while collision migration and
@@ -49,10 +54,16 @@ export function shouldBufferRampExit({
   verticalSpeed = 0,
   config = MOMENTUM_ROLL,
 } = {}) {
-  const up = wantsVertTransfer({ vertExit });
-  return Boolean(up
-    && Math.abs(normalY) < config.rampExitSlopeY
-    && verticalSpeed > config.rampExitMinRise);
+  return shouldArmTransitionExit({
+    input: { vertExit },
+    normalY,
+    verticalSpeed,
+    config: {
+      bufferTime: config.rampExitBuffer,
+      slopeY: config.rampExitSlopeY,
+      minRise: config.rampExitMinRise,
+    },
+  });
 }
 
 function horizontalDirection(source, fallback = null) {
@@ -163,11 +174,17 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
    */
   takeoff(impulse = 0, transition = null) {
     this.transitionLandingGrace = 0;
-    const exitRequested = (this.rampExitIntentTime || 0) > 0;
     let edge = transition;
-    if (exitRequested) {
-      edge ||= this.transitions.launchAt(this.position, this.normal, this.velocity);
-      if (edge) edge = { ...edge, exitRequested: true };
+    if (this.coreController) {
+      edge = this.coreController.prepareTransitionTakeoff(this, transition).edge;
+    } else {
+      const prepared = applyTransitionExitIntentToCandidate({
+        controller: { transitions: this.transitions },
+        runtime: this,
+        transition,
+      });
+      edge = prepared.edge;
+      if (prepared.consumed) this.rampExitIntentTime = 0;
     }
     const result = super.takeoff(impulse, edge);
     this.rampExitIntentTime = 0;
@@ -202,14 +219,17 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
     this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
     this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
-    this.rampExitIntentTime = Math.max(0, (this.rampExitIntentTime || 0) - dt);
 
-    if (shouldBufferRampExit({
-      vertExit: input.vertExit,
-      normalY: this.normal.y,
-      verticalSpeed: this.velocity.y,
-    })) {
-      this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
+    if (this.coreController) {
+      this.coreController.updateTransitionExitIntent(this, input, dt);
+    } else {
+      this.rampExitIntentTime = advanceTransitionExitIntent({
+        remaining: this.rampExitIntentTime,
+        dt,
+        input,
+        normalY: this.normal.y,
+        verticalSpeed: this.velocity.y,
+      }).remaining;
     }
 
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
