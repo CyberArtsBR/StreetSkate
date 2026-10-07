@@ -14,6 +14,13 @@ export const GROUND_MOTOR = Object.freeze({
   steerRateLowSpeed: 2.7,
   steerRateHighSpeed: 1.2,
   steerFullSpeed: 12,
+  turnGainLowSpeed: 1.55,
+  turnGainHighSpeed: 1.78,
+  turnGainFullSpeed: 12.5,
+  manualTurnGain: 1.14,
+  rampReentrySteerLock: 0.20,
+  rampReentryHardLock: 0.08,
+  maxPhysicalSteer: 1.8,
   brakeDriveThreshold: -0.12,
   absoluteSpeedCap: 17,
 });
@@ -35,19 +42,49 @@ export function signedGroundSpeed({
   };
 }
 
-/** Player steering is the only ground-motor source of horizontal heading change. */
+export function arcadeTurnGain(speed, config = GROUND_MOTOR) {
+  const t = clamp(Math.abs(Number(speed) || 0) / config.turnGainFullSpeed, 0, 1);
+  return lerp(config.turnGainLowSpeed, config.turnGainHighSpeed, t);
+}
+
+export function rampReentrySteerScale(remaining = 0, config = GROUND_MOTOR) {
+  const left = Math.max(0, Number(remaining) || 0);
+  if (left <= 0) return 1;
+  const elapsed = Math.max(0, config.rampReentrySteerLock - left);
+  if (elapsed <= config.rampReentryHardLock) return 0;
+  const blendDuration = Math.max(0.001,
+    config.rampReentrySteerLock - config.rampReentryHardLock);
+  return clamp((elapsed - config.rampReentryHardLock) / blendDuration, 0, 1);
+}
+
+/**
+ * Player steering is the only ground-motor source of horizontal heading change.
+ * Park-speed carve gain and post-transition steering suppression are part of the
+ * same pure decision, so no upper inheritance layer rewrites `this.steer`.
+ */
 export function groundSteeringDelta({
   steer = 0,
   speed = 0,
+  manual = false,
+  reentryRemaining = 0,
   dt = 0,
   config = GROUND_MOTOR,
 } = {}) {
+  const gain = manual
+    ? config.manualTurnGain
+    : arcadeTurnGain(speed, config);
+  const reentryScale = rampReentrySteerScale(reentryRemaining, config);
+  const physicalSteer = clamp(
+    (Number(steer) || 0) * gain * reentryScale,
+    -config.maxPhysicalSteer,
+    config.maxPhysicalSteer,
+  );
   const rate = lerp(
     config.steerRateLowSpeed,
     config.steerRateHighSpeed,
     Math.abs(Number(speed) || 0) / config.steerFullSpeed,
   );
-  return -(Number(steer) || 0) * rate * Math.max(0, Number(dt) || 0);
+  return -physicalSteer * rate * Math.max(0, Number(dt) || 0);
 }
 
 /** Skate wheels should coast; neutral input must preserve useful park speed. */
