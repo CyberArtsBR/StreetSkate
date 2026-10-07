@@ -17,36 +17,44 @@ const manifest = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
-test('current production park has explicit metadata for every authored coping transition', () => {
+test('current production park has explicit metadata for every authored transition anchor', () => {
   const coverage = transitionMetadataCoverage(manifest.rails);
   assert.equal(coverage.complete, true, JSON.stringify(coverage));
-  assert.equal(coverage.authoredCount, 5);
-  assert.equal(coverage.presentAuthoredCount, 5);
+  assert.equal(coverage.authoredCount, 8);
+  assert.equal(coverage.presentAuthoredCount, 8);
   assert.deepEqual(coverage.missingAuthoredRails, []);
   assert.deepEqual(coverage.unclassifiedCopingRails, []);
 });
 
-test('production transition metadata classifies bowl vert minis and quarter explicitly', () => {
+test('production transition metadata classifies vert and non-vert park areas explicitly', () => {
   const transitions = compileTransitionMetadata(manifest.rails);
   const byId = new Map(transitions.map(transition => [transition.id, transition]));
 
-  assert.equal(transitions.length, 5);
+  assert.equal(transitions.length, 8);
   assert.equal(byId.get('bowl-main')?.type, TRANSITION_TYPE.BOWL);
   assert.equal(byId.get('western-vert')?.type, TRANSITION_TYPE.VERT);
   assert.equal(byId.get('rear-mini-north')?.type, TRANSITION_TYPE.MINI);
   assert.equal(byId.get('rear-mini-south')?.type, TRANSITION_TYPE.MINI);
   assert.equal(byId.get('eastern-quarter')?.type, TRANSITION_TYPE.QUARTER);
+  assert.equal(byId.get('central-hip')?.type, TRANSITION_TYPE.HIP);
+  assert.equal(byId.get('south-spine')?.type, TRANSITION_TYPE.SPINE);
+  assert.equal(byId.get('east-bank')?.type, TRANSITION_TYPE.BANK);
+  assert.equal(byId.get('central-hip')?.supportsVert, false);
+  assert.equal(byId.get('south-spine')?.supportsVert, false);
+  assert.equal(byId.get('east-bank')?.supportsVert, false);
 });
 
-test('grind rails are not silently promoted into transitions', () => {
+test('named park-area rails become semantic anchors while unrelated grind rails stay grind-only', () => {
   const transitions = compileTransitionMetadata(manifest.rails);
-  const sources = new Set(transitions.map(transition => transition.sourceRail));
-  assert.equal(sources.has('05 / hip rail'), false);
-  assert.equal(sources.has('07 / angled rail'), false);
-  assert.equal(sources.has('08 / downrail'), false);
-  assert.equal(sources.has('10 / spine handrail'), false);
-  assert.equal(sources.has('11 / bank handrail'), false);
-  assert.equal(sources.has('13 / flat bar'), false);
+  const bySource = new Map(transitions.map(transition => [transition.sourceRail, transition]));
+
+  assert.equal(bySource.get('05 / hip rail')?.geometryRole, 'AREA_ANCHOR');
+  assert.equal(bySource.get('10 / spine handrail')?.geometryRole, 'AREA_ANCHOR');
+  assert.equal(bySource.get('11 / bank handrail')?.geometryRole, 'AREA_ANCHOR');
+
+  assert.equal(bySource.has('07 / angled rail'), false);
+  assert.equal(bySource.has('08 / downrail'), false);
+  assert.equal(bySource.has('13 / flat bar'), false);
 });
 
 test('compiled metadata includes deterministic lip bounds center and axis semantics', () => {
@@ -87,6 +95,10 @@ test('legacy coping candidate maps to canonical transition id by exact authored 
     mapped: true,
   });
   assert.equal(controller.inspectLegacyCandidate({ name: '07 / angled rail' }).mapped, false);
+  const hip = controller.inspectLegacyCandidate({ name: '05 / hip rail' });
+  assert.equal(hip.mapped, true);
+  assert.equal(hip.type, TRANSITION_TYPE.HIP);
+  assert.equal(hip.supportsVert, false);
 });
 
 test('semantic bridge classifies legacy transitionAir without requiring geometry mutation', () => {
@@ -100,4 +112,26 @@ test('semantic bridge classifies legacy transitionAir without requiring geometry
     mapped: true,
   });
   assert.equal(authoredTransitionIdentity({ copingName: 'anything coping' }).mapped, false);
+});
+
+
+test('non-vert transition anchors can never enter vert lip detection', () => {
+  const controller = new TransitionController({ rails: manifest.rails });
+  const hip = controller.get('central-hip');
+  const bank = controller.get('east-bank');
+  const spine = controller.get('south-spine');
+  assert.ok(hip && bank && spine);
+
+  for (const transition of [hip, bank, spine]) {
+    const sample = transition.lipPath[0].clone();
+    const near = controller.nearestLip(sample, 0.5);
+    assert.notEqual(near?.transition?.id, transition.id,
+      `${transition.id} must not be exposed as a vert lip`);
+
+    const normal = new THREE.Vector3(0, 0.6, 0.8).normalize();
+    const velocity = new THREE.Vector3(0, 4, -6);
+    const candidate = controller.launchAt(sample, normal, velocity);
+    assert.notEqual(candidate?.transitionId, transition.id,
+      `${transition.id} must not become transitionAir`);
+  }
 });
