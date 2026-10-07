@@ -14,7 +14,7 @@ import {
   OLLIE_COMMAND,
   interpretOllieRelease,
 } from '../input/InputInterpreter.js';
-import { TransitionController } from './transitions/TransitionController.js';
+import { CoreSkateController } from './core/CoreSkateController.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
@@ -26,11 +26,15 @@ const clamp = THREE.MathUtils.clamp;
 export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
   constructor(options = {}) {
     super(options);
-    // Phase 1 authority handoff: semantic rail selection and lip detection now
-    // belong to TransitionController. It delegates only the validated air
-    // trajectory execution to TransitionGuide internally.
-    this.transitionController = new TransitionController({ rails: options.rails || [] });
-    this.transitions = this.transitionController;
+    // Phase 1 composition root: canonical state, transition authority and body
+    // collision are shared services instead of separate ownership hidden at
+    // different prototype levels.
+    this.coreController = new CoreSkateController({
+      rails: options.rails || [],
+      surface: this.surface,
+      playerState: this.playerState,
+    });
+    this.coreController.bindLegacyRuntime(this);
   }
 
   reset(position = this.spawn, heading = 0) {
