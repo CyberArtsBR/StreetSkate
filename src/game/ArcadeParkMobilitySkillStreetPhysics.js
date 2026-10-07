@@ -2,11 +2,9 @@ import * as THREE from 'three';
 import {
   SafeCopingExitSkillStreetPhysics,
 } from './SafeCopingExitSkillStreetPhysics.js';
-import { createBalanceState } from './SkateSystems.js';
 import {
   GRIND_CAPTURE_POLICY,
   grindCaptureEligibility,
-  resolveMagneticGrindCapture,
 } from './core/GrindCaptureController.js';
 import {
   GROUND_MOTOR,
@@ -92,62 +90,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
     this.rampReentrySteerLock = 0;
-  }
-
-  magneticRailCapture(trick) {
-    const context = {
-      position: this.position,
-      forward: this.forward,
-      velocity: this.velocity,
-      railNetwork: this.railNetwork,
-      trick,
-    };
-    return this.coreController
-      ? this.coreController.resolveGrindCapture(context)
-      : resolveMagneticGrindCapture(context);
-  }
-
-  enterGrind(trick) {
-    if (super.enterGrind(trick)) return true;
-
-    const capture = this.magneticRailCapture(trick);
-    if (!capture) return false;
-    const sample = this.railNetwork.sample(capture.rail, capture.s, {
-      clearance: capture.profile.clearance,
-    });
-    if (!sample) return false;
-
-    this.grind = {
-      ...capture,
-      trick: { ...trick, name: capture.profile.name },
-      profile: capture.profile,
-      speed: capture.speed,
-      time: 0,
-      balance: 0,
-      balanceState: createBalanceState(1.18),
-      instability: 0,
-      blendElapsed: 0,
-      blendDuration: ARCADE_PARK_MOBILITY.railBlendTime,
-      blendPosition: this.position.clone(),
-      incomingVelocity: this.velocity.clone(),
-      entryHeading: this.heading,
-      contactClearance: capture.profile.clearance,
-      contactClearanceTarget: capture.profile.clearance,
-      magneticEntry: true,
-    };
-    this.grindBalanceState = this.grind.balanceState;
-    this.grindBalance = 0;
-    this.grounded = false;
-    this.manual = null;
-    this.flatland = null;
-    this.transitionAir = null;
-    this.wallRide = null;
-    this.airHeading = this.heading;
-    this.recordTrick(this.grind.trick.name, this.grind.trick.points || 100);
-    this.stableGroundTime = 0;
-    this.ensureBoardContact().clearContacts();
-    this.lastWheelSupport = null;
-    return true;
   }
 
 }
