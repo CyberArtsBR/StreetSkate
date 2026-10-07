@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
-import { resolveDeckAwareTransferLaunch } from './core/TransferLaunchResult.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -146,40 +145,6 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
  * canonical TransferFlightResult executor for generic, deck-target and abort-return.
  */
 export class DeckAwareRampExitSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
-  takeoff(impulse = 0, transition = null) {
-    super.takeoff(impulse, transition);
-    const air = this.transitionAir;
-    if (!air?.transferring || !air.frame || !air.exitControl) return;
-
-    // Geometry evidence stays local: this is the actual collision-deck scan. The
-    // canonical result model owns only the decision/application after that scan.
-    const deck = scanDeckTransferTarget(this.surface, air.frame);
-    const plan = {
-      active: true,
-      mode: air.mode,
-      transferring: air.transferring,
-      exitControl: { ...air.exitControl },
-      launchVertical: air.launchVertical,
-      launchHorizontal: air.launchHorizontal?.clone?.() || new THREE.Vector3(),
-      velocity: this.velocity.clone(),
-    };
-    const result = resolveDeckAwareTransferLaunch({
-      plan,
-      frame: air.frame,
-      deck,
-      lateralVelocity: air.lateralVelocity,
-      gravity: PHYSICS.gravity,
-      config: DECK_AWARE_EXIT,
-    });
-    if (!result?.active) return;
-
-    air.mode = result.mode;
-    air.exitControl = { ...result.exitControl };
-    air.launchVertical = result.launchVertical;
-    if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
-    this.velocity.copy(result.velocity);
-  }
-
   land(support) {
     const air = this.transitionAir;
     const control = air?.exitControl;
