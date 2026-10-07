@@ -122,6 +122,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.travelDirection.copy(horizontalDirection(this.forward));
     this.autoPushActive = false;
     this.rampExitIntentTime = 0;
+    this.rampReentrySteerLock = 0;
     this.wallImpactTime = 0;
     this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
     this.wallImpactCooldown = 0;
