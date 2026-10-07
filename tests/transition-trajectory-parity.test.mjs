@@ -2,52 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
-import { TransitionGuide } from '../src/game/TransitionGuide.js';
 import { TransitionController } from '../src/game/transitions/TransitionController.js';
+import { VERT_RETURN } from '../src/game/transitions/VertReturnFlight.js';
+import { appendExtensionHalfpipeRails } from '../src/park/ExpandedPark.js';
 
 const manifest = JSON.parse(fs.readFileSync(
   new URL('../public/assets/park/park-manifest.json', import.meta.url),
   'utf8',
 ));
+appendExtensionHalfpipeRails(manifest);
 
 const DT = 1 / 120;
 const GRAVITY = 20;
-const EPS = 1e-10;
-
-function assertNumber(actual, expected, label) {
-  assert.ok(Math.abs(actual - expected) < EPS, `${label}: ${actual} vs ${expected}`);
-}
-
-function assertVector(actual, expected, label) {
-  assert.ok(actual && expected, `${label} missing vector`);
-  assert.ok(actual.distanceTo(expected) < EPS,
-    `${label}: ${actual.toArray()} vs ${expected.toArray()}`);
-}
-
-function assertAirTrajectory(actual, expected, label) {
-  assert.equal(actual.mode, expected.mode, `${label}.mode`);
-  assertNumber(actual.launchVertical, expected.launchVertical, `${label}.launchVertical`);
-  assertVector(actual.launchHorizontal, expected.launchHorizontal, `${label}.launchHorizontal`);
-  assertNumber(actual.lateralVelocity, expected.lateralVelocity, `${label}.lateralVelocity`);
-  assert.equal(actual.apexPassed, expected.apexPassed, `${label}.apexPassed`);
-  assert.equal(actual.exitRequested, expected.exitRequested, `${label}.exitRequested`);
-  assert.equal(actual.transferring, expected.transferring, `${label}.transferring`);
-  assertNumber(actual.age, expected.age, `${label}.age`);
-  assert.equal(actual.copingName, expected.copingName, `${label}.copingName`);
-  assertNumber(actual.returnError, expected.returnError, `${label}.returnError`);
-
-  assertVector(actual.frame.lipPoint, expected.frame.lipPoint, `${label}.frame.lipPoint`);
-  assertVector(actual.frame.copingTangent, expected.frame.copingTangent, `${label}.frame.copingTangent`);
-  assertVector(actual.frame.rampInward, expected.frame.rampInward, `${label}.frame.rampInward`);
-  assertVector(actual.frame.deckOutward, expected.frame.deckOutward, `${label}.frame.deckOutward`);
-  assertVector(actual.frame.surfaceNormal, expected.frame.surfaceNormal, `${label}.frame.surfaceNormal`);
-  assertVector(actual.frame.boardForward, expected.frame.boardForward, `${label}.frame.boardForward`);
-  assertVector(actual.frame.incomingTangentVelocity, expected.frame.incomingTangentVelocity,
-    `${label}.frame.incomingTangentVelocity`);
-  assertVector(actual.frame.returnTarget, expected.frame.returnTarget, `${label}.frame.returnTarget`);
-  assertNumber(actual.frame.incomingSpeed, expected.frame.incomingSpeed, `${label}.frame.incomingSpeed`);
-  assertNumber(actual.frame.launchBoost, expected.frame.launchBoost, `${label}.frame.launchBoost`);
-}
+const EPS = 1e-9;
 
 function sampleForTransition(transition) {
   const a = transition.lipPath[0];
@@ -67,109 +34,130 @@ function sampleForTransition(transition) {
   return { position, normal, velocity };
 }
 
-function beginPair(controller, legacy, transition, { launchBoost = 3.2 } = {}) {
+function beginCanonical(controller, transition, launchBoost = 3.2) {
   const sample = sampleForTransition(transition);
   const edge = controller.launchAt(sample.position, sample.normal, sample.velocity);
   assert.ok(edge, `${transition.id} missing canonical launch candidate`);
 
-  const canonicalVelocity = sample.velocity.clone();
-  const legacyVelocity = sample.velocity.clone();
+  const velocity = sample.velocity.clone();
   const boardForward = sample.velocity.clone().setY(0).normalize();
-  const canonicalAir = controller.begin(sample.position, canonicalVelocity, edge, {
-    boardForward,
-    launchBoost,
-  });
-  const legacyAir = legacy.begin(sample.position, legacyVelocity, edge, {
+  const air = controller.begin(sample.position, velocity, edge, {
     boardForward,
     launchBoost,
   });
   return {
     edge,
-    canonicalAir,
-    legacyAir,
-    canonicalVelocity,
-    legacyVelocity,
-    canonicalPosition: sample.position.clone(),
-    legacyPosition: sample.position.clone(),
+    air,
+    velocity,
+    position: sample.position.clone(),
   };
 }
 
-test('begin trajectory matches legacy guide on every authored production transition', () => {
+test('canonical begin uses one local-plane return contract on every authored vert transition', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const vertTransitions = controller.transitions.filter(transition => transition.supportsVert);
-  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
-  const legacy = new TransitionGuide(vertRails);
+  const transitions = controller.transitions.filter(transition => transition.supportsVert);
+  assert.equal(transitions.length, 9);
 
-  for (const transition of vertTransitions) {
-    const pair = beginPair(controller, legacy, transition);
-    assertVector(pair.canonicalVelocity, pair.legacyVelocity, `${transition.id}.velocity`);
-    assertAirTrajectory(pair.canonicalAir, pair.legacyAir, transition.id);
-    assert.equal(pair.canonicalAir.transitionId, transition.id);
-    assert.equal(pair.canonicalAir.transitionType, transition.type);
+  for (const transition of transitions) {
+    const { edge, air, velocity } = beginCanonical(controller, transition);
+    assert.equal(air.transitionId, transition.id);
+    assert.equal(air.transitionType, transition.type);
+    assert.equal(air.mode, 'return');
+    assert.equal(air.transferring, false);
+    assert.equal(air.exitRequested, false);
+
+    const radialLaunch = air.launchHorizontal.dot(edge.rampInward);
+    const lateralLaunch = air.launchHorizontal.dot(edge.copingTangent);
+    assert.ok(Math.abs(radialLaunch) < EPS,
+      `${transition.id} invented radial takeoff drift: ${radialLaunch}`);
+    assert.ok(Math.abs(lateralLaunch) <= 1.1 + EPS,
+      `${transition.id} lateral takeoff exceeded bound: ${lateralLaunch}`);
+    assert.ok(Math.abs(velocity.y - air.launchVertical) < EPS);
+
+    const returnOffset = air.frame.returnTarget.clone().sub(edge.lipPoint);
+    assert.ok(Math.abs(returnOffset.dot(edge.rampInward) - 0.30) < EPS,
+      `${transition.id} return target is not 0.30m ramp-side`);
   }
 });
 
-test('return-air advance stays frame-identical to legacy through apex and descent', () => {
+test('canonical return flight stays finite, local-plane bounded, and ignores held forward', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
-  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
-  const pair = beginPair(controller, legacy, transition);
+  const state = beginCanonical(controller, transition);
 
-  for (let frame = 0; frame < 96; frame++) {
-    pair.canonicalVelocity.y -= GRAVITY * DT;
-    pair.legacyVelocity.y -= GRAVITY * DT;
-    controller.advance(pair.canonicalAir, pair.canonicalPosition, pair.canonicalVelocity, {}, DT);
-    legacy.advance(pair.legacyAir, pair.legacyPosition, pair.legacyVelocity, {}, DT);
-    pair.canonicalPosition.addScaledVector(pair.canonicalVelocity, DT);
-    pair.legacyPosition.addScaledVector(pair.legacyVelocity, DT);
+  for (let frame = 0; frame < 120; frame++) {
+    state.velocity.y -= GRAVITY * DT;
+    const verticalBefore = state.velocity.y;
+    controller.advance(state.air, state.position, state.velocity, { drive: 1 }, DT);
 
-    assertVector(pair.canonicalVelocity, pair.legacyVelocity, `return.${frame}.velocity`);
-    assertVector(pair.canonicalPosition, pair.legacyPosition, `return.${frame}.position`);
-    assertAirTrajectory(pair.canonicalAir, pair.legacyAir, `return.${frame}.air`);
+    assert.ok(Number.isFinite(state.velocity.x));
+    assert.ok(Number.isFinite(state.velocity.y));
+    assert.ok(Number.isFinite(state.velocity.z));
+    assert.ok(Math.abs(state.velocity.y - verticalBefore) < EPS,
+      'vert return guidance must preserve vertical velocity');
+
+    if (!state.air.returnGuideLost) {
+      const radial = state.velocity.dot(state.air.frame.rampInward);
+      const lateral = state.velocity.dot(state.air.frame.copingTangent);
+      assert.ok(Math.abs(radial) <= VERT_RETURN.maxRadialSpeed + EPS);
+      assert.ok(Math.abs(lateral) <= VERT_RETURN.maxLateralSpeed + EPS);
+    }
+    state.position.addScaledVector(state.velocity, DT);
   }
 
-  assert.equal(pair.canonicalAir.apexPassed, true);
-  assert.equal(pair.canonicalAir.transferring, false);
+  assert.equal(state.air.apexPassed, true);
+  assert.equal(state.air.exitRequested, false,
+    'holding forward must not request a transfer');
+  assert.equal(state.air.transferring, false);
+  assert.equal(state.air.mode, 'return');
 });
 
-test('contextual Up transfer stays frame-identical to legacy', () => {
+test('explicit vert-exit can arm before apex but transfer begins only after apex', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
-  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
-  const pair = beginPair(controller, legacy, transition, { launchBoost: 2.4 });
+  const state = beginCanonical(controller, transition, 2.4);
 
-  for (let frame = 0; frame < 48; frame++) {
-    const input = frame >= 10 ? { drive: 1 } : {};
-    pair.canonicalVelocity.y -= GRAVITY * DT;
-    pair.legacyVelocity.y -= GRAVITY * DT;
-    controller.advance(pair.canonicalAir, pair.canonicalPosition, pair.canonicalVelocity, input, DT);
-    legacy.advance(pair.legacyAir, pair.legacyPosition, pair.legacyVelocity, input, DT);
-    pair.canonicalPosition.addScaledVector(pair.canonicalVelocity, DT);
-    pair.legacyPosition.addScaledVector(pair.legacyVelocity, DT);
+  assert.ok(state.velocity.y > 0);
+  controller.advance(state.air, state.position, state.velocity, { vertExit: true }, DT);
+  assert.equal(state.air.exitRequested, true);
+  assert.equal(state.air.transferring, false);
 
-    assertVector(pair.canonicalVelocity, pair.legacyVelocity, `transfer.${frame}.velocity`);
-    assertVector(pair.canonicalPosition, pair.legacyPosition, `transfer.${frame}.position`);
-    assertAirTrajectory(pair.canonicalAir, pair.legacyAir, `transfer.${frame}.air`);
-  }
-
-  assert.equal(pair.canonicalAir.transferring, true);
-  assert.equal(pair.canonicalAir.mode, 'transfer');
+  state.velocity.y = -0.1;
+  controller.advance(state.air, state.position, state.velocity, {}, DT);
+  assert.equal(state.air.apexPassed, true);
+  assert.equal(state.air.transferring, true);
+  assert.equal(state.air.mode, 'transfer');
 });
 
-test('presentation normal matches legacy trajectory presentation exactly', () => {
+test('fresh Up tap after apex requests transfer while held drive alone does not', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
-  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
-  const pair = beginPair(controller, legacy, transition);
+  const state = beginCanonical(controller, transition, 2.4);
 
-  for (const verticalSpeed of [pair.canonicalAir.launchVertical, 6, 2, 0, -2, -6]) {
-    assertVector(
-      controller.presentationNormal(pair.canonicalAir, verticalSpeed),
-      legacy.presentationNormal(pair.legacyAir, verticalSpeed),
-      `presentation.${verticalSpeed}`,
-    );
+  state.velocity.y = -0.1;
+  controller.advance(state.air, state.position, state.velocity, { drive: 1 }, DT);
+  assert.equal(state.air.apexPassed, true);
+  assert.equal(state.air.exitRequested, false);
+  assert.equal(state.air.transferring, false);
+
+  controller.advance(state.air, state.position, state.velocity, {
+    directionTaps: ['up'],
+  }, DT);
+  assert.equal(state.air.exitRequested, true);
+  assert.equal(state.air.transferring, true);
+  assert.equal(state.air.mode, 'transfer');
+});
+
+test('presentation normal stays finite and converges toward world up near the apex', () => {
+  const controller = new TransitionController({ rails: manifest.rails });
+  const transition = controller.get('eastern-quarter');
+  const { air } = beginCanonical(controller, transition);
+
+  const fast = controller.presentationNormal(air, air.launchVertical);
+  const apex = controller.presentationNormal(air, 0);
+  for (const normal of [fast, apex]) {
+    assert.ok(Number.isFinite(normal.x) && Number.isFinite(normal.y) && Number.isFinite(normal.z));
+    assert.ok(Math.abs(normal.length() - 1) < 1e-9);
   }
+  assert.ok(apex.y > fast.y, 'presentation normal should level toward world up near apex');
 });
