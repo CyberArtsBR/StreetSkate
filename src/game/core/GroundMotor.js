@@ -127,7 +127,7 @@ export function resolveGroundPropulsion({
       config.autoPushTarget,
       Math.abs(nextSpeed) + pushAccel * step,
     );
-    nextSpeed = travelSign * nextMagnitude;
+    nextSpeed = directionSign * nextMagnitude;
   }
 
   const resistance = passiveRollingResistance(nextSpeed, config)
