@@ -71,11 +71,10 @@ export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillS
     this.airTakeoffFromRamp = false;
   }
 
-  takeoff(impulse = 0, transition = null) {
-    // Energy composition is owned by UnifiedRampFeel above this layer. Here the
-    // shared context is consumed only for pre-launch orientation/ramp semantics;
-    // the received impulse must pass through unchanged.
-    const context = captureTakeoffContext({
+  takeoff(impulse = 0, transition = null, canonicalContext = null) {
+    // Final runtime passes one canonical context from UnifiedRampFeel. Direct
+    // subsystem instances retain a compatibility fallback that computes it here.
+    const context = canonicalContext || captureTakeoffContext({
       grounded: this.grounded,
       normal: this.normal,
       velocity: this.velocity,
