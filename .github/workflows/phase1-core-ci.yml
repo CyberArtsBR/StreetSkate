@@ -38,3 +38,65 @@ jobs:
 
       - name: Production bundle
         run: npx vite build
+
+  browser-smoke:
+    needs: validate-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Install browser harness
+        run: |
+          npm install --no-save @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Build browser target
+        run: npx vite build
+
+      - name: Start local production preview
+        run: |
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/streetskate-preview.log 2>&1 &
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat /tmp/streetskate-preview.log
+            exit 1
+          fi
+
+      - name: Browser gameplay smoke
+        env:
+          STREETSKATE_URL: http://127.0.0.1:4173
+          STREETSKATE_SCREENSHOT: artifacts/phase1-browser-smoke.png
+        run: |
+          mkdir -p artifacts
+          node tools/browser-smoke.mjs
+
+      - name: Preview log
+        if: always()
+        run: cat /tmp/streetskate-preview.log || true
+
+      - name: Upload browser smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-browser-smoke
+          path: artifacts/
+          if-no-files-found: ignore
