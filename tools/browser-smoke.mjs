@@ -176,7 +176,9 @@ try {
   assert.ok(steerEnd.cameraPosition.every(Number.isFinite), 'camera position became non-finite during steering');
   assert.ok(steerEnd.cameraQuaternion.every(Number.isFinite), 'camera quaternion became non-finite during steering');
 
-  // Build speed again if needed, then verify the explicit brake removes energy.
+  // Build speed again if needed, then verify the official S/down brake path
+  // removes energy in the real browser input loop. Modifier-key semantics vary
+  // across headless browser drivers, so this smoke uses the non-modifier brake.
   await page.waitForTimeout(700);
   const brakeStart = await page.evaluate(() => ({
     speed: window.streetSkate.skater.velocity.length(),
@@ -185,9 +187,9 @@ try {
   assert.equal(brakeStart.grounded, true, 'skater was not grounded before brake smoke');
   assert.ok(brakeStart.speed > 1.0, `insufficient speed before brake smoke: ${brakeStart.speed}`);
 
-  await page.keyboard.down('Shift');
+  await page.keyboard.down('KeyS');
   await page.waitForTimeout(420);
-  await page.keyboard.up('Shift');
+  await page.keyboard.up('KeyS');
   const brakeEnd = await page.evaluate(() => ({
     speed: window.streetSkate.skater.velocity.length(),
     grounded: window.streetSkate.skater.grounded,
