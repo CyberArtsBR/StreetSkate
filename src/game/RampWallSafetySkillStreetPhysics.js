@@ -5,7 +5,6 @@ import {
   evaluateTransitionLanding,
   transitionLandingSupportMode,
 } from './core/LandingResult.js';
-import { resolveControlledTransferLaunch } from './core/TransferLaunchResult.js';
 import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
@@ -93,26 +92,6 @@ export function isControlledDeckExitTouchdown(support, transitionAir) {
  * collision can correct position/velocity but never owns horizontal yaw.
  */
 export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhysics {
-  takeoff(impulse = 0, transition = null) {
-    super.takeoff(impulse, transition);
-    const air = this.transitionAir;
-    if (!air?.transferring || !air.frame) return;
-
-    const result = resolveControlledTransferLaunch({
-      frame: air.frame,
-      incomingSpeed: air.frame.incomingSpeed,
-      launchVertical: air.launchVertical,
-      lateralVelocity: air.lateralVelocity,
-      config: RAMP_WALL_SAFETY,
-    });
-    if (!result.active) return;
-
-    air.exitControl = { ...result.exitControl };
-    air.launchVertical = result.launchVertical;
-    air.launchHorizontal = result.launchHorizontal.clone();
-    this.velocity.copy(result.velocity);
-  }
-
   advanceControlledTransfer(air, dt) {
     const result = resolveTransferFlightStep({
       air,
