@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
+import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 import { resolveDeckAwareTransferLaunch } from './core/TransferLaunchResult.js';
@@ -145,7 +145,7 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
  * Transfer flight stepping is inherited from RampWallSafety, which now owns one
  * canonical TransferFlightResult executor for generic, deck-target and abort-return.
  */
-export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySkillStreetPhysics {
+export class DeckAwareRampExitSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
   takeoff(impulse = 0, transition = null) {
     super.takeoff(impulse, transition);
     const air = this.transitionAir;
