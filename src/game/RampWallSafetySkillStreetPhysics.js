@@ -1,10 +1,5 @@
 import * as THREE from 'three';
 import { MomentumRollSkillStreetPhysics } from './MomentumRollSkillStreetPhysics.js';
-import { applyAcceptedLanding } from './core/LandingExecutor.js';
-import {
-  evaluateTransitionLanding,
-  transitionLandingSupportMode,
-} from './core/LandingResult.js';
 import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
 import { resolveAirMotion } from './core/AirController.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
@@ -157,33 +152,4 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     if (support) this.land(support);
   }
 
-  land(support) {
-    const detectedSupportMode = transitionLandingSupportMode(support);
-    const deckExitTouchdown = detectedSupportMode === 'reject'
-      && isControlledDeckExitTouchdown(support, this.transitionAir);
-    const landing = evaluateTransitionLanding({
-      support,
-      position: this.position,
-      velocity: this.velocity,
-      forward: this.forward,
-      airTime: this.airTime,
-      flipProgress: this.flipState?.progress ?? null,
-      maxLandingCorrection: PHYSICS.maxLandingCorrection,
-      supportModeOverride: deckExitTouchdown ? 'deckExit' : null,
-    });
-
-    // Preserve legacy side-effect order: catch first, then a possible alignment
-    // bail. All acceptance thresholds now come from canonical LandingResult.
-    if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
-
-    if (!landing.accepted) {
-      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
-      return false;
-    }
-
-    return applyAcceptedLanding(this, support, landing, {
-      partialGrace: 0.16,
-      slopedGrace: 0.07,
-    });
-  }
 }
