@@ -80,9 +80,13 @@ test('final stateful runtime bypasses StableRampReturn and BaseStateful compatib
   const { StableRampReturnSkillStreetPhysics } = await import('../src/game/StableRampReturnSkillStreetPhysics.js');
   const { StatefulSkillStreetPhysics: BaseStateful } = await import('../src/game/BaseStatefulSkillStreetPhysics.js');
 
-  assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), SafeCopingExitSkillStreetPhysics.prototype);
-  assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), StableRampReturnSkillStreetPhysics.prototype);
-  assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), BaseStateful.prototype);
+  const parent = Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype);
+  assert.notEqual(parent, StableRampReturnSkillStreetPhysics.prototype);
+  assert.notEqual(parent, BaseStateful.prototype);
+  assert.equal(Object.hasOwn(StatefulSkillStreetPhysics.prototype, 'takeoff'), true);
+  assert.equal(Object.hasOwn(StatefulSkillStreetPhysics.prototype, 'land'), true);
+  assert.equal(Object.hasOwn(SafeCopingExitSkillStreetPhysics.prototype, 'land'), true,
+    'transition acceptance must remain available below the top composition seam');
 });
 
 
@@ -90,8 +94,12 @@ test('final stateful runtime bypasses UnifiedRampFeel compatibility wrapper', as
   const { StatefulSkillStreetPhysics } = await import('../src/game/StatefulSkillStreetPhysics.js');
   const { UnifiedRampFeelSkillStreetPhysics } = await import('../src/game/UnifiedRampFeelSkillStreetPhysics.js');
 
-  assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), SafeCopingExitSkillStreetPhysics.prototype);
-  assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), UnifiedRampFeelSkillStreetPhysics.prototype);
+  assert.notEqual(
+    Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype),
+    UnifiedRampFeelSkillStreetPhysics.prototype,
+  );
+  assert.equal(Object.hasOwn(StatefulSkillStreetPhysics.prototype, 'rememberRampClimb'), true,
+    'top composition seam owns ramp-energy sampling');
 });
 
 
