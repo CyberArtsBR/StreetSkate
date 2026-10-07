@@ -352,80 +352,77 @@ try {
   assert.ok(transitionSetup.startVelocity[1] > 0.5,
     `transition setup is not climbing: ${JSON.stringify(transitionSetup)}`);
 
-  const transitionFlight = await page.evaluate(async ({ expectedId, startHeading, lipHeight }) => {
-    const skater = window.streetSkate.skater;
-    const tau = Math.PI * 2;
-    const yawDelta = heading => {
-      let d = (Number(heading) || 0) - startHeading;
-      d = ((d + Math.PI) % tau + tau) % tau - Math.PI;
-      return d;
-    };
+  let transitionObserved = false;
+  let transitionObservedId = null;
+  let transitionMaxY = transitionSetup.startY;
+  let transitionMaxHeadingDelta = 0;
+  let transitionFlight = null;
 
-    let observed = false;
-    let observedId = null;
-    let maxY = skater.position.y;
-    let maxHeadingDelta = 0;
+  // Keep timing on the Playwright side. Page-side timers can be heavily
+  // throttled in headless/background Chromium and turn a few seconds into minutes.
+  for (let frame = 0; frame < 90; frame++) {
+    await page.waitForTimeout(50);
+    const sample = await page.evaluate(() => {
+      const skater = window.streetSkate.skater;
+      return {
+        y: skater.position.y,
+        heading: skater.heading,
+        grounded: skater.grounded,
+        transitionActive: Boolean(skater.transitionAir),
+        transitionId: skater.transitionAir?.transitionId ?? null,
+        fakie: Boolean(skater.fakie),
+        velocity: skater.velocity.toArray(),
+        yawViolations: skater.landingYawInvariantViolations || 0,
+        invariantCodes: (skater.stateInvariantViolations || [])
+          .map(entry => entry?.code)
+          .filter(Boolean),
+      };
+    });
 
-    for (let frame = 0; frame < 300; frame++) {
-      await new Promise(resolve => setTimeout(resolve, 16));
-      maxY = Math.max(maxY, skater.position.y);
-      maxHeadingDelta = Math.max(maxHeadingDelta, Math.abs(yawDelta(skater.heading)));
-
-      if (skater.transitionAir) {
-        observed = true;
-        observedId ||= skater.transitionAir.transitionId ?? null;
-      }
-
-      const invariantCodes = (skater.stateInvariantViolations || [])
-        .map(entry => entry?.code)
-        .filter(Boolean);
-      if ((skater.landingYawInvariantViolations || 0) > 0 || invariantCodes.length) {
-        return {
-          ok: false,
-          reason: 'runtime invariant violation',
-          observed,
-          observedId,
-          maxY,
-          maxHeadingDelta,
-          yawViolations: skater.landingYawInvariantViolations || 0,
-          invariantCodes,
-        };
-      }
-
-      if (observed && skater.grounded && !skater.transitionAir) {
-        return {
-          ok: true,
-          observed,
-          observedId,
-          landed: true,
-          maxY,
-          maxHeadingDelta,
-          finalHeading: skater.heading,
-          fakie: Boolean(skater.fakie),
-          velocity: skater.velocity.toArray(),
-        };
-      }
+    transitionMaxY = Math.max(transitionMaxY, sample.y);
+    transitionMaxHeadingDelta = Math.max(
+      transitionMaxHeadingDelta,
+      Math.abs(angleDelta(transitionSetup.heading, sample.heading)),
+    );
+    if (sample.transitionActive) {
+      transitionObserved = true;
+      transitionObservedId ||= sample.transitionId;
     }
 
-    return {
-      ok: false,
-      reason: 'transition did not reconnect before timeout',
-      observed,
-      observedId,
-      landed: false,
-      maxY,
-      maxHeadingDelta,
-      finalHeading: skater.heading,
-      grounded: skater.grounded,
-      transitionActive: Boolean(skater.transitionAir),
-      expectedId,
-      lipHeight,
-    };
-  }, {
-    expectedId: transitionSetup.transitionId,
-    startHeading: transitionSetup.heading,
-    lipHeight: transitionSetup.lipHeight,
-  });
+    assert.ok(sample.velocity.every(Number.isFinite),
+      'non-finite velocity during authored transition smoke');
+    assert.ok(Number.isFinite(sample.heading),
+      'non-finite heading during authored transition smoke');
+    assert.equal(sample.yawViolations, 0,
+      'authored transition smoke triggered a contact-driven yaw violation');
+    assert.deepEqual(sample.invariantCodes, [],
+      'authored transition smoke diverged canonical state');
+
+    if (transitionObserved && sample.grounded && !sample.transitionActive) {
+      transitionFlight = {
+        ok: true,
+        observed: true,
+        observedId: transitionObservedId,
+        landed: true,
+        maxY: transitionMaxY,
+        maxHeadingDelta: transitionMaxHeadingDelta,
+        finalHeading: sample.heading,
+        fakie: sample.fakie,
+        velocity: sample.velocity,
+      };
+      break;
+    }
+  }
+
+  transitionFlight ||= {
+    ok: false,
+    reason: 'transition did not reconnect before timeout',
+    observed: transitionObserved,
+    observedId: transitionObservedId,
+    landed: false,
+    maxY: transitionMaxY,
+    maxHeadingDelta: transitionMaxHeadingDelta,
+  };
 
   assert.equal(transitionFlight.ok, true,
     `real eastern-quarter flight failed: ${JSON.stringify(transitionFlight)}`);
