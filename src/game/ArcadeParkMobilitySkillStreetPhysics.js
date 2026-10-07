@@ -116,19 +116,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     this.rampReentrySteerLock = 0;
   }
 
-  land(support) {
-    if (this.deferLandingPostHooks) return super.land(support);
-
-    const wasTransitionAir = Boolean(this.transitionAir);
-    const slopedTouchdown = Math.abs(support?.normal?.y ?? 1)
-      < ARCADE_PARK_MOBILITY.rampReentrySlopeY;
-    const landed = super.land(support);
-    if (landed && (wasTransitionAir || slopedTouchdown)) {
-      this.rampReentrySteerLock = ARCADE_PARK_MOBILITY.rampReentrySteerLock;
-    }
-    return landed;
-  }
-
   magneticRailCapture(trick) {
     const profile = grindProfile(trick?.name);
     const flatForward = horizontal(this.forward, this.velocity);
