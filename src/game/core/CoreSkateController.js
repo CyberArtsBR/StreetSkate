@@ -7,6 +7,7 @@ import { rampLaunchBonus, updateRampLaunchMemory } from './LaunchEnergyModel.js'
 import { captureTakeoffContext } from './TakeoffContext.js';
 import {
   groundSteeringDelta,
+  resolveGroundMotion,
   resolveGroundPropulsion,
   signedGroundSpeed,
 } from './GroundMotor.js';
@@ -51,6 +52,10 @@ export class CoreSkateController {
 
   resolveGroundSteering(context) {
     return groundSteeringDelta(context);
+  }
+
+  resolveGroundMotion(context) {
+    return resolveGroundMotion(context);
   }
 
   resolveGroundPropulsion(context) {
