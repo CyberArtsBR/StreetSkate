@@ -47,10 +47,13 @@ function sampleForTransition(transition) {
 
 test('canonical approach/launch detection matches legacy geometry on all authored park transitions', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
-  assert.equal(controller.transitions.length, 5);
+  const vertTransitions = controller.transitions.filter(transition => transition.supportsVert);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
+  assert.equal(controller.transitions.length, 8);
+  assert.equal(vertTransitions.length, 5);
 
-  for (const transition of controller.transitions) {
+  for (const transition of vertTransitions) {
     const { position, normal, velocity } = sampleForTransition(transition);
     const canonicalApproach = controller.approachAt(position, normal, velocity);
     const legacyApproach = legacy.approachAt(position, normal, velocity);
@@ -67,7 +70,8 @@ test('canonical approach/launch detection matches legacy geometry on all authore
 
 test('canonical detection preserves legacy rejection rules', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
   const sample = sampleForTransition(transition);
 
