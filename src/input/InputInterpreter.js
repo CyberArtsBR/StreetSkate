@@ -8,6 +8,13 @@ export const OLLIE_COMMAND = Object.freeze({
   AIR_RELEASE: 'AIR_RELEASE',
 });
 
+/** Deliberate current-frame air rotation input; no smoothed runtime steer state. */
+export function interpretAirTurn(input = {}) {
+  const steer = Number(input.steer) || 0;
+  const spin = Number(input.spin) || 0;
+  return Math.max(-1, Math.min(1, steer + spin));
+}
+
 /** Held forward is approach/trick input. Only a new post-apex tap requests exit. */
 export function wantsVertTransfer(input = {}, { apexPassed = false } = {}) {
   return Boolean(input.vertExit || (apexPassed && input.directionTaps?.includes?.('up')));
