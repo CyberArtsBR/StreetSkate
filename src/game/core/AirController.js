@@ -1,6 +1,6 @@
 export const AIR_CONTROL = Object.freeze({
   turnRate: 3.8,
-  maxTurnInput: 1,
+  maxTurnInput: 1.65,
 });
 
 /**
