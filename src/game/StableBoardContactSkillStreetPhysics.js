@@ -93,6 +93,10 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
   }
 
   ensureCollisionResolver() {
+    if (this.coreController) {
+      this.collisionResolver = this.coreController.ensureCollision(this.surface);
+      return this.collisionResolver;
+    }
     if (!this.collisionResolver || this.collisionResolver.surface !== this.surface) {
       this.collisionResolver = new CollisionResolver(this.surface);
     }
