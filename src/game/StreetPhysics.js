@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ParkCollision } from './ParkCollision.js';
-import { TransitionGuide } from './TransitionGuide.js';
+import { TransitionController } from './transitions/TransitionController.js';
 import { RailNetwork } from './RailNetwork.js';
 import { SkateTricks } from './SkateTricks.js';
 import { directionKey, grindFor } from './TrickCatalog.js';
@@ -37,7 +37,7 @@ export class StreetPhysics {
   constructor({ collision, spawn, rails = [], playableRegions = null }) {
     this.playableRegions = playableRegions;
     this.surface = new ParkCollision(collision);
-    this.transitions = new TransitionGuide(rails);
+    this.transitions = new TransitionController({ rails });
     this.railNetwork = new RailNetwork(rails);
     this.tricks = new SkateTricks();
     this.spawn = new THREE.Vector3(...spawn);
