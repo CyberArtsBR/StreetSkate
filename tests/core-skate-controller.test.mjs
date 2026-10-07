@@ -96,6 +96,24 @@ test('core composition root owns semantic ollie command interpretation', () => {
 });
 
 
+test('core travel transaction ignores stale legacy rollingSign as an input', () => {
+  const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
+  core.state.travelSign = 1;
+  const runtime = {
+    velocity: new THREE.Vector3(0, 0, -0.01),
+    heading: 0,
+    stance: 1,
+    travelDirection: new THREE.Vector3(0, 0, -1),
+    rollingSign: -1,
+    fakie: true,
+  };
+  const resolved = core.syncTravel(runtime, { preserveIfSlow: true });
+  assert.equal(resolved.rollingSign, 1);
+  assert.equal(core.state.travelSign, 1);
+  assert.equal(runtime.rollingSign, 1);
+  assert.equal(runtime.fakie, false);
+});
+
 test('core travel transaction writes canonical state before legacy compatibility outputs', () => {
   const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
   const runtime = {
