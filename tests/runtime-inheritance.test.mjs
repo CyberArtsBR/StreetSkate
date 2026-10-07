@@ -137,3 +137,17 @@ test('transition exit intent is prepared only at the top takeoff seam', async ()
     'MomentumRoll must not retag or reinterpret takeoff candidates',
   );
 });
+
+
+test('airborne fixed-step execution has one runtime owner', () => {
+  assert.equal(
+    Object.hasOwn(RampWallSafetySkillStreetPhysics.prototype, 'stepAir'),
+    true,
+    'RampWallSafety must own canonical airborne execution',
+  );
+  assert.equal(
+    Object.hasOwn(StableRampReturnSkillStreetPhysics.prototype, 'stepAir'),
+    false,
+    'StableRampReturn must not wrap/reinterpret airborne input each frame',
+  );
+});
