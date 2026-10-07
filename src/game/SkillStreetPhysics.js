@@ -154,12 +154,20 @@ export class SkillStreetPhysics extends StreetPhysics {
       if (support) {
         const sign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
         const speed = this.velocity.length() * sign;
-        if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
-          this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
-        }
+        const clippedTravel = this.velocity.clone().projectOnPlane(support.normal);
+
+        // Collision may clip/slide world travel, but contact geometry never owns
+        // horizontal board yaw. This lower compatibility layer follows the same
+        // invariant as StableBoardContact so future inheritance changes cannot
+        // resurrect the historical ~90-degree contact snap.
         this.position.y = support.point.y + 0.015;
-        this.normal.copy(support.normal); this.groundDirection();
-        this.velocity.copy(this.forward).multiplyScalar(speed);
+        this.normal.copy(support.normal);
+        this.groundDirection();
+        if (result.contacts.length && clippedTravel.lengthSq() > 0.0004) {
+          this.velocity.copy(clippedTravel);
+        } else {
+          this.velocity.copy(this.forward).multiplyScalar(speed);
+        }
       } else this.takeoff();
     }
   }

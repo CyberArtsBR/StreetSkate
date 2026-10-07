@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { YawStableStreetSkater } from './game/YawStableStreetSkater.js';
+import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './style.css';
 
@@ -77,6 +78,7 @@ let dusk = false;
 let mode = 'skate';
 let loaded = false;
 let paused = false;
+let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
 const clock = new THREE.Clock();
 
@@ -183,7 +185,7 @@ async function loadGame() {
     scene.add(park);
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
-    skater = await new YawStableStreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
+    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
@@ -195,6 +197,13 @@ async function loadGame() {
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1', rampTuning,
+      // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
+      // with deterministic replay/debugging. This never repairs or mutates state.
+      captureState: () => captureGameplayState(skater),
+      // QA-only readback of the semantic input object consumed by the latest
+      // focused animation frame. Returning a copy prevents tests/debug tools
+      // from mutating the live input path.
+      captureInput: () => ({ ...lastInputState }),
     };
   } catch (error) { showError(error); }
 }
@@ -249,6 +258,10 @@ renderer.setAnimationLoop(() => {
 
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
+    lastInputState = {
+      ...state,
+      directionTaps: [...(state.directionTaps || [])],
+    };
     if (state.pausePressed) setPaused(!paused);
     if (!paused) {
       skater.update(dt, state, elapsed);

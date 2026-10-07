@@ -47,6 +47,10 @@ Render Static Site: branch main, no root directory, build command
 `npm ci && npm run build`, publish directory `dist`.
 All four runtime GLBs are ordinary Git binary files in `public/assets`; no chunk reconstruction or external asset service is needed.
 
+`build` only compiles the production bundle. Tests and physics verification remain available through `npm run validate`; they are separate from deployment.
+
+The 2026-10-07 production integration merges `refactor/core-skate-controller-v1` through `fba85cc2c622aeb3d50c0a88477a4364667c1777`. It includes the canonical input, transition, collision, takeoff, and landing services coordinated by `CoreSkateController`, with `StableBoardContact.land()` using `LandingResult` and `LandingExecutor`. The original park loader is preserved. This merge/deploy was requested without any new test or benchmark runs.
+
 ## Integration
 
 - 120 Hz fixed movement step with acceleration, braking, gravity on slopes, chargeable ollies, short coyote time, and jump buffering.

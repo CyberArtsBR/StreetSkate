@@ -6,7 +6,6 @@ import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
 import {
   naturalRampReturnProgress,
   rampReturnFacing,
-  rampReturnFakie,
   rampReturnHalfTurns,
   transitionAirSpinInput,
 } from '../src/game/StableRampReturnSkillStreetPhysics.js';
@@ -23,12 +22,44 @@ function flatWorld() {
   return root;
 }
 
+function rampLandingSupport(position) {
+  return {
+    count: 4,
+    frontSupported: 2,
+    rearSupported: 2,
+    position: position.clone(),
+    normal: new THREE.Vector3(0, 0.5, 0.866025403784).normalize(),
+  };
+}
+
+function setupRampReturn({ spin = 0, heading = 0 } = {}) {
+  const p = new StatefulSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+  p.position.set(0, 2, 0);
+  p.heading = heading;
+  p.airHeading = heading;
+  p.airTakeoffHeading = 0;
+  p.airTakeoffFacing.set(0, 0, -1);
+  p.airTakeoffFromRamp = true;
+  p.airTakeoffStance = 1;
+  p.airSpin = spin;
+  p.airDirection();
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.grounded = false;
+  p.airTime = 0.4;
+  // Down-ramp tangent with a +Z horizontal travel component.
+  p.velocity.set(0, -5.196152423, 3);
+  return p;
+}
+
 test('straight same-wall return preserves takeoff facing with no automatic yaw', () => {
   const takeoff = new THREE.Vector3(0, 0, -1);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: 0 });
   assert.ok(returned.dot(takeoff) > 0.999999);
   assert.equal(rampReturnHalfTurns(0), 0);
-  assert.equal(rampReturnFakie(false, 0), false);
 });
 
 test('passive ramp return has zero automatic turnaround progress at every phase', () => {
@@ -37,30 +68,41 @@ test('passive ramp return has zero automatic turnaround progress at every phase'
   assert.equal(naturalRampReturnProgress({ verticalSpeed: -7, launchVertical: 8 }), 0);
 });
 
-test('passive ramp return preserves existing fakie presentation instead of toggling it', () => {
-  assert.equal(rampReturnFakie(false, 0), false);
-  assert.equal(rampReturnFakie(true, 0), true);
+test('passive same-wall return becomes fakie from real travel without rotating yaw', () => {
+  const p = setupRampReturn({ spin: 0, heading: 0 });
+  const support = rampLandingSupport(p.position);
+  assert.equal(p.land(support), true);
+  assert.ok(Math.abs(p.heading) < 1e-9, `passive return changed yaw: ${p.heading}`);
+  assert.equal(p.rollingSign, -1);
+  assert.equal(p.fakie, true);
+  assert.equal(p.stance, 1);
 });
 
-test('real explicit 180 alone reverses facing and toggles fakie', () => {
+test('real explicit 180 reverses facing but fakie is derived from resulting travel', () => {
   const takeoff = new THREE.Vector3(0, 0, -1);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: Math.PI });
   assert.ok(returned.dot(takeoff) < -0.999999);
-  assert.equal(rampReturnFakie(false, Math.PI), true);
   assert.equal(rampReturnHalfTurns(Math.PI), 1);
+
+  const p = setupRampReturn({ spin: Math.PI, heading: Math.PI });
+  const support = rampLandingSupport(p.position);
+  assert.equal(p.land(support), true);
+  assert.ok(Math.abs(Math.abs(p.heading) - Math.PI) < 1e-9,
+    `explicit 180 was not preserved: ${p.heading}`);
+  assert.equal(p.rollingSign, 1);
+  assert.equal(p.fakie, false);
+  assert.equal(p.stance, -1);
 });
 
-test('explicit 360 preserves takeoff facing and regular presentation', () => {
+test('explicit 360 preserves takeoff facing', () => {
   const takeoff = new THREE.Vector3(1, 0, 0);
   const returned = rampReturnFacing({ takeoffFacing: takeoff, airSpin: Math.PI * 2 });
   assert.ok(returned.dot(takeoff) > 0.999999);
-  assert.equal(rampReturnFakie(false, Math.PI * 2), false);
   assert.equal(rampReturnHalfTurns(Math.PI * 2), 2);
 });
 
 test('small steering noise cannot be mistaken for a 180', () => {
   assert.equal(rampReturnHalfTurns(THREE.MathUtils.degToRad(35)), 0);
-  assert.equal(rampReturnFakie(false, THREE.MathUtils.degToRad(35)), false);
 });
 
 test('air spin ignores steering drift when no explicit spin is pressed', () => {
@@ -113,7 +155,6 @@ test('full runtime ramp touchdown keeps airborne yaw on a near-vertical transiti
   p.airTakeoffHeading = takeoffHeading;
   p.airTakeoffFacing.set(-Math.sin(takeoffHeading), 0, -Math.cos(takeoffHeading));
   p.airTakeoffFromRamp = true;
-  p.airTakeoffFakie = false;
   p.airTakeoffStance = 1;
   p.airSpin = 0;
   p.airDirection();

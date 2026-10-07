@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 import { BoardContactSkillStreetPhysics } from './BoardContactSkillStreetPhysics.js';
+import { CollisionResolver } from './collision/CollisionResolver.js';
+import {
+  evaluateStableLanding,
+  stableFlipLandingMode,
+} from './core/LandingResult.js';
+import {
+  applyAcceptedLanding,
+  LANDING_VELOCITY_MODE,
+} from './core/LandingExecutor.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -52,17 +61,9 @@ export function shouldReleaseRampLip({
   return !leadingSupported && Boolean(trailingSupported);
 }
 
-/**
- * Backward-compatible landing rule for the base stable solver. The dedicated
- * transition subclass uses a more forgiving wheel/truck-first rule for bowls,
- * pools and ramps; flat/base behavior stays unchanged for existing regressions.
- */
+/** Backward-compatible public helper now owned by canonical LandingResult. */
 export function flipLandingMode(progress, normalY = 1) {
-  if (!Number.isFinite(progress)) return 'clear';
-  if (progress <= 0.12 || progress >= 0.88) return 'clear';
-  const sloped = Math.abs(normalY) < 0.985;
-  const catchThreshold = sloped ? 0.62 : 0.72;
-  return progress >= catchThreshold ? 'autoCatch' : 'bail';
+  return stableFlipLandingMode(progress, normalY);
 }
 
 /**
@@ -89,6 +90,17 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     this._deckProbeDelta ||= new THREE.Vector3();
     this._deckHitPoint ||= new THREE.Vector3();
     this._deckHitNormal ||= new THREE.Vector3();
+  }
+
+  ensureCollisionResolver() {
+    if (this.coreController) {
+      this.collisionResolver = this.coreController.ensureCollision(this.surface);
+      return this.collisionResolver;
+    }
+    if (!this.collisionResolver || this.collisionResolver.surface !== this.surface) {
+      this.collisionResolver = new CollisionResolver(this.surface);
+    }
+    return this.collisionResolver;
   }
 
   resolveSharpDeckClearance(from, desired, velocity, heading, normal) {
@@ -125,16 +137,20 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
   }
 
   resolveMotion(before, beforeUp, input = {}) {
-    const result = this.surface.move(before, this.position, this.velocity, {
+    const collision = this.ensureCollisionResolver();
+    const result = collision.resolveBody({
+      from: before,
+      desired: this.position,
+      velocity: this.velocity,
       fromUp: beforeUp,
       toUp: this.bodyUp(),
       grounded: this.grounded,
       forward: this.forward,
       ignoreRail: this.grind?.rail.name || null,
     });
-    this.position.copy(result.position);
+    collision.applyBodyResult(this, result);
 
-    const wall = result.contacts.find(hit => !hit.railId && Math.abs(hit.normal.y) < 0.3);
+    const wall = result.wallContacts[0] || null;
     if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0
       && this.movementState !== MOVEMENT_STATE.VERT_AIR) {
       if (input.olliePressed) this.wallPlant(wall, this.position.clone());
@@ -226,8 +242,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       return;
     }
 
-    // Generic contacts never rewrite yaw. Verified wall recovery is the only
-    // automatic contact-driven turn in the game.
+    // Generic contacts correct support position/normal/velocity only. They never
+    // rewrite horizontal yaw; heading remains player-authored.
     this.position.copy(support.position);
     this.normal.copy(support.normal);
     this.lastWheelSupport = support;
@@ -277,61 +293,29 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
   }
 
   land(support) {
-    if (this.airTime < 0.075 && this.velocity.y > 0.05) return false;
-    if ((support.count || 0) < 2 || !support.frontSupported || !support.rearSupported) return false;
+    const landing = evaluateStableLanding({
+      support,
+      position: this.position,
+      velocity: this.velocity,
+      forward: this.forward,
+      airTime: this.airTime,
+      flipProgress: this.flipState?.progress ?? null,
+      maxLandingCorrection: PHYSICS.maxLandingCorrection,
+    });
 
-    this.ensureBoardSafetyScratch();
-    const correction = this._supportCorrection.copy(support.position).sub(this.position);
-    if (correction.length() > PHYSICS.maxLandingCorrection) return false;
+    // Preserve legacy side-effect order: eligible auto-catch completes the flip
+    // before a separate alignment failure may still request a bail.
+    if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
 
-    const boardForward = this._deckProbeDelta.copy(this.forward).projectOnPlane(support.normal);
-    if (boardForward.lengthSq() < 1e-7) return false;
-    boardForward.normalize();
-
-    const planar = this._deckProbeTo.copy(this.velocity).projectOnPlane(support.normal);
-    const planarSpeed = planar.length();
-    let alignment = 1;
-    if (planarSpeed > 0.18) {
-      const transitionTangent = this._deckProbeFrom.copy(planar).multiplyScalar(1 / planarSpeed);
-      alignment = boardForward.dot(transitionTangent);
-    }
-
-    const flipMode = this.flipState
-      ? flipLandingMode(this.flipState.progress, support.normal.y)
-      : 'clear';
-    if (flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
-
-    if ((planarSpeed > 0.18 && Math.abs(alignment) < 0.44) || flipMode === 'bail') {
-      this.bail('BAIL · align your board before landing');
+    if (!landing.accepted) {
+      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
       return false;
     }
 
-    this.position.copy(support.position);
-    this.normal.copy(support.normal);
-
-    // CRITICAL: never derive yaw from a tangent that was created by projecting
-    // the deck forward onto a steep touchdown normal. Near-vertical quarters can
-    // erase almost the entire longitudinal XZ component; tiny lateral numerical
-    // drift then becomes the dominant axis and causes an instantaneous ~90° snap.
-    // Heading already contains the deliberate airborne spin, so preserve it and
-    // only rebuild the 3D forward vector on the new support plane.
-    this.groundDirection();
-
-    const spin = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180) * 180;
-    if (spin >= 180) this.recordTrick(`${spin}°`, spin);
-    this.setMovementState(MOVEMENT_STATE.GROUND);
-    this.coyote = 0;
-    this.justLanded = true;
-    this.transitionAir = null;
-    this.wallRide = null;
-    this.lastWheelSupport = support;
-
-    const travelSign = planarSpeed > 0.18 && alignment < 0 ? -1 : 1;
-    this.velocity.copy(this.forward).multiplyScalar(planarSpeed * travelSign);
-    this.flipState = null;
-    this.grabState = null;
-    this.airSpin = 0;
-    this.stableGroundTime = 0;
-    return true;
+    return applyAcceptedLanding(this, support, landing, {
+      applySpinStance: false,
+      manageLandingGrace: false,
+      velocityMode: LANDING_VELOCITY_MODE.DECK_SIGNED,
+    });
   }
 }

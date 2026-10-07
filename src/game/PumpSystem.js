@@ -64,20 +64,6 @@ export function evaluatePumpEligibility({
   return { eligible, curvature, slopeDeg: motion.slopeDeg };
 }
 
-export function resolveOllieRelease({
-  grounded = false,
-  pumpEligible = false,
-  holdTime = 0,
-  cooldown = 0,
-  nearCoping = false,
-} = {}, config = PUMP_CONFIG) {
-  if (grounded && nearCoping) return 'vertOllie';
-  if (grounded && pumpEligible && holdTime >= config.minHold) {
-    return cooldown <= 0 ? 'pump' : 'pumpBlocked';
-  }
-  return grounded ? 'ollie' : 'airRelease';
-}
-
 export function speedCapFactor(tangentSpeed, config = PUMP_CONFIG) {
   const speed = Math.abs(tangentSpeed);
   if (speed <= config.softSpeedCap) return 1;

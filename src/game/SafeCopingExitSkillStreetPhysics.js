@@ -1,8 +1,17 @@
 import * as THREE from 'three';
-import { DeckAwareRampExitSkillStreetPhysics } from './DeckAwareRampExitSkillStreetPhysics.js';
+import {
+  DeckAwareRampExitSkillStreetPhysics,
+  DECK_AWARE_EXIT,
+  scanDeckTransferTarget,
+} from './DeckAwareRampExitSkillStreetPhysics.js';
+import { RAMP_WALL_SAFETY } from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
-
-const clamp = THREE.MathUtils.clamp;
+import { PHYSICS } from './StreetPhysics.js';
+import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
+import {
+  resolveTransferLaunchResult,
+  transferDeckCanFit,
+} from './core/TransferLaunchResult.js';
 
 export const SAFE_COPING_EXIT = Object.freeze({
   boardLength: PRODUCTION_BOARD_CONTACT_RIG.deckLength,
@@ -31,18 +40,9 @@ function horizontal(vector) {
   return vector.clone().setY(0);
 }
 
-function headingFromHorizontal(direction, fallback = 0) {
-  const flat = horizontal(direction);
-  if (flat.lengthSq() < 1e-8) return fallback;
-  flat.normalize();
-  return Math.atan2(-flat.x, -flat.z);
-}
-
+/** Compatibility export backed by the canonical transfer-deck fit rule. */
 export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
-  if (!control?.found || !Number.isFinite(control.usableWidth)) return false;
-  const required = Math.max(config.minSafeDeckWidth,
-    config.boardLength + config.edgeSafety * 2);
-  return control.usableWidth + 1e-6 >= required;
+  return transferDeckCanFit(control, config);
 }
 
 export function supportMatchesOriginalTransition(support, air,
@@ -75,12 +75,17 @@ export function supportMatchesOriginalTransition(support, air,
   return true;
 }
 
+/**
+ * Legacy classification helper retained for tests/migration only. It no longer
+ * authorizes an automatic heading correction at touchdown.
+ */
 export function transitionSpinAlignmentErrorDeg(airSpin = 0) {
   const degrees = Math.abs(Number(airSpin) || 0) * 180 / Math.PI;
   const remainder = degrees % 180;
   return Math.min(remainder, 180 - remainder);
 }
 
+/** Legacy compatibility classifier; contact yaw alignment itself is removed. */
 export function canAutoAlignTransitionLanding(airSpin = 0,
   config = SAFE_COPING_EXIT) {
   return transitionSpinAlignmentErrorDeg(airSpin) <= config.autoAlignSpinToleranceDeg;
@@ -113,64 +118,50 @@ export function originalTransitionSweep(surface, from, to, air,
  *  - narrow decks must fit the real board before a straight-out transfer is allowed;
  *  - missed transfers can reconnect to the original quarter/bowl;
  *  - vert return is swept using the transition normal, not only world UP;
- *  - 0/180/360-style returns auto-align to the tangent, while 90-degree landings
- *    can still bail like a skate game should.
+ *  - re-entry contact may correct position/velocity but never horizontal yaw.
  */
 export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStreetPhysics {
   takeoff(impulse = 0, transition = null) {
     super.takeoff(impulse, transition);
     const air = this.transitionAir;
-    const control = air?.exitControl;
-    if (!air?.transferring || !air.frame || !control?.geometryAware
-      || control.abortToReturn) return;
+    if (!air?.transferring || !air.frame) return;
 
-    if (deckCanFitBoard(control)) return;
+    // Single transfer-launch authority. Lower layers provide geometry services
+    // and flight/landing behavior only; they no longer mutate launch state.
+    const deck = scanDeckTransferTarget(this.surface, air.frame);
+    const result = resolveTransferLaunchResult({
+      frame: air.frame,
+      incomingSpeed: air.frame.incomingSpeed,
+      launchVertical: air.launchVertical,
+      lateralVelocity: air.lateralVelocity,
+      deck,
+      gravity: PHYSICS.gravity,
+      transferConfig: RAMP_WALL_SAFETY,
+      deckConfig: DECK_AWARE_EXIT,
+      copingConfig: SAFE_COPING_EXIT,
+    });
+    if (!result?.active) return;
 
-    air.exitControl = {
-      ...control,
-      geometryAware: true,
-      abortToReturn: true,
-      unsafeDeckWidth: control.usableWidth,
-      targetPoint: air.frame.returnTarget.clone(),
-    };
-    air.mode = 'return';
-
-    const retainedVertical = clamp(Math.max(this.velocity.y, 3.2), 3.2, 7.2);
-    const lateral = air.frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * 0.28);
-    const inward = air.frame.rampInward.clone().multiplyScalar(0.36).add(lateral);
-    this.velocity.x = inward.x;
-    this.velocity.z = inward.z;
-    this.velocity.y = retainedVertical;
+    air.mode = result.mode;
+    air.transferring = result.transferring;
+    air.exitControl = result.exitControl ? { ...result.exitControl } : null;
+    air.launchVertical = result.launchVertical;
+    if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
+    this.velocity.copy(result.velocity);
   }
 
-  autoAlignOriginalTransition(support, air) {
-    if (!supportMatchesOriginalTransition(support, air)) return;
-    if (!canAutoAlignTransitionLanding(this.airSpin)) return;
-
-    const travel = this.velocity.clone().projectOnPlane(support.normal);
-    if (travel.lengthSq() < 0.03) return;
-    travel.normalize();
-
-    const board = this.forward.clone().projectOnPlane(support.normal);
-    let travelSign = 1;
-    if (board.lengthSq() > 1e-8) {
-      board.normalize();
-      travelSign = board.dot(travel) < 0 ? -1 : 1;
-    }
-
-    const desiredBoard = travel.multiplyScalar(travelSign);
-    this.heading = headingFromHorizontal(desiredBoard, this.heading);
-    this.airDirection();
-  }
+  /** Contact alignment is intentionally inert: only player input may change yaw. */
+  autoAlignOriginalTransition() {}
 
   land(support) {
     const air = this.transitionAir;
     const control = air?.exitControl;
     const originalTransition = Boolean(air
       && supportMatchesOriginalTransition(support, air));
+    const route = resolveLandingRoute({ originalTransition });
 
-    if (originalTransition) {
+    if (route === LANDING_ROUTE.ORIGINAL_TRANSITION) {
+      // Keep the call as a compatibility seam; it is deliberately yaw-inert.
       this.autoAlignOriginalTransition(support, air);
 
       // Any verified contact with the original ramp outranks deck-transfer

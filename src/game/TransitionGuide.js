@@ -37,14 +37,15 @@ export function wantsRampExit(input = {}) {
 }
 
 /**
- * Coping-aware transition helper. It owns only the local vert-air trajectory;
- * board trick orientation is deliberately kept outside this controller.
+ * Geometry/trajectory helper for transition rails already authorized by the
+ * TransitionController. This class no longer decides which rail names are valid
+ * gameplay transitions; it only performs the validated local lip math and
+ * begin/advance trajectory behavior.
  */
 export class TransitionGuide {
   constructor(rails = []) {
     this.edges = [];
     for (const rail of rails) {
-      if (!/coping/i.test(rail.name)) continue;
       for (let i = 1; i < rail.points.length; i++) {
         const a = new THREE.Vector3(...rail.points[i - 1]);
         const b = new THREE.Vector3(...rail.points[i]);
@@ -109,9 +110,9 @@ export class TransitionGuide {
   /**
    * Lip capture used for actual vert takeoff. The old y<=0.70 requirement was
    * too strict for averaged four-wheel normals on triangulated park meshes. Since
-   * this search only considers authored coping guides, a wider slope window is
-   * safe and prevents legitimate quarter/mini lips from falling through to a
-   * generic unsupported takeoff.
+   * this guide now receives only rails authorized by TransitionController, a wider
+   * slope window remains safe and prevents legitimate quarter/mini lips from
+   * falling through to a generic unsupported takeoff.
    */
   launchAt(position, normal, velocity) {
     if (velocity.y <= -0.05) return null;

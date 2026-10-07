@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import {
   SafeCopingExitSkillStreetPhysics,
-  canAutoAlignTransitionLanding,
-  supportMatchesOriginalTransition,
 } from './SafeCopingExitSkillStreetPhysics.js';
 import {
   GRIND_CAPTURE,
@@ -35,22 +33,11 @@ export const ARCADE_PARK_MOBILITY = Object.freeze({
   manualTurnGain: 1.14,
 
   // Re-entry steering protection. A steep transition has almost no horizontal
-  // tangent near vertical, so tiny lateral drift must never become a 90-degree
-  // heading snap on the first grounded frame. Lock steering/wall recovery very
-  // briefly, then blend the tighter carve back in.
+  // tangent near vertical, so steering is briefly suppressed after touchdown.
+  // Contact itself never changes heading.
   rampReentrySteerLock: 0.20,
   rampReentryHardLock: 0.08,
   rampReentrySlopeY: 0.995,
-
-  // Extra ramp energy conversion. Flat-ground ollies are unchanged; the bonus
-  // only exists when the board is genuinely climbing a sloped rideable face.
-  rampSlopeThresholdY: 0.992,
-  rampMinVerticalSpeed: 0.08,
-  rampMinSpeed: 2.4,
-  rampBoostMin: 1.75,
-  rampBoostMax: 4.25,
-  rampBoostFullSpeed: 12.5,
-  rampOllieShare: 0.68,
 });
 
 function horizontal(source, fallback = null) {
@@ -62,12 +49,6 @@ function horizontal(source, fallback = null) {
     if (out.lengthSq() > 1e-8) return out.normalize();
   }
   return out.set(0, 0, -1);
-}
-
-function headingFrom(direction, fallback = 0) {
-  const flat = horizontal(direction);
-  if (flat.lengthSq() < 1e-8) return fallback;
-  return Math.atan2(-flat.x, -flat.z);
 }
 
 export function arcadeTurnGain(speed, config = ARCADE_PARK_MOBILITY) {
@@ -86,11 +67,9 @@ export function rampReentrySteerScale(remaining = 0, config = ARCADE_PARK_MOBILI
 }
 
 /**
- * Stable board-facing direction for vert return. Near the vertical section of a
- * quarter/pool, projecting velocity onto the transition can leave almost zero XZ
- * magnitude. Any tiny sideways drift then dominates and can rotate heading 90°.
- * The authored local ramp axis is the authoritative horizontal reference; spins
- * only decide whether the deck faces with or against that travel direction.
+ * Legacy pure helper retained for replay compatibility only. Runtime landing yaw
+ * no longer uses this function; LandingOrientation owns takeoff-facing + explicit
+ * spin semantics and contact normals have zero yaw authority.
  */
 export function transitionReturnBoardDirection({
   rampInward = null,
@@ -103,25 +82,6 @@ export function transitionReturnBoardDirection({
   const initialDeckSign = rollingSign < 0 ? -1 : 1;
   const spinSign = halfTurns % 2 === 1 ? -1 : 1;
   return travel.multiplyScalar(initialDeckSign * spinSign);
-}
-
-export function arcadeRampAirBoost({
-  speed = 0,
-  normalY = 1,
-  verticalSpeed = 0,
-  config = ARCADE_PARK_MOBILITY,
-} = {}) {
-  const ny = Math.abs(Number(normalY) || 0);
-  const magnitude = Math.abs(Number(speed) || 0);
-  if (ny >= config.rampSlopeThresholdY
-    || verticalSpeed <= config.rampMinVerticalSpeed
-    || magnitude < config.rampMinSpeed) return 0;
-
-  const slope = clamp((config.rampSlopeThresholdY - ny) / 0.72, 0, 1);
-  const energy = clamp((magnitude - config.rampMinSpeed)
-    / Math.max(0.1, config.rampBoostFullSpeed - config.rampMinSpeed), 0, 1);
-  const quality = clamp(0.30 + slope * 0.48 + energy * 0.34, 0, 1);
-  return THREE.MathUtils.lerp(config.rampBoostMin, config.rampBoostMax, quality);
 }
 
 export function arcadeGrindEligibility({
@@ -148,13 +108,12 @@ export function arcadeGrindEligibility({
 /**
  * THPS-like park mobility layer:
  * - explicit grind input gets a forgiving airborne rail/handrail magnet;
- * - sloped takeoffs convert more approach energy into airtime;
  * - steering gets a tighter carve radius at park speeds;
- * - transition re-entry keeps a stable ramp-axis heading and cannot trigger a
- *   false 90-degree wall recovery immediately after touchdown.
+ * - transition re-entry briefly suppresses steering but never invents yaw.
  *
- * It deliberately sits ABOVE SafeCopingExit so the validated coping, vert return
- * and anti-tunnelling rules remain authoritative.
+ * Ramp launch energy is intentionally NOT owned here anymore. Phase 1 moved all
+ * ramp bonus composition to LaunchEnergyModel / UnifiedRampFeel so this layer can
+ * never inject a second hidden takeoff boost.
  */
 export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
@@ -162,21 +121,9 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     this.rampReentrySteerLock = 0;
   }
 
-  autoAlignOriginalTransition(support, air) {
-    if (!supportMatchesOriginalTransition(support, air)) return;
-    if (!canAutoAlignTransitionLanding(this.airSpin)) return;
-
-    const desiredBoard = transitionReturnBoardDirection({
-      rampInward: air.frame?.rampInward,
-      fallbackTravel: this.travelDirection || this.velocity,
-      rollingSign: this.rollingSign,
-      airSpin: this.airSpin,
-    });
-    this.heading = headingFrom(desiredBoard, this.heading);
-    this.airDirection();
-  }
-
   land(support) {
+    if (this.deferLandingPostHooks) return super.land(support);
+
     const wasTransitionAir = Boolean(this.transitionAir);
     const slopedTouchdown = Math.abs(support?.normal?.y ?? 1)
       < ARCADE_PARK_MOBILITY.rampReentrySlopeY;
@@ -185,14 +132,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
       this.rampReentrySteerLock = ARCADE_PARK_MOBILITY.rampReentrySteerLock;
     }
     return landed;
-  }
-
-  detectGroundWallImpact(dt) {
-    // Wall recovery deliberately rotates ~90 degrees. Suppress it during the
-    // transition touchdown bridge so the ramp itself can never masquerade as a
-    // wall on the first grounded frame after returning from air.
-    if ((this.rampReentrySteerLock || 0) > 0) return null;
-    return super.detectGroundWallImpact(dt);
   }
 
   magneticRailCapture(trick) {
@@ -300,21 +239,6 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     return true;
   }
 
-  takeoff(impulse = 0, transition = null) {
-    const wasGrounded = this.grounded;
-    const normalY = this.normal?.y ?? 1;
-    const verticalSpeed = this.velocity?.y ?? 0;
-    const speed = this.velocity?.length?.() || 0;
-    const rampBoost = wasGrounded
-      ? arcadeRampAirBoost({ speed, normalY, verticalSpeed })
-      : 0;
-
-    const extra = impulse > 0.1
-      ? rampBoost * ARCADE_PARK_MOBILITY.rampOllieShare
-      : rampBoost;
-    return super.takeoff(Math.max(0, impulse) + extra, transition);
-  }
-
   stepGround(dt, input = {}, drive = 0) {
     this.rampReentrySteerLock = Math.max(0,
       (this.rampReentrySteerLock || 0) - dt);
@@ -329,7 +253,7 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     try {
       super.stepGround(dt, input, drive);
     } finally {
-      // Preserve the input smoothing state. Only the physical yaw response gets
+      // Preserve the input smoothing state. Only deliberate physical steering is
       // amplified, so presentation/camera and regular/fakie controls stay stable.
       this.steer = originalSteer;
     }

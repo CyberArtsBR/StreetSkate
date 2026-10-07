@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { IntegratedRampSafetySkillStreetPhysics } from './IntegratedRampSafetySkillStreetPhysics.js';
+import { RampWallSafetySkillStreetPhysics } from './RampWallSafetySkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
+import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -114,7 +115,7 @@ export function scanDeckTransferTarget(surface, frame, config = DECK_AWARE_EXIT)
   };
 }
 
-/** Choose horizontal launch speed from real target distance and airtime. */
+/** Compatibility helper retained for tests/tuning; runtime uses TransferLaunchResult. */
 export function deckAwareLaunchSpeed(targetDistance, verticalSpeed, config = DECK_AWARE_EXIT) {
   const vertical = Math.max(0.1, Math.abs(Number(verticalSpeed) || 0));
   const airTime = Math.max(0.28, (2 * vertical) / Math.max(PHYSICS.gravity, 0.1));
@@ -139,113 +140,22 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
  * Final ramp-exit layer driven by real deck geometry captured from the collision
  * mesh. It prevents narrow quarter-pipe decks from launching the rider off their
  * back edge and rejects lower/outer geometry as a false late landing.
+ *
+ * Transfer flight stepping is inherited from RampWallSafety, which now owns one
+ * canonical TransferFlightResult executor for generic, deck-target and abort-return.
  */
-export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySkillStreetPhysics {
-  takeoff(impulse = 0, transition = null) {
-    super.takeoff(impulse, transition);
-    const air = this.transitionAir;
-    if (!air?.transferring || !air.frame || !air.exitControl) return;
-
-    const deck = scanDeckTransferTarget(this.surface, air.frame);
-    if (!deck) {
-      // No verified deck behind this coping: holding Up must never launch into
-      // empty space. Keep a controlled same-wall return regardless of held Up.
-      air.exitControl = {
-        geometryAware: true,
-        abortToReturn: true,
-        targetPoint: air.frame.returnTarget.clone(),
-      };
-      air.mode = 'return';
-      const tangent = air.frame.copingTangent.clone()
-        .multiplyScalar((air.lateralVelocity || 0) * 0.35);
-      const inward = air.frame.rampInward.clone().multiplyScalar(0.34).add(tangent);
-      this.velocity.x = inward.x;
-      this.velocity.z = inward.z;
-      return;
-    }
-
-    const verticalSpeed = clamp(air.exitControl.verticalSpeed,
-      DECK_AWARE_EXIT.launchVerticalMin, DECK_AWARE_EXIT.launchVerticalMax);
-    const horizontalSpeed = deckAwareLaunchSpeed(deck.targetDistance, verticalSpeed);
-    air.exitControl = {
-      ...air.exitControl,
-      ...deck,
-      geometryAware: true,
-      abortToReturn: false,
-      horizontalSpeed,
-      verticalSpeed,
-    };
-    air.launchVertical = verticalSpeed;
-
-    const towardTarget = horizontal(deck.targetPoint.clone().sub(air.frame.lipPoint));
-    if (towardTarget.lengthSq() < 1e-8) towardTarget.copy(deck.direction);
-    towardTarget.normalize();
-    const lateral = air.frame.copingTangent.clone()
-      .multiplyScalar((air.lateralVelocity || 0) * 0.10);
-    const launch = towardTarget.multiplyScalar(horizontalSpeed).add(lateral);
-    this.velocity.x = launch.x;
-    this.velocity.z = launch.z;
-    this.velocity.y = verticalSpeed;
-    air.launchHorizontal = launch.clone();
-  }
-
-  advanceControlledTransfer(air, dt) {
-    const control = air?.exitControl;
-    if (!control?.geometryAware) {
-      super.advanceControlledTransfer(air, dt);
-      return;
-    }
-
-    air.age += dt;
-    if (this.velocity.y <= 0) air.apexPassed = true;
-
-    if (control.abortToReturn) {
-      const current = horizontal(this.velocity);
-      let desired;
-      if (!air.apexPassed) {
-        desired = air.frame.rampInward.clone().multiplyScalar(0.30)
-          .addScaledVector(air.frame.copingTangent,
-            (air.lateralVelocity || 0) * Math.exp(-1.8 * air.age) * 0.25);
-      } else {
-        desired = horizontal(air.frame.returnTarget.clone().sub(this.position)).multiplyScalar(4.4);
-        if (desired.length() > 5.6) desired.setLength(5.6);
-      }
-      const delta = desired.clone().sub(current);
-      const maxDelta = (air.apexPassed ? 24 : 10) * dt;
-      if (delta.length() > maxDelta) delta.setLength(maxDelta);
-      const next = current.add(delta);
-      this.velocity.x = next.x;
-      this.velocity.z = next.z;
-      air.returnError = horizontal(air.frame.returnTarget.clone().sub(this.position)).length();
-      return;
-    }
-
-    const target = control.targetPoint;
-    const toTarget = horizontal(target.clone().sub(this.position));
-    const distance = toTarget.length();
-    let desired = new THREE.Vector3();
-    if (distance > 1e-5) {
-      const desiredSpeed = air.apexPassed
-        ? clamp(distance * 3.0, 0.20, 2.25)
-        : clamp(distance * 2.0, 0.55, control.horizontalSpeed);
-      desired.copy(toTarget).multiplyScalar(desiredSpeed / distance);
-    }
-
-    const current = horizontal(this.velocity);
-    const delta = desired.sub(current);
-    const maxDelta = (air.apexPassed ? 36 : 24) * dt;
-    if (delta.length() > maxDelta) delta.setLength(maxDelta);
-    const next = current.add(delta);
-    this.velocity.x = next.x;
-    this.velocity.z = next.z;
-    air.returnError = distance;
-  }
-
+export class DeckAwareRampExitSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
   land(support) {
     const air = this.transitionAir;
     const control = air?.exitControl;
+    const deckTargetMatches = supportMatchesDeckTarget(support, air);
+    const route = resolveLandingRoute({
+      geometryAware: Boolean(control?.geometryAware),
+      abortToReturn: Boolean(control?.abortToReturn),
+      deckTargetMatches,
+    });
 
-    if (control?.geometryAware && control.abortToReturn) {
+    if (route === LANDING_ROUTE.ABORT_TO_RETURN) {
       const transferring = air.transferring;
       air.transferring = false;
       const landed = super.land(support);
@@ -253,7 +163,7 @@ export class DeckAwareRampExitSkillStreetPhysics extends IntegratedRampSafetySki
       return landed;
     }
 
-    if (control?.geometryAware && !supportMatchesDeckTarget(support, air)) return false;
+    if (route === LANDING_ROUTE.REJECT_DECK_TARGET) return false;
     return super.land(support);
   }
 

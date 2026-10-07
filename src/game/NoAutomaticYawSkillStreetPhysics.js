@@ -1,40 +1,39 @@
 import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
+import { evaluateLandingYawInvariant } from './core/OrientationInvariant.js';
 
 /**
- * Final gameplay authority for yaw.
+ * Landing-yaw observability only.
  *
- * Contact geometry is allowed to correct position, surface normal, pitch/roll,
- * velocity and support state, but it is NEVER allowed to rotate the skater around
- * world Y. Yaw now comes only from deliberate player steering on the ground or
- * explicit airborne spin input.
- *
- * This top-level guard intentionally sits above every legacy ramp/wall/contact
- * layer so older helpers cannot reintroduce a hidden 90-degree snap.
+ * Contact geometry may correct position, surface normal, pitch/roll, velocity and
+ * support state, but horizontal yaw belongs only to deliberate ground steering or
+ * explicit airborne spin. Lower-layer automatic wall/coping/landing yaw writers
+ * have been removed during Phase 1; this layer now measures the invariant instead
+ * of owning gameplay behavior or silently repairing violations.
  */
 export class NoAutomaticYawSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysics {
-  /** No wall, ledge, rail or stair contact may request an automatic turn. */
-  detectGroundWallImpact() {
-    return null;
-  }
-
-  /** Legacy wall-recovery calls are explicitly inert at runtime. */
-  applyWallRecovery() {
-    return false;
+  reset(position = this.spawn, heading = 0) {
+    super.reset(position, heading);
+    this.landingYawInvariantViolations = 0;
+    this.lastLandingYawInvariant = null;
   }
 
   /**
-   * Landing may change pitch/roll through the support normal, but never yaw.
-   * `this.heading` already includes any explicit Q/E/L1/R1 spin performed in air,
-   * so preserving it keeps real tricks while eliminating contact-driven snaps.
+   * Observe, never repair. The final runtime can defer this hook to the explicit
+   * LandingPostPipeline; direct subclass tests retain the same compatibility path.
    */
   land(support) {
+    if (this.deferLandingPostHooks) return super.land(support);
+
     const playerHeading = this.heading;
     const landed = super.land(support);
     if (!landed) return false;
 
-    this.heading = playerHeading;
-    this.airHeading = playerHeading;
-    this.groundDirection();
+    const invariant = evaluateLandingYawInvariant({
+      playerHeading,
+      lowerLayerHeading: this.heading,
+    });
+    this.lastLandingYawInvariant = invariant;
+    if (invariant.violated) this.landingYawInvariantViolations += 1;
     return true;
   }
 }
