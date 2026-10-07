@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
+import { SafeCopingExitSkillStreetPhysics } from './SafeCopingExitSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
@@ -24,8 +24,19 @@ import {
 
 const clamp = THREE.MathUtils.clamp;
 
+function horizontalFacing(source, fallback = null) {
+  const out = source?.clone?.() || new THREE.Vector3();
+  out.y = 0;
+  if (out.lengthSq() > 1e-8) return out.normalize();
+  if (fallback?.lengthSq?.() > 1e-8) {
+    out.copy(fallback).setY(0);
+    if (out.lengthSq() > 1e-8) return out.normalize();
+  }
+  return out.set(0, 0, -1);
+}
+
 /** Skill-based transition pumping layered on top of board contact + vert physics. */
-export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics {
   constructor(options = {}) {
     super(options);
     // Phase 1 composition root: canonical state, transition authority and body
@@ -68,6 +79,14 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
     this.syncCanonicalState();
     this.rampLaunchMemory = 0;
     this.rampLaunchMemoryTime = 0;
+
+    this.rampTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
+    this.rampTakeoffFacing.copy(horizontalFacing(this.forward, this.travelDirection));
+    this.airTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
+    this.airTakeoffFacing.copy(this.rampTakeoffFacing);
+    this.airTakeoffHeading = heading;
+    this.airTakeoffStance = Number(this.stance) || 1;
+    this.airTakeoffFromRamp = false;
 
     this.pumpReleaseQueued = false;
     this.pumpEligible = false;
@@ -318,9 +337,20 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
     this.transitionLandingGrace = 0;
     this.rampExitIntentTime = 0;
 
+    this.airTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
+    this.airTakeoffFacing.copy(context.takeoffFacing);
+    this.airTakeoffHeading = context.takeoffHeading;
+    this.airTakeoffStance = context.takeoffStance;
+    this.airTakeoffFromRamp = context.rampContext;
+
     this.takeoffOllieRequested = context.requestedImpulse >= 4;
-    const result = super.takeoff(context.composedImpulse, edge, context);
-    if (context.rampContext) this.airTakeoffFromRamp = true;
+    const result = super.takeoff(context.composedImpulse, edge);
+
+    if (this.transitionAir?.frame) {
+      this.transitionAir.frame.takeoffFacing = context.takeoffFacing.clone();
+      this.transitionAir.frame.takeoffStance = context.takeoffStance;
+      this.transitionAir.frame.takeoffHeading = context.takeoffHeading;
+    }
 
     if (this.coreController) this.coreController.consumeRampEnergy(this);
     else {
