@@ -14,7 +14,6 @@ import {
 import {
   TRANSITION_INTENT,
   advanceTransitionExitIntent,
-  applyTransitionExitIntentToCandidate,
   shouldArmTransitionExit,
 } from './transitions/TransitionIntent.js';
 
@@ -165,30 +164,6 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.rollingSign = state.rollingSign;
     this.fakie = state.fakie;
     return this.travelDirection;
-  }
-
-  /**
-   * Preserve explicit exit intent through the last contact frame. If this is an authored
-   * coping transition, tag the edge so TransitionController launches outward on
-   * frame one instead of first pulling inward and reversing later.
-   */
-  takeoff(impulse = 0, transition = null) {
-    this.transitionLandingGrace = 0;
-    let edge = transition;
-    if (this.coreController) {
-      edge = this.coreController.prepareTransitionTakeoff(this, transition).edge;
-    } else {
-      const prepared = applyTransitionExitIntentToCandidate({
-        controller: { transitions: this.transitions },
-        runtime: this,
-        transition,
-      });
-      edge = prepared.edge;
-      if (prepared.consumed) this.rampExitIntentTime = 0;
-    }
-    const result = super.takeoff(impulse, edge);
-    this.rampExitIntentTime = 0;
-    return result;
   }
 
   /** Automatic wall-turn detection has no runtime authority. */
