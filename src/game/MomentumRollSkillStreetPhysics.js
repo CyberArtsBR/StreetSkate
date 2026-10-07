@@ -2,18 +2,17 @@ import * as THREE from 'three';
 import { StableBoardContactSkillStreetPhysics } from './StableBoardContactSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
+import { resolveGroundStepStart } from './core/GroundStepResult.js';
 import {
   GROUND_MOTOR,
   automaticPushAcceleration,
   groundSteeringDelta,
   passiveRollingResistance,
   resolveGroundPropulsion,
-  signedGroundSpeed,
   transitionGravityScale,
 } from './core/GroundMotor.js';
 import {
   TRANSITION_INTENT,
-  advanceTransitionExitIntent,
   shouldArmTransitionExit,
 } from './transitions/TransitionIntent.js';
 
@@ -177,36 +176,37 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   stepGround(dt, input = {}, drive = 0) {
-    this.rampReentrySteerLock = Math.max(0,
-      (this.rampReentrySteerLock || 0) - dt);
-    this.wallSlideTime = Math.max(0, (this.wallSlideTime || 0) - dt);
-    this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
-    this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
-    this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
-
-    if (this.coreController) {
-      this.coreController.updateTransitionExitIntent(this, input, dt);
-    } else {
-      this.rampExitIntentTime = advanceTransitionExitIntent({
-        remaining: this.rampExitIntentTime,
-        dt,
-        input,
-        normalY: this.normal.y,
-        verticalSpeed: this.velocity.y,
-      }).remaining;
-    }
-
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
       this.syncTravelDirection();
     }
-    const speedContext = {
+
+    const startContext = {
+      dt,
+      input,
       velocity: this.velocity,
       forward: this.forward,
       rollingSign: this.rollingSign,
+      normalY: this.normal.y,
+      verticalSpeed: this.velocity.y,
+      rampReentrySteerLock: this.rampReentrySteerLock,
+      wallSlideTime: this.wallSlideTime,
+      transitionLandingGrace: this.transitionLandingGrace,
+      wallImpactTime: this.wallImpactTime,
+      wallImpactCooldown: this.wallImpactCooldown,
+      rampExitIntentTime: this.rampExitIntentTime,
     };
-    const speedState = this.coreController
-      ? this.coreController.measureGroundSpeed(speedContext)
-      : signedGroundSpeed(speedContext);
+    const start = this.coreController
+      ? this.coreController.resolveGroundStepStart(startContext)
+      : resolveGroundStepStart(startContext);
+
+    this.rampReentrySteerLock = start.timers.rampReentrySteerLock;
+    this.wallSlideTime = start.timers.wallSlideTime;
+    this.transitionLandingGrace = start.timers.transitionLandingGrace;
+    this.wallImpactTime = start.timers.wallImpactTime;
+    this.wallImpactCooldown = start.timers.wallImpactCooldown;
+    this.rampExitIntentTime = start.transitionIntent.remaining;
+
+    const speedState = start.speedState;
     let speed = speedState.speed;
 
     if (this.manual) this.updateManualBalance(dt, input, speed);
