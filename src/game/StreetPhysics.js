@@ -108,14 +108,16 @@ export class StreetPhysics {
       if (support) {
         const sign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
         const speed = this.velocity.length() * sign;
-        if (result.contacts.length && this.velocity.lengthSq() > 0.04) {
-          // Preserve motion along a barrier instead of steering the clipped
-          // velocity straight back into it on every simulation step.
-          this.heading = headingFrom(this.velocity, this.heading) + (sign < 0 ? Math.PI : 0);
-        }
+        const clippedTravel = this.velocity.clone().projectOnPlane(support.normal);
         this.position.y = support.point.y + 0.015;
         this.normal.copy(support.normal); this.groundDirection();
-        this.velocity.copy(this.forward).multiplyScalar(speed);
+        if (result.contacts.length && clippedTravel.lengthSq() > 0.0004) {
+          // Collision may redirect world-space travel, but it never rotates the
+          // deck. Preserve the clipped slide vector instead of rewriting heading.
+          this.velocity.copy(clippedTravel);
+        } else {
+          this.velocity.copy(this.forward).multiplyScalar(speed);
+        }
       } else this.takeoff();
     }
   }
@@ -380,7 +382,7 @@ export class StreetPhysics {
     // The sweep already crossed the surface; apply only the small measured contact correction.
     this.position.add(correction);
     this.normal.copy(support.normal);
-    this.heading = headingFrom(boardForward, this.heading);
+    // Contact normal may tilt pitch/roll but cannot create horizontal yaw.
     this.groundDirection();
 
     const spin = Math.floor((Math.abs(this.airSpin) * 180 / Math.PI + 25) / 180) * 180;
