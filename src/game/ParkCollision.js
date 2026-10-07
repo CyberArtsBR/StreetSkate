@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { Octree } from 'three/addons/math/Octree.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
+import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
+import { BlockTriangleIndex } from './collision/BlockTriangleIndex.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -15,10 +16,13 @@ export class ParkCollision {
     this.root = root;
     this.ray = new THREE.Raycaster();
     this.meshes = []; this.ridingMeshes = [];
-    this.blocks = new Octree();
+    this.blocks = new BlockTriangleIndex();
     this.capsule = new Capsule();
     this._normalMatrix = new THREE.Matrix3();
     this._rayHits = [];
+    this._cameraHits = [];
+    this._cameraRay = new THREE.Raycaster();
+    this._cameraRay.firstHitOnly = true;
     this._direction = new THREE.Vector3();
     this._motion = new THREE.Vector3();
     this._origin = new THREE.Vector3();
@@ -37,6 +41,12 @@ export class ParkCollision {
       if (rideable) this.ridingMeshes.push(mesh);
       const geometry = mesh.geometry, position = geometry.attributes.position, index = geometry.index;
       const count = index ? index.count : position.count;
+      if (count >= 3) {
+        // Restrict acceleration to static collision proxies, never the rider or
+        // visual meshes. Indirect mode preserves authored triangle indices.
+        geometry.boundsTree ||= new MeshBVH(geometry, { indirect: true });
+        mesh.raycast = acceleratedRaycast;
+      }
       for (let i = 0; i < count; i += 3) {
         const vertices = [0, 1, 2].map(j => new THREE.Vector3()
           .fromBufferAttribute(position, index ? index.getX(i + j) : i + j).applyMatrix4(mesh.matrixWorld));
@@ -298,8 +308,9 @@ export class ParkCollision {
     for (const offset of [new THREE.Vector3(), right.clone().multiplyScalar(radius),
       right.clone().multiplyScalar(-radius), up.clone().multiplyScalar(radius),
       up.clone().multiplyScalar(-radius)]) {
-      this.ray.set(from.clone().add(offset), direction); this.ray.far = length;
-      const hit = this.ray.intersectObjects(this.meshes, false)[0];
+      this._cameraRay.set(from.clone().add(offset), direction); this._cameraRay.far = length;
+      this._cameraHits.length = 0;
+      const hit = this._cameraRay.intersectObjects(this.meshes, false, this._cameraHits)[0];
       if (hit) clearance = Math.min(clearance, Math.max(0, hit.distance - radius));
     }
     return from.clone().addScaledVector(direction, clearance);

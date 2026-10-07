@@ -115,10 +115,12 @@ export class FollowCamera {
     this.distance = THPS_CAMERA.distance;
     this.height = THPS_CAMERA.height;
     this.occlusionDistance = null;
+    this.clearanceCache = {};
     this.initialized = false;
   }
 
   snap(player) {
+    this.clearanceCache = {};
     this.initialized = false;
     this.wasReturning = false;
     this.returnHold = 0;
@@ -177,7 +179,7 @@ export class FollowCamera {
 
     // Occlusion stays a presentation-only query against the collision surface.
     let resolvedPosition = resolveCameraClearance(player?.surface, frame.anchor,
-      this.position, this.camera.position);
+      this.position, this.camera.position, this.clearanceCache);
     const easedEye = this.camera.position.clone().lerp(resolvedPosition,
       1 - Math.exp(-12 * dt));
     const easedClear = player?.surface?.camera

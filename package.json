@@ -14,6 +14,11 @@
     "verify:board": "node tools/verify-board.mjs",
     "verify:physics": "npm run verify:board && npm run test:vert && npm run test:pump"
   },
-  "dependencies": { "three": "0.180.0" },
-  "devDependencies": { "vite": "7.3.5" }
+  "dependencies": {
+    "three": "0.180.0",
+    "three-mesh-bvh": "^0.9.15"
+  },
+  "devDependencies": {
+    "vite": "7.3.5"
+  }
 }

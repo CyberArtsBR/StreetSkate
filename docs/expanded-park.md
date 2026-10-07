@@ -7,3 +7,9 @@ The model contains the original sector plus two new concrete slabs: X 34–102, 
 The original east fence/curb is opened in visual and collision geometry. Both active physics finish paths use shared sector-union bounds, so no invisible wall remains at X 33.2 or Z 22.1. New flat rails and four halfpipe coping paths are registered for grinds and transitions. Explore overview, park dimensions and light coverage include all three areas.
 
 Compilation only; no gameplay tests or benchmarks, per user instruction. No runtime assumption of asset ownership or licensing is made beyond the user's supplied file and requested integration.
+
+## Initial-sector frame-rate report
+
+The user reported roughly 10 FPS in the original sector and normal play in the extensions. Static inspection found unaccelerated wheel, clearance and camera raycasts against the original mesh triangles, an octree that duplicates long triangles into multiple children, and repeated full camera-clearance searches near obstacles. These are plausible CPU bottlenecks; no runtime timings were collected.
+
+Static collision meshes now use `three-mesh-bvh` in indirect mode, preserving triangle indices. Body and sphere broad-phase queries use a BVH candidate index and retain the existing Three.js capsule/sphere intersection mathematics. Camera rays use closest-hit traversal, reuse hit arrays, and revalidate a cached alternative arm before searching again. A comfortably clear view ends the search early. Visual assets and three-area access remain the same. Compilation confirms bundling only; no FPS improvement is claimed as measured.
