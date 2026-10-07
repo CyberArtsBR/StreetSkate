@@ -71,6 +71,39 @@ export const PRODUCTION_TRANSITION_AUTHORING = Object.freeze({
     supportsLipTricks: true,
     cameraHint: 'QUARTER',
   }),
+  '05 / hip rail': Object.freeze({
+    id: 'central-hip',
+    type: TRANSITION_TYPE.HIP,
+    axisMode: 'LINEAR',
+    geometryRole: 'AREA_ANCHOR',
+    supportsVert: false,
+    supportsTransfer: false,
+    supportsPump: true,
+    supportsLipTricks: false,
+    cameraHint: 'HIP',
+  }),
+  '10 / spine handrail': Object.freeze({
+    id: 'south-spine',
+    type: TRANSITION_TYPE.SPINE,
+    axisMode: 'LINEAR',
+    geometryRole: 'AREA_ANCHOR',
+    supportsVert: false,
+    supportsTransfer: false,
+    supportsPump: true,
+    supportsLipTricks: false,
+    cameraHint: 'SPINE',
+  }),
+  '11 / bank handrail': Object.freeze({
+    id: 'east-bank',
+    type: TRANSITION_TYPE.BANK,
+    axisMode: 'LINEAR',
+    geometryRole: 'AREA_ANCHOR',
+    supportsVert: false,
+    supportsTransfer: false,
+    supportsPump: true,
+    supportsLipTricks: false,
+    cameraHint: 'BANK',
+  }),
 });
 
 const EPSILON = 1e-8;
@@ -120,6 +153,7 @@ export function compileTransitionMetadata(
     const center = pathCenter(lipPath);
     transitions.push({
       ...authored,
+      geometryRole: authored.geometryRole || (authored.supportsVert ? 'LIP' : 'AREA_ANCHOR'),
       sourceRail: rail.name,
       copingRadius: Number(rail.radius) || 0,
       lipPath,
