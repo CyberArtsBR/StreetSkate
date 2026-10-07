@@ -1,9 +1,15 @@
 import * as THREE from 'three';
-import { DeckAwareRampExitSkillStreetPhysics } from './DeckAwareRampExitSkillStreetPhysics.js';
+import {
+  DeckAwareRampExitSkillStreetPhysics,
+  DECK_AWARE_EXIT,
+  scanDeckTransferTarget,
+} from './DeckAwareRampExitSkillStreetPhysics.js';
+import { RAMP_WALL_SAFETY } from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
+import { PHYSICS } from './StreetPhysics.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 import {
-  resolveSafeCopingTransferLaunch,
+  resolveTransferLaunchResult,
   transferDeckCanFit,
 } from './core/TransferLaunchResult.js';
 
@@ -118,31 +124,27 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
   takeoff(impulse = 0, transition = null) {
     super.takeoff(impulse, transition);
     const air = this.transitionAir;
-    const control = air?.exitControl;
-    if (!air?.transferring || !air.frame || !control?.geometryAware
-      || control.abortToReturn) return;
+    if (!air?.transferring || !air.frame) return;
 
-    if (transferDeckCanFit(control, SAFE_COPING_EXIT)) return;
-
-    const plan = {
-      active: true,
-      mode: air.mode,
-      transferring: air.transferring,
-      exitControl: { ...control },
-      launchVertical: air.launchVertical,
-      launchHorizontal: air.launchHorizontal?.clone?.() || new THREE.Vector3(),
-      velocity: this.velocity.clone(),
-    };
-    const result = resolveSafeCopingTransferLaunch({
-      plan,
+    // Single transfer-launch authority. Lower layers provide geometry services
+    // and flight/landing behavior only; they no longer mutate launch state.
+    const deck = scanDeckTransferTarget(this.surface, air.frame);
+    const result = resolveTransferLaunchResult({
       frame: air.frame,
+      incomingSpeed: air.frame.incomingSpeed,
+      launchVertical: air.launchVertical,
       lateralVelocity: air.lateralVelocity,
-      config: SAFE_COPING_EXIT,
+      deck,
+      gravity: PHYSICS.gravity,
+      transferConfig: RAMP_WALL_SAFETY,
+      deckConfig: DECK_AWARE_EXIT,
+      copingConfig: SAFE_COPING_EXIT,
     });
     if (!result?.active) return;
 
     air.mode = result.mode;
-    air.exitControl = { ...result.exitControl };
+    air.transferring = result.transferring;
+    air.exitControl = result.exitControl ? { ...result.exitControl } : null;
     air.launchVertical = result.launchVertical;
     if (result.launchHorizontal) air.launchHorizontal = result.launchHorizontal.clone();
     this.velocity.copy(result.velocity);
