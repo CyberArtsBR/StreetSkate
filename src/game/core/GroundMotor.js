@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+
+const UP = new THREE.Vector3(0, 1, 0);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
 
@@ -182,4 +185,90 @@ export function resolveGroundPropulsion({
     resistance,
     gravityScale,
   };
+}
+
+
+/**
+ * Rebuild the board tangent from player-authored horizontal heading and the
+ * current support normal. This matches StreetPhysics.groundDirection(), including
+ * the limiting tangent used on near-vertical faces, but performs no runtime mutation.
+ */
+export function groundForwardFromHeading({
+  heading = 0,
+  normal = null,
+} = {}) {
+  const supportNormal = normal?.clone?.() || new THREE.Vector3(0, 1, 0);
+  const forward = new THREE.Vector3(
+    -Math.sin(Number(heading) || 0),
+    0,
+    -Math.cos(Number(heading) || 0),
+  );
+  const facingInto = forward.dot(supportNormal);
+  forward.projectOnPlane(supportNormal);
+  if (forward.lengthSq() < 1e-8) {
+    forward.copy(UP).projectOnPlane(supportNormal)
+      .multiplyScalar(facingInto > 0 ? -1 : 1);
+  }
+  if (forward.lengthSq() < 1e-8) return new THREE.Vector3(0, 0, -1);
+  return forward.normalize();
+}
+
+/**
+ * Canonical post-balance grounded motor transaction.
+ *
+ * Contact/collision geometry is deliberately outside this result. The motor owns
+ * only deliberate steering and energy along the current rideable tangent.
+ */
+export function resolveGroundMotion({
+  heading = 0,
+  normal = null,
+  speedState = null,
+  steer = 0,
+  manual = false,
+  reentryRemaining = 0,
+  drive = 0,
+  brake = false,
+  dt = 0,
+  gravity = 20,
+  brakeDecel = 13,
+  config = GROUND_MOTOR,
+} = {}) {
+  const sourceSpeed = Number(speedState?.speed) || 0;
+  const travelSign = Number(speedState?.travelSign) < 0 ? -1 : 1;
+  const headingDelta = groundSteeringDelta({
+    steer,
+    speed: sourceSpeed,
+    manual,
+    reentryRemaining,
+    dt,
+    config,
+  });
+  const nextHeading = (Number(heading) || 0) + headingDelta;
+  const forward = groundForwardFromHeading({
+    heading: nextHeading,
+    normal,
+  });
+  const propulsion = resolveGroundPropulsion({
+    speed: sourceSpeed,
+    travelSign,
+    forwardY: forward.y,
+    normalY: normal?.y ?? 1,
+    drive,
+    brake,
+    manual,
+    dt,
+    gravity,
+    brakeDecel,
+    config,
+  });
+  const velocity = forward.clone().multiplyScalar(propulsion.nextSpeed);
+
+  return Object.freeze({
+    headingDelta,
+    heading: nextHeading,
+    forward,
+    velocity,
+    speed: propulsion.nextSpeed,
+    propulsion: Object.freeze({ ...propulsion }),
+  });
 }
