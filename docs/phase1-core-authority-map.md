@@ -51,6 +51,7 @@ StreetSkater
 | transition-exit takeoff preparation / ramp energy | `CoreSkateController` + `TakeoffContext` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.takeoff()` | lower `MomentumRoll.takeoff()` adapter removed |
 | pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics.takeoff()` applies canonical orientation context | `StableRampReturn` bypassed by final runtime |
 | verified deck catch window | `DeckCatchResult` + `CoreSkateController.resolveDeckCatch()` | `SafeCopingExit.stepAir()` performs the short verified support probe | `DeckAwareRampExitSkillStreetPhysics` is a compatibility alias; scan/target helpers remain geometry services only |
+| continuous same-transition re-entry / anti-tunnelling candidate | `TransitionReentryResult` + `CoreSkateController` | `SafeCopingExit.tryContinuousTransitionReentry()` applies wheel-sweep / center-sweep results | inline geometry selection and emergency-support construction removed from runtime seam |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
 | real-deck transfer / missing-deck return decision | `TransferLaunchResult` | deck geometry evidence feeds the `SafeCopingExit` launch seam | scan remains geometry service; decision math centralized |
 | narrow/unsafe deck return decision | `TransferLaunchResult` | `SafeCopingExit.takeoff()` | deck-fit rule centralized |
@@ -75,6 +76,7 @@ StreetSkater
 - `CollisionResolver`;
 - `GrindCaptureController` strict-first + THPS magnetic fallback and grind entry orchestration;
 - `DeckCatchResult` verified transfer-deck catch eligibility;
+- `TransitionReentryResult` same-transition wheel/sweep recovery candidates and emergency support construction;
 - semantic Ollie/pump/vert/grind-out interpretation;
 - canonical travel synchronization;
 - canonical ground-step start transaction (timers, transition intent, signed speed);
