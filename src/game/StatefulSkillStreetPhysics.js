@@ -136,8 +136,11 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
     this.pumpEligible = Boolean(eligibility.eligible && !nearCoping);
 
     if (input.ollieHeld && this.pumpEligible) this.pumpHoldTime += dt;
-    else if (!input.ollieHeld) this.pumpHoldTime = 0;
-    else this.pumpHoldTime *= Math.exp(-8 * dt);
+    // Preserve accumulated compression through the physical release frame.
+    // Clearing before interpretation made a normal held->released input report
+    // zero hold time and could make real pumps unreachable at runtime.
+    else if (!input.ollieHeld && !input.ollieReleased) this.pumpHoldTime = 0;
+    else if (!input.ollieReleased) this.pumpHoldTime *= Math.exp(-8 * dt);
 
     let releaseCommand = OLLIE_COMMAND.NONE;
     if (input.ollieReleased) {
