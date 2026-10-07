@@ -277,6 +277,31 @@ try {
 
   await page.screenshot({ path: screenshotPath, fullPage: true });
 
+  // Phase 1 transition-authoring debug mode must be inspectable in the real
+  // browser build, not only through unit tests.
+  const debugUrl = new URL(baseUrl);
+  debugUrl.searchParams.set('debug', '1');
+  await page.goto(debugUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await page.waitForFunction(() => window.streetSkate?.ready === true, null, { timeout: 60_000 });
+  const transitionDebug = await page.evaluate(() => {
+    const state = window.streetSkate;
+    const overlay = state?.transitionDebug;
+    return {
+      summary: state?.captureTransitionDebug?.() || null,
+      mounted: Boolean(overlay?.group?.parent),
+      staticChildren: Number(overlay?.staticGroup?.children?.length || 0),
+      activeVisible: Boolean(overlay?.activeGroup?.visible),
+    };
+  });
+  assert.ok(transitionDebug.summary, 'transition debug summary hook unavailable');
+  assert.ok(transitionDebug.summary.count >= 5,
+    `too few authored transitions in debug summary: ${JSON.stringify(transitionDebug.summary)}`);
+  assert.ok(transitionDebug.summary.vertIds.length >= 5,
+    `too few authored vert transitions: ${JSON.stringify(transitionDebug.summary)}`);
+  assert.equal(transitionDebug.mounted, true, '?debug=1 transition overlay was not mounted');
+  assert.ok(transitionDebug.staticChildren >= transitionDebug.summary.count,
+    `transition overlay did not create authored geometry: ${transitionDebug.staticChildren}`);
+
   assert.deepEqual(pageErrors, [], `page errors:\n${pageErrors.join('\n')}`);
   assert.deepEqual(failedRequests, [], `failed requests:\n${JSON.stringify(failedRequests, null, 2)}`);
   assert.deepEqual(consoleErrors, [], `console errors:\n${consoleErrors.join('\n')}`);
