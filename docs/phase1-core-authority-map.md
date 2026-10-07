@@ -118,6 +118,8 @@ Passive same-wall vert return therefore keeps yaw but may become fakie when trav
 
 Authored transition identity is explicit. Important production coping/vert rails are selected by metadata, not by arbitrary names containing `coping`.
 
+The current runtime manifest compiles **12 explicit transition anchors**: bowl, western vert, rear mini north/south, eastern quarter, central hip, south spine, east bank, and four extension-halfpipe lips. Hip/spine/bank anchors are semantic area metadata only and cannot enter vert-air detection; unrelated angled/down/flat grind rails remain grind-only.
+
 Takeoff is now separated into explicit responsibilities:
 
 ```text
@@ -185,7 +187,12 @@ It cannot return or mutate yaw. High-speed wall tests cover approximately 3 / 6 
 - generic bank/kicker ramp-memory launch through the real Ollie/takeoff path;
 - >2 m deterministic big-air result with zero no-input yaw;
 - collision speed coverage at approximately 3 / 6 / 9 / 12 / 15+ m/s;
+- thin-wall / low-ledge / narrow-post collision coverage;
+- coping/rail body collision with active-grind rail exclusion;
+- nose/tail finite-sphere sweep against thin ledge faces;
+- deterministic airborne grind-intent → rail capture replay plus no-intent/out-of-range rejection;
 - existing grind/manual balance regressions;
+- 30 / 60 / 120 / 144 FPS render-cadence parity over the same 120 Hz simulation;
 - board / vert / pump dedicated verifiers.
 
 Replay snapshots also expose pump energy/delta speed, transition identity, wheel support, canonical travel/fakie state, and landing-yaw invariant counters.
