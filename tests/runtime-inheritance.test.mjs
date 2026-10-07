@@ -119,6 +119,18 @@ test('landing post-processing is not duplicated in arcade or momentum layers', a
 });
 
 
+test('grind capture and entry have one canonical runtime authority', async () => {
+  const { SkillStreetPhysics } = await import('../src/game/SkillStreetPhysics.js');
+  const { CoreSkateController } = await import('../src/game/core/CoreSkateController.js');
+
+  assert.equal(Object.hasOwn(SkillStreetPhysics.prototype, 'enterGrind'), true,
+    'skill layer should expose only the adapter seam used by legacy runtime');
+  assert.equal(Object.hasOwn(ArcadeParkMobilitySkillStreetPhysics.prototype, 'enterGrind'), false,
+    'arcade compatibility alias must not add a second grind-entry override');
+  assert.equal(Object.hasOwn(CoreSkateController.prototype, 'enterGrind'), true,
+    'composition root must own canonical grind capture + entry');
+});
+
 test('transition landing routing has one active runtime owner', () => {
   assert.equal(
     Object.hasOwn(SafeCopingExitSkillStreetPhysics.prototype, 'land'),
