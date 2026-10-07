@@ -1,6 +1,7 @@
 import { PlayerState } from './PlayerState.js';
 import { TransitionController } from '../transitions/TransitionController.js';
 import { CollisionResolver } from '../collision/CollisionResolver.js';
+import { interpretOllieRelease } from '../../input/InputInterpreter.js';
 
 /**
  * Phase 1 composition root.
@@ -23,6 +24,10 @@ export class CoreSkateController {
 
   syncState(runtime) {
     return this.state.syncFromLegacy(runtime);
+  }
+
+  interpretOllieRelease(context) {
+    return interpretOllieRelease(context);
   }
 
   ensureCollision(surface) {
