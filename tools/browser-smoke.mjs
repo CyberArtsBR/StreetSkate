@@ -84,6 +84,7 @@ try {
       resources,
       rendererFrame: Number(state?.renderer?.info?.render?.frame || 0),
       qaState: state?.captureState?.() || null,
+      cameraDebug: state?.captureCamera?.() || null,
     };
   });
 
@@ -109,6 +110,11 @@ try {
     'QA snapshot reports a landing yaw violation at bootstrap');
   assert.deepEqual(boot.qaState.stateInvariantCodes, [],
     'QA snapshot reports canonical state divergence at bootstrap');
+  assert.equal(boot.cameraDebug?.mode, 'GROUND', 'camera did not bootstrap in GROUND mode');
+  assert.ok(Array.isArray(boot.cameraDebug?.direction), 'camera debug direction unavailable');
+  assert.ok(Math.abs(boot.cameraDebug.direction[0]) < 1e-9
+    && Math.abs(boot.cameraDebug.direction[2] + 1) < 1e-9,
+    `fixed-world camera axis changed at bootstrap: ${boot.cameraDebug.direction}`);
 
   const hasResource = pattern => boot.resources.some(url => pattern.test(url));
   assert.equal(
@@ -235,6 +241,7 @@ try {
 
   let maxY = start.y;
   let observedAir = !start.grounded;
+  const observedCameraModes = new Set();
   for (let i = 0; i < 45; i++) {
     await page.waitForTimeout(25);
     const sample = await page.evaluate(() => ({
@@ -243,15 +250,19 @@ try {
       velocity: window.streetSkate.skater.velocity.toArray(),
       heading: window.streetSkate.skater.heading,
       yawViolations: window.streetSkate.skater.landingYawInvariantViolations || 0,
+      cameraDebug: window.streetSkate.captureCamera?.() || null,
     }));
     maxY = Math.max(maxY, sample.y);
     observedAir ||= !sample.grounded;
+    if (sample.cameraDebug?.mode) observedCameraModes.add(sample.cameraDebug.mode);
     assert.ok(sample.velocity.every(Number.isFinite), 'non-finite velocity during browser ollie');
     assert.ok(Number.isFinite(sample.heading), 'non-finite heading during browser ollie');
     assert.equal(sample.yawViolations, 0, 'contact-driven yaw invariant violated during browser ollie');
   }
 
   assert.equal(observedAir, true, 'Space input never produced an airborne frame');
+  assert.ok(observedCameraModes.has('AIR'),
+    `camera state machine never observed AIR during ollie: ${[...observedCameraModes]}`);
   assert.ok(maxY > start.y + 0.12,
     `ollie did not gain expected height: start=${start.y}, max=${maxY}`);
 
