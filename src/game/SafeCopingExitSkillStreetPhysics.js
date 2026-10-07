@@ -22,6 +22,7 @@ import {
   resolveTransferLaunchResult,
   transferDeckCanFit,
 } from './core/TransferLaunchResult.js';
+import { evaluateDeckCatch } from './core/DeckCatchResult.js';
 
 export const SAFE_COPING_EXIT = Object.freeze({
   boardLength: PRODUCTION_BOARD_CONTACT_RIG.deckLength,
@@ -257,6 +258,32 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     };
   }
 
+  tryVerifiedDeckCatch(activeAir) {
+    const context = {
+      transitionAir: activeAir,
+      position: this.position,
+      velocity: this.velocity,
+      catchHorizontalRadius: DECK_AWARE_EXIT.catchHorizontalRadius,
+      catchVerticalWindow: DECK_AWARE_EXIT.catchVerticalWindow,
+    };
+    const decision = this.coreController
+      ? this.coreController.resolveDeckCatch(context)
+      : evaluateDeckCatch(context);
+    if (!decision.eligible) return false;
+
+    // Last-resort four-wheel catch inside the already verified deck corridor.
+    // This is the former DeckAwareRampExit stepAir probe, kept in the same
+    // post-air/pre-reentry order while removing that inheritance level.
+    const support = this.ensureBoardContact().snapToGround(
+      this.position,
+      this.heading,
+      0.34,
+      0.48,
+    );
+    if (!support?.supported || !supportMatchesDeckTarget(support, activeAir)) return false;
+    return this.land(support);
+  }
+
   tryContinuousTransitionReentry(activeAir, before) {
     if (!activeAir?.frame || this.grounded || this.transitionAir !== activeAir) return false;
     if (!(activeAir.apexPassed || this.velocity.y <= 0.8)) return false;
@@ -329,6 +356,10 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       this.prepareTransfer(activeAir, true);
     }
     super.stepAir(dt, input, drive, before);
+
+    if (activeAir && !this.grounded && this.transitionAir === activeAir) {
+      this.tryVerifiedDeckCatch(activeAir);
+    }
 
     if (!activeAir || this.grounded || this.transitionAir !== activeAir) return;
     if (this.tryContinuousTransitionReentry(activeAir, before)) return;
