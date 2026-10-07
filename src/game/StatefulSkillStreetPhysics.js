@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
+import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
@@ -14,6 +14,8 @@ import { OLLIE_COMMAND } from '../input/InputInterpreter.js';
 import { CoreSkateController } from './core/CoreSkateController.js';
 import { PlayerState } from './core/PlayerState.js';
 import { legacyStateViolations } from './core/LegacyStateInvariants.js';
+import { rampLaunchBonus, updateRampLaunchMemory } from './core/LaunchEnergyModel.js';
+import { captureTakeoffContext } from './core/TakeoffContext.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
@@ -22,7 +24,7 @@ import {
 const clamp = THREE.MathUtils.clamp;
 
 /** Skill-based transition pumping layered on top of board contact + vert physics. */
-export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysics {
   constructor(options = {}) {
     super(options);
     // Phase 1 composition root: canonical state, transition authority and body
@@ -66,6 +68,8 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
     this.stateInvariantViolations = [];
     this.syncMovementState();
     this.syncCanonicalState();
+    this.rampLaunchMemory = 0;
+    this.rampLaunchMemoryTime = 0;
 
     this.pumpReleaseQueued = false;
     this.pumpEligible = false;
@@ -90,6 +94,27 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
 
   emitGameplayEvent(type, data = {}) { this.gameplayEvents.push({ type, ...data }); }
   drainGameplayEvents() { const events = this.gameplayEvents; this.gameplayEvents = []; return events; }
+
+  rememberRampClimb(dt = 0) {
+    if (this.coreController) return this.coreController.updateRampEnergy(this, dt);
+
+    const sample = this.grounded
+      ? rampLaunchBonus({
+        speed: this.velocity?.length?.() || 0,
+        normalY: this.normal?.y ?? 1,
+        verticalSpeed: this.velocity?.y ?? 0,
+      })
+      : 0;
+    const memory = updateRampLaunchMemory({
+      previousBoost: this.rampLaunchMemory,
+      previousTime: this.rampLaunchMemoryTime,
+      sampleBoost: sample,
+      dt,
+    });
+    this.rampLaunchMemory = memory.boost;
+    this.rampLaunchMemoryTime = memory.time;
+    return sample;
+  }
 
   samplePumpContacts() {
     if (!this.grounded || this.movementState !== MOVEMENT_STATE.GROUND || this.manual || this.grind || this.wallRide || this.bailTime > 0) {
@@ -254,11 +279,44 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
     this.syncCanonicalState();
   }
 
+  stepGround(dt, input = {}, drive = 0) {
+    // Capture climb energy before the lower ground solver can move the final
+    // wheel across the lip and trigger takeoff.
+    this.rememberRampClimb(dt);
+    return super.stepGround(dt, input, drive);
+  }
+
   takeoff(impulse = 0, transition = null) {
     this.pumpEligible = false;
     this.pumpHoldTime = 0;
     this.pumpPreviousNormal = null;
-    return super.takeoff(impulse, transition);
+
+    const context = this.coreController
+      ? this.coreController.captureTakeoff(this, impulse, transition)
+      : captureTakeoffContext({
+        grounded: this.grounded,
+        normal: this.normal,
+        velocity: this.velocity,
+        forward: this.forward,
+        travelDirection: this.travelDirection,
+        heading: this.heading,
+        stance: this.stance,
+        requestedImpulse: impulse,
+        transition,
+        rampLaunchMemory: this.rampLaunchMemory,
+        rampLaunchMemoryTime: this.rampLaunchMemoryTime,
+        rampExitIntentTime: this.rampExitIntentTime,
+      });
+
+    const result = super.takeoff(context.composedImpulse, transition, context);
+    if (context.rampContext) this.airTakeoffFromRamp = true;
+
+    if (this.coreController) this.coreController.consumeRampEnergy(this);
+    else {
+      this.rampLaunchMemory = 0;
+      this.rampLaunchMemoryTime = 0;
+    }
+    return result;
   }
 
   land(support) {
