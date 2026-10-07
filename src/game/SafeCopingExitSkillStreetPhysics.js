@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import {
   DeckAwareRampExitSkillStreetPhysics,
   DECK_AWARE_EXIT,
@@ -23,6 +22,12 @@ import {
   transferDeckCanFit,
 } from './core/TransferLaunchResult.js';
 import { evaluateDeckCatch } from './core/DeckCatchResult.js';
+import {
+  originalTransitionSweep as resolveOriginalTransitionSweep,
+  resolveSweepReentryCandidate,
+  resolveWheelReentryCandidate,
+  supportMatchesOriginalTransition as matchesOriginalTransition,
+} from './core/TransitionReentryResult.js';
 
 export const SAFE_COPING_EXIT = Object.freeze({
   boardLength: PRODUCTION_BOARD_CONTACT_RIG.deckLength,
@@ -44,12 +49,9 @@ export const SAFE_COPING_EXIT = Object.freeze({
   // normal so the board cannot cross a quarter/bowl face between fixed steps.
   continuousSweepExtra: 0.22,
   continuousContactSkin: 0.018,
+  contactCorridor: VERT_RETURN.contactCorridor,
   autoAlignSpinToleranceDeg: 38,
 });
-
-function horizontal(vector) {
-  return vector.clone().setY(0);
-}
 
 /** Compatibility export backed by the canonical transfer-deck fit rule. */
 export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
@@ -58,34 +60,7 @@ export function deckCanFitBoard(control, config = SAFE_COPING_EXIT) {
 
 export function supportMatchesOriginalTransition(support, air,
   config = SAFE_COPING_EXIT) {
-  if (!support?.position || !support?.normal || !air?.frame?.lipPoint
-    || !air?.frame?.deckOutward || !air?.frame?.rampInward) return false;
-
-  const ny = Math.abs(support.normal.y);
-  if (ny < config.recoveryNormalMinY || ny > config.recoveryNormalMaxY) return false;
-
-  const outward = horizontal(air.frame.deckOutward);
-  const inward = horizontal(air.frame.rampInward);
-  if (outward.lengthSq() < 1e-8 || inward.lengthSq() < 1e-8) return false;
-  outward.normalize();
-  inward.normalize();
-
-  const fromLip = support.position.clone().sub(air.frame.lipPoint);
-  const lateral = horizontal(fromLip).dot(air.frame.copingTangent);
-  if (Math.abs(lateral) > VERT_RETURN.contactCorridor) return false;
-  const signedOutward = horizontal(fromLip).dot(outward);
-  if (signedOutward > config.recoveryOutwardMax
-    || signedOutward < -config.recoveryInwardMax) return false;
-
-  const dy = support.position.y - air.frame.lipPoint.y;
-  if (dy > config.recoveryAboveLip || dy < -config.recoveryBelowLip) return false;
-
-  const horizontalNormal = horizontal(support.normal);
-  if (horizontalNormal.lengthSq() < 1e-8) return false;
-  horizontalNormal.normalize();
-  if (horizontalNormal.dot(inward) < config.recoveryNormalAlignment) return false;
-
-  return true;
+  return matchesOriginalTransition(support, air, config);
 }
 
 /**
@@ -106,24 +81,7 @@ export function canAutoAlignTransitionLanding(airSpin = 0,
 
 export function originalTransitionSweep(surface, from, to, air,
   config = SAFE_COPING_EXIT) {
-  if (!surface?.sweepRideable || !from || !to || !air?.frame) return null;
-  const point = new THREE.Vector3();
-  const normal = new THREE.Vector3();
-  const hit = surface.sweepRideable(
-    from,
-    to,
-    point,
-    normal,
-    config.continuousSweepExtra,
-  );
-  if (!hit) return null;
-  const candidate = { position: point.clone(), normal: normal.clone() };
-  if (!supportMatchesOriginalTransition(candidate, air, config)) return null;
-  return {
-    point: point.clone(),
-    normal: normal.clone(),
-    fraction: hit.fraction ?? 1,
-  };
+  return resolveOriginalTransitionSweep(surface, from, to, air, config);
 }
 
 /**
@@ -238,26 +196,6 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     });
   }
 
-  makeEmergencyTransitionSupport(hit) {
-    const normal = hit.normal.clone().normalize();
-    const position = hit.point.clone().addScaledVector(
-      normal,
-      SAFE_COPING_EXIT.continuousContactSkin,
-    );
-    const leadingFront = this.velocity.dot(this.forward) >= 0;
-    return {
-      supported: true,
-      count: 1,
-      frontSupported: leadingFront ? 1 : 0,
-      rearSupported: leadingFront ? 0 : 1,
-      position,
-      supportPoint: hit.point.clone(),
-      normal,
-      maxWheelGap: 0,
-      contacts: [],
-    };
-  }
-
   tryVerifiedDeckCatch(activeAir) {
     const context = {
       transitionAir: activeAir,
@@ -285,67 +223,51 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
   }
 
   tryContinuousTransitionReentry(activeAir, before) {
-    if (!activeAir?.frame || this.grounded || this.transitionAir !== activeAir) return false;
-    if (!(activeAir.apexPassed || this.velocity.y <= 0.8)) return false;
-
     const contact = this.ensureBoardContact();
-    const referenceNormal = activeAir.frame.surfaceNormal?.clone?.()
-      || this.normal.clone();
-    if (referenceNormal.lengthSq() < 1e-8) referenceNormal.set(0, 1, 0);
-    referenceNormal.normalize();
-
-    // First retry the real four-wheel landing with a transition-oriented basis.
-    const sweptSupport = contact.solveLanding(
+    const context = {
+      activeAir,
+      grounded: this.grounded,
+      sameAir: this.transitionAir === activeAir,
+      velocityY: this.velocity.y,
+      contact,
+      surface: this.surface,
       before,
-      this.position,
-      this.heading,
-      referenceNormal,
-      this.velocity,
-    );
-    if (sweptSupport?.supported
-      && supportMatchesOriginalTransition(sweptSupport, activeAir)) {
-      if (this.land(sweptSupport)) return true;
+      position: this.position,
+      heading: this.heading,
+      referenceNormal: activeAir?.frame?.surfaceNormal || this.normal,
+      velocity: this.velocity,
+      forward: this.forward,
+      config: SAFE_COPING_EXIT,
+    };
+
+    const wheel = this.coreController
+      ? this.coreController.resolveWheelReentry(context)
+      : resolveWheelReentryCandidate(context);
+    if (wheel?.support) {
+      if (this.land(wheel.support)) return true;
       if (this.bailTime > 0) {
-        this.position.copy(sweptSupport.position);
+        this.position.copy(wheel.support.position);
         return true;
       }
     }
 
-    // If triangulation still prevents wheel support, center-sweep the original
-    // transition as a hard anti-tunnelling barrier. This is only accepted when
-    // the hit belongs to the same coping frame, so other ramps/floors cannot steal it.
-    const hit = originalTransitionSweep(this.surface, before, this.position, activeAir);
-    if (!hit) return false;
+    const sweep = this.coreController
+      ? this.coreController.resolveSweepReentry(context)
+      : resolveSweepReentryCandidate(context);
+    if (!sweep?.support || !sweep.candidate) return false;
 
-    const candidate = hit.point.clone().addScaledVector(
-      hit.normal,
-      SAFE_COPING_EXIT.continuousContactSkin,
-    );
-    const resolved = contact.solveGround(
-      candidate,
-      before,
-      this.heading,
-      hit.normal,
-      false,
-    );
-
-    let support = resolved?.supported && resolved.position.distanceTo(candidate) <= 0.18 ? resolved : null;
-    if (!support || !supportMatchesOriginalTransition(support, activeAir)) {
-      support = this.makeEmergencyTransitionSupport(hit);
-    }
-
-    this.position.copy(candidate);
-    if (this.land(support)) return true;
+    this.position.copy(sweep.candidate);
+    if (this.land(sweep.support)) return true;
     if (this.bailTime > 0) {
-      this.position.copy(support.position);
+      this.position.copy(sweep.support.position);
       return true;
     }
 
     // Final invariant: once the original transition has been swept, never allow
     // the center to continue through it even if a future landing rule rejects.
-    this.position.copy(support.position);
-    const into = this.velocity.dot(support.normal);
-    if (into < 0) this.velocity.addScaledVector(support.normal, -into);
+    this.position.copy(sweep.support.position);
+    const into = this.velocity.dot(sweep.support.normal);
+    if (into < 0) this.velocity.addScaledVector(sweep.support.normal, -into);
     return true;
   }
 
