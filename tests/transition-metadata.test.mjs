@@ -11,26 +11,29 @@ import {
   TransitionController,
   authoredTransitionIdentity,
 } from '../src/game/transitions/TransitionController.js';
+import { appendExtensionHalfpipeRails } from '../src/park/ExpandedPark.js';
 
 const manifest = JSON.parse(fs.readFileSync(
   new URL('../public/assets/park/park-manifest.json', import.meta.url),
   'utf8',
 ));
+const runtimeManifest = JSON.parse(JSON.stringify(manifest));
+appendExtensionHalfpipeRails(runtimeManifest);
 
 test('current production park has explicit metadata for every authored transition anchor', () => {
-  const coverage = transitionMetadataCoverage(manifest.rails);
+  const coverage = transitionMetadataCoverage(runtimeManifest.rails);
   assert.equal(coverage.complete, true, JSON.stringify(coverage));
-  assert.equal(coverage.authoredCount, 8);
-  assert.equal(coverage.presentAuthoredCount, 8);
+  assert.equal(coverage.authoredCount, 12);
+  assert.equal(coverage.presentAuthoredCount, 12);
   assert.deepEqual(coverage.missingAuthoredRails, []);
   assert.deepEqual(coverage.unclassifiedCopingRails, []);
 });
 
 test('production transition metadata classifies vert and non-vert park areas explicitly', () => {
-  const transitions = compileTransitionMetadata(manifest.rails);
+  const transitions = compileTransitionMetadata(runtimeManifest.rails);
   const byId = new Map(transitions.map(transition => [transition.id, transition]));
 
-  assert.equal(transitions.length, 8);
+  assert.equal(transitions.length, 12);
   assert.equal(byId.get('bowl-main')?.type, TRANSITION_TYPE.BOWL);
   assert.equal(byId.get('western-vert')?.type, TRANSITION_TYPE.VERT);
   assert.equal(byId.get('rear-mini-north')?.type, TRANSITION_TYPE.MINI);
@@ -39,13 +42,17 @@ test('production transition metadata classifies vert and non-vert park areas exp
   assert.equal(byId.get('central-hip')?.type, TRANSITION_TYPE.HIP);
   assert.equal(byId.get('south-spine')?.type, TRANSITION_TYPE.SPINE);
   assert.equal(byId.get('east-bank')?.type, TRANSITION_TYPE.BANK);
+  assert.equal(byId.get('extension-halfpipe-1-west')?.type, TRANSITION_TYPE.VERT);
+  assert.equal(byId.get('extension-halfpipe-1-east')?.type, TRANSITION_TYPE.VERT);
+  assert.equal(byId.get('extension-halfpipe-2-west')?.type, TRANSITION_TYPE.VERT);
+  assert.equal(byId.get('extension-halfpipe-2-east')?.type, TRANSITION_TYPE.VERT);
   assert.equal(byId.get('central-hip')?.supportsVert, false);
   assert.equal(byId.get('south-spine')?.supportsVert, false);
   assert.equal(byId.get('east-bank')?.supportsVert, false);
 });
 
 test('named park-area rails become semantic anchors while unrelated grind rails stay grind-only', () => {
-  const transitions = compileTransitionMetadata(manifest.rails);
+  const transitions = compileTransitionMetadata(runtimeManifest.rails);
   const bySource = new Map(transitions.map(transition => [transition.sourceRail, transition]));
 
   assert.equal(bySource.get('05 / hip rail')?.geometryRole, 'AREA_ANCHOR');
@@ -58,7 +65,7 @@ test('named park-area rails become semantic anchors while unrelated grind rails 
 });
 
 test('compiled metadata includes deterministic lip bounds center and axis semantics', () => {
-  const transitions = compileTransitionMetadata(manifest.rails);
+  const transitions = compileTransitionMetadata(runtimeManifest.rails);
   const western = transitions.find(transition => transition.id === 'western-vert');
   const bowl = transitions.find(transition => transition.id === 'bowl-main');
 
@@ -72,7 +79,7 @@ test('compiled metadata includes deterministic lip bounds center and axis semant
 });
 
 test('shadow controller finds the nearest explicit transition lip without mutating physics', () => {
-  const controller = new TransitionController({ rails: manifest.rails });
+  const controller = new TransitionController({ rails: runtimeManifest.rails });
   const western = controller.get('western-vert');
   assert.ok(western);
 
@@ -84,7 +91,7 @@ test('shadow controller finds the nearest explicit transition lip without mutati
 });
 
 test('legacy coping candidate maps to canonical transition id by exact authored source name', () => {
-  const controller = new TransitionController({ rails: manifest.rails });
+  const controller = new TransitionController({ rails: runtimeManifest.rails });
   assert.deepEqual(controller.inspectLegacyCandidate({ name: '04 / eastern quarter coping' }), {
     sourceName: '04 / eastern quarter coping',
     transitionId: 'eastern-quarter',
@@ -116,7 +123,7 @@ test('semantic bridge classifies legacy transitionAir without requiring geometry
 
 
 test('non-vert transition anchors can never enter vert lip detection', () => {
-  const controller = new TransitionController({ rails: manifest.rails });
+  const controller = new TransitionController({ rails: runtimeManifest.rails });
   const hip = controller.get('central-hip');
   const bank = controller.get('east-bank');
   const spine = controller.get('south-spine');
