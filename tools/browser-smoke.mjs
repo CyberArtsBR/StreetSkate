@@ -134,7 +134,10 @@ try {
 
   await page.bringToFront();
   await page.evaluate(() => window.focus());
-  await page.waitForFunction(() => document.hasFocus() && !document.hidden, null, { timeout: 5_000 });
+  // Headless Chromium does not guarantee document.hasFocus() even when Playwright
+  // keyboard events are delivered. Visibility + the captureInput assertions below
+  // are the authoritative proof that real browser input reached SkateInput.
+  await page.waitForFunction(() => !document.hidden, null, { timeout: 5_000 });
 
   // Real browser-loop ground input validation. Let auto-push establish useful
   // park speed, then prove steering owns yaw and brake owns speed.
