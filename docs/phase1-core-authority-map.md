@@ -23,10 +23,9 @@ The final skater still uses compatibility inheritance for migration safety, but 
 ```text
 StreetSkater
    └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + takeoff/landing post
-      └─ SafeCopingExit...                   single transition landing + transfer launch/re-entry
-         └─ DeckAwareRampExit...             real deck scan / verified deck catch
-            └─ RampWallSafety...              single airborne + transfer-flight executor
-               └─ MomentumRoll...             ground adapter + canonical travel sync
+      └─ SafeCopingExit...                   transition landing/transfer/re-entry + verified deck catch application
+         └─ RampWallSafety...                 single airborne + transfer-flight executor
+            └─ MomentumRoll...                ground adapter + canonical travel sync
                   └─ StableBoardContact...    board support + explicit collision-result application
                      └─ BoardContact...
                         └─ SkillStreetPhysics
@@ -51,6 +50,7 @@ StreetSkater
 | ramp launch energy | `CoreSkateController` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.stepGround()/takeoff()` | `UnifiedRampFeel` compatibility wrapper bypassed |
 | transition-exit takeoff preparation / ramp energy | `CoreSkateController` + `TakeoffContext` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.takeoff()` | lower `MomentumRoll.takeoff()` adapter removed |
 | pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics.takeoff()` applies canonical orientation context | `StableRampReturn` bypassed by final runtime |
+| verified deck catch window | `DeckCatchResult` + `CoreSkateController.resolveDeckCatch()` | `SafeCopingExit.stepAir()` performs the short verified support probe | `DeckAwareRampExitSkillStreetPhysics` is a compatibility alias; scan/target helpers remain geometry services only |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
 | real-deck transfer / missing-deck return decision | `TransferLaunchResult` | deck geometry evidence feeds the `SafeCopingExit` launch seam | scan remains geometry service; decision math centralized |
 | narrow/unsafe deck return decision | `TransferLaunchResult` | `SafeCopingExit.takeoff()` | deck-fit rule centralized |
@@ -74,6 +74,7 @@ StreetSkater
 - `TransitionController`;
 - `CollisionResolver`;
 - `GrindCaptureController` strict-first + THPS magnetic fallback and grind entry orchestration;
+- `DeckCatchResult` verified transfer-deck catch eligibility;
 - semantic Ollie/pump/vert/grind-out interpretation;
 - canonical travel synchronization;
 - canonical ground-step start transaction (timers, transition intent, signed speed);
@@ -211,6 +212,7 @@ Phase 1 does not delete every historical filename simply to shorten the tree. Th
 - `UnifiedRampFeelSkillStreetPhysics` compatibility wrapper outside final runtime;
 - `StableRampReturnSkillStreetPhysics` compatibility/regression class outside final runtime;
 - `ArcadeParkMobilitySkillStreetPhysics` compatibility alias to `SafeCopingExitSkillStreetPhysics`;
+- `DeckAwareRampExitSkillStreetPhysics` compatibility alias to `RampWallSafetySkillStreetPhysics`; real-deck scan helpers remain available;
 - `BowlLandingSkillStreetPhysics` standalone compatibility/regression class outside final runtime;
 - `TransitionGuide` oracle;
 - pure legacy helpers used only for parity/tuning tests.
