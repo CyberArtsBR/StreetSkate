@@ -3,6 +3,7 @@ import {
   DeckAwareRampExitSkillStreetPhysics,
   DECK_AWARE_EXIT,
   scanDeckTransferTarget,
+  supportMatchesDeckTarget,
 } from './DeckAwareRampExitSkillStreetPhysics.js';
 import {
   RAMP_WALL_SAFETY,
