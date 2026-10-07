@@ -5,6 +5,11 @@ import { interpretOllieRelease } from '../../input/InputInterpreter.js';
 import { resolveTravelState } from './TravelState.js';
 import { rampLaunchBonus, updateRampLaunchMemory } from './LaunchEnergyModel.js';
 import { captureTakeoffContext } from './TakeoffContext.js';
+import {
+  groundSteeringDelta,
+  resolveGroundPropulsion,
+  signedGroundSpeed,
+} from './GroundMotor.js';
 
 /**
  * Phase 1 composition root.
@@ -31,6 +36,18 @@ export class CoreSkateController {
 
   interpretOllieRelease(context) {
     return interpretOllieRelease(context);
+  }
+
+  measureGroundSpeed(context) {
+    return signedGroundSpeed(context);
+  }
+
+  resolveGroundSteering(context) {
+    return groundSteeringDelta(context);
+  }
+
+  resolveGroundPropulsion(context) {
+    return resolveGroundPropulsion(context);
   }
 
   syncTravel(runtime, {
