@@ -102,6 +102,7 @@ function manualBridgePhysics() {
   p.airSpin = 0;
   p.airDirection();
   p.velocity.set(0, -2.4, -4.5);
+  p.speed = p.velocity.length();
   p.grounded = false;
   p.airTime = 0.28;
   p.setMovementState(MOVEMENT_STATE.AIR);
