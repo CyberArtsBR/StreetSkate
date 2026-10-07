@@ -120,3 +120,20 @@ test('transition landing routing has one active runtime owner', () => {
     'RampWallSafety must provide air/transfer flight only',
   );
 });
+
+
+test('transition exit intent is prepared only at the top takeoff seam', async () => {
+  const { StatefulSkillStreetPhysics } = await import('../src/game/StatefulSkillStreetPhysics.js');
+  const { MomentumRollSkillStreetPhysics } = await import('../src/game/MomentumRollSkillStreetPhysics.js');
+
+  assert.equal(
+    Object.hasOwn(StatefulSkillStreetPhysics.prototype, 'takeoff'),
+    true,
+    'Stateful controller must own canonical takeoff preparation',
+  );
+  assert.equal(
+    Object.hasOwn(MomentumRollSkillStreetPhysics.prototype, 'takeoff'),
+    false,
+    'MomentumRoll must not retag or reinterpret takeoff candidates',
+  );
+});
