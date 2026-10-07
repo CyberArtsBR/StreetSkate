@@ -101,3 +101,22 @@ test('landing post-processing is not duplicated in arcade or momentum layers', a
     'MomentumRoll must not own travel/fakie landing post-processing',
   );
 });
+
+
+test('transition landing routing has one active runtime owner', () => {
+  assert.equal(
+    Object.hasOwn(SafeCopingExitSkillStreetPhysics.prototype, 'land'),
+    true,
+    'SafeCopingExit must be the single transition landing routing seam',
+  );
+  assert.equal(
+    Object.hasOwn(DeckAwareRampExitSkillStreetPhysics.prototype, 'land'),
+    false,
+    'DeckAwareRampExit must provide geometry/catch services only',
+  );
+  assert.equal(
+    Object.hasOwn(RampWallSafetySkillStreetPhysics.prototype, 'land'),
+    false,
+    'RampWallSafety must provide air/transfer flight only',
+  );
+});
