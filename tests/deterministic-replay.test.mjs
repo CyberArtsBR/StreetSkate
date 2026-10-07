@@ -77,6 +77,17 @@ test('replay baseline never permits contact-driven landing yaw', () => {
   }
 });
 
+test('canonical player state stays invariant-clean across baseline replay', () => {
+  const replay = runDeterministicReplay({ controller: physics(), segments: baselineTape });
+  for (const snapshot of replay.snapshots) {
+    assert.deepEqual(
+      snapshot.state.stateInvariantCodes,
+      [],
+      `canonical state divergence at fixed frame ${snapshot.frame}: ${snapshot.state.stateInvariantCodes.join(', ')}`,
+    );
+  }
+});
+
 test('multi-frame replay segments emit edge-triggered inputs only once', () => {
   class ProbeController {
     constructor() { this.events = []; }
