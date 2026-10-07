@@ -196,8 +196,22 @@ test('fixed-step pump loop adds energy reproducibly and respects cooldown flow',
 
   assert.ok(firstController.pumpLastEnergy > 0,
     `pump replay never added energy: ${firstController.pumpLastEnergy}`);
-  assert.ok(firstController.velocity.length() > startSpeed,
-    `pump loop did not build speed: ${startSpeed} -> ${firstController.velocity.length()}`);
+
+  const speedAt = frame => {
+    const snapshot = first.snapshots.find(entry => entry.frame === frame);
+    assert.ok(snapshot, `missing replay snapshot at frame ${frame}`);
+    return Math.hypot(...snapshot.state.velocity);
+  };
+  const firstBefore = speedAt(12);
+  const firstAfter = speedAt(13);
+  const secondBefore = speedAt(55);
+  const secondAfter = speedAt(56);
+
+  assert.ok(firstAfter > firstBefore,
+    `first pump did not add immediate tangent speed: ${firstBefore} -> ${firstAfter}`);
+  assert.ok(secondAfter > secondBefore,
+    `second pump did not add immediate tangent speed: ${secondBefore} -> ${secondAfter}`);
+  assert.ok(firstAfter > startSpeed,
+    `first pump should exceed initial speed: ${startSpeed} -> ${firstAfter}`);
   assert.equal(firstController.grounded, true);
-  assert.ok(firstController.gameplayEvents.length >= 0);
 });
