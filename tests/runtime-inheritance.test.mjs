@@ -99,9 +99,9 @@ test('landing post-processing is not duplicated in arcade or momentum layers', a
   const { MomentumRollSkillStreetPhysics } = await import('../src/game/MomentumRollSkillStreetPhysics.js');
 
   assert.equal(
-    Object.hasOwn(ArcadeParkMobilitySkillStreetPhysics.prototype, 'land'),
-    false,
-    'ArcadeParkMobility must not own landing post-processing',
+    ArcadeParkMobilitySkillStreetPhysics,
+    SafeCopingExitSkillStreetPhysics,
+    'ArcadeParkMobility is a compatibility alias; SafeCopingExit owns the legitimate transition land seam',
   );
   assert.equal(
     Object.hasOwn(MomentumRollSkillStreetPhysics.prototype, 'land'),
