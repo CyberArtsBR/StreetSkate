@@ -11,7 +11,8 @@ function horizontal(vector) {
  */
 export function supportMatchesOriginalTransition(support, air, config) {
   if (!support?.position || !support?.normal || !air?.frame?.lipPoint
-    || !air?.frame?.deckOutward || !air?.frame?.rampInward || !config) return false;
+    || !air?.frame?.deckOutward || !air?.frame?.rampInward
+    || !air?.frame?.copingTangent || !config) return false;
 
   const ny = Math.abs(support.normal.y);
   if (ny < config.recoveryNormalMinY || ny > config.recoveryNormalMaxY) return false;
@@ -23,14 +24,9 @@ export function supportMatchesOriginalTransition(support, air, config) {
   inward.normalize();
 
   const fromLip = support.position.clone().sub(air.frame.lipPoint);
-  const tangent = air.frame.copingTangent?.clone?.();
-  if (tangent?.lengthSq?.() > 1e-8 && Number.isFinite(config.contactCorridor)) {
-    tangent.y = 0;
-    if (tangent.lengthSq() > 1e-8) {
-      tangent.normalize();
-      const lateral = horizontal(fromLip).dot(tangent);
-      if (Math.abs(lateral) > config.contactCorridor) return false;
-    }
+  if (Number.isFinite(config.contactCorridor)) {
+    const lateral = horizontal(fromLip).dot(air.frame.copingTangent);
+    if (Math.abs(lateral) > config.contactCorridor) return false;
   }
 
   const signedOutward = horizontal(fromLip).dot(outward);
