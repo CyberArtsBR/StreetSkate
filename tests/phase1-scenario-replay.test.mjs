@@ -215,3 +215,64 @@ test('fixed-step pump loop adds energy reproducibly and respects cooldown flow',
     `second pump transaction added no energy: ${secondRelease.pumpLastEnergy}`);
   assert.equal(firstController.grounded, true);
 });
+
+
+function genericRampLaunchPhysics() {
+  const p = new StatefulSkillStreetPhysics({
+    collision: floorWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+  p.position.set(0, 0.015, 6);
+  p.normal.set(0, 1, 0);
+  p.heading = 0;
+  p.groundDirection();
+  p.velocity.copy(p.forward).multiplyScalar(9.5);
+  p.speed = 9.5;
+  p.grounded = true;
+  p.setMovementState(MOVEMENT_STATE.GROUND);
+  p.syncTravelDirection({ preserveIfSlow: false });
+
+  // Represents the climb energy sampled on the preceding bank/kicker frames.
+  // The exact lip may already be flat when takeoff occurs; this memory is the
+  // canonical generic-ramp path that keeps launch energy consistent.
+  p.rampLaunchMemory = 5.2;
+  p.rampLaunchMemoryTime = 0.24;
+  return p;
+}
+
+const genericRampLaunchTape = [
+  replaySegment(1, { ollieReleased: true }),
+  replaySegment(150, { drive: 0, steer: 0, spin: 0 }),
+];
+
+test('generic ramp-memory launch replay creates deterministic big air without yaw', () => {
+  const first = runDeterministicReplay({
+    controller: genericRampLaunchPhysics(),
+    segments: genericRampLaunchTape,
+  });
+  const second = runDeterministicReplay({
+    controller: genericRampLaunchPhysics(),
+    segments: genericRampLaunchTape,
+  });
+
+  assert.equal(firstReplayDivergence(first, second), null);
+  assert.equal(first.signature, second.signature);
+  assertReplayClean(first);
+
+  const airborne = first.snapshots.find(snapshot => !snapshot.state.grounded);
+  assert.ok(airborne, 'generic ramp launch never became airborne');
+  assert.ok(airborne.state.velocity[1] > 8.0,
+    `remembered ramp energy produced weak vertical launch: ${airborne.state.velocity[1]}`);
+
+  const maxHeight = Math.max(...first.snapshots.map(snapshot => snapshot.state.position[1]));
+  assert.ok(maxHeight > 2.0, `generic ramp launch did not produce big air: y=${maxHeight}`);
+
+  for (const snapshot of first.snapshots) {
+    assert.ok(Math.abs(snapshot.state.heading) < 1e-8,
+      `no-input generic ramp air invented yaw at frame ${snapshot.frame}: ${snapshot.state.heading}`);
+  }
+
+  assert.ok(first.snapshots.some(snapshot => snapshot.state.grounded && snapshot.frame > 40),
+    'generic ramp launch never reconnected to ground');
+});
