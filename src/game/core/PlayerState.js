@@ -45,6 +45,7 @@ export class PlayerState {
     this.travelDirection = new THREE.Vector3(0, 0, -1);
     this.deckHeading = 0;
     this.stance = 1;
+    this.travelSign = 1;
     this.mode = 'AIR';
     this.grounded = false;
     this.transitionId = null;
@@ -80,6 +81,7 @@ export class PlayerState {
     canonicalTravelDirection(travelSource, this.deckHeading, this.travelDirection);
 
     this.stance = finiteNumber(controller?.stance, 1) < 0 ? -1 : 1;
+    this.travelSign = this.fakie ? -1 : 1;
     this.mode = controller?.movementState ?? this.mode;
     this.grounded = Boolean(controller?.grounded);
     this.transitionId = controller?.transitionAir?.transitionId
@@ -101,6 +103,7 @@ export class PlayerState {
       travelDirection: this.travelDirection.toArray(),
       deckHeading: this.deckHeading,
       stance: this.stance,
+      travelSign: this.travelSign,
       fakie: this.fakie,
       mode: this.mode,
       grounded: this.grounded,
