@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
 import { CoreSkateController } from '../src/game/core/CoreSkateController.js';
+import { ParkCollision } from '../src/game/ParkCollision.js';
 
 function floorWorld() {
   const root = new THREE.Group();
@@ -17,12 +18,13 @@ function floorWorld() {
 }
 
 test('core composition root owns canonical state, transitions and collision', () => {
-  const surface = floorWorld();
+  const root = floorWorld();
+  const surface = new ParkCollision(root);
   const core = new CoreSkateController({ surface, rails: [] });
   assert.ok(core.state);
   assert.ok(core.transitions);
   assert.ok(core.collision);
-  assert.equal(core.collision.surface.root, surface);
+  assert.equal(core.collision.surface, surface);
 });
 
 test('final physics runtime shares the exact services owned by CoreSkateController', () => {
@@ -43,7 +45,7 @@ test('final physics runtime shares the exact services owned by CoreSkateControll
 });
 
 test('core collision result contract has no yaw or heading authority', () => {
-  const core = new CoreSkateController({ surface: floorWorld(), rails: [] });
+  const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
   const result = core.collision.resolveBody({
     from: new THREE.Vector3(0, 0.5, 0),
     desired: new THREE.Vector3(0, 0.5, -1),
