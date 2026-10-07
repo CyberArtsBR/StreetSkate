@@ -12,7 +12,7 @@ import {
   signedGroundSpeed,
 } from './GroundMotor.js';
 import { resolveAirMotion } from './AirController.js';
-import { resolveMagneticGrindCapture } from './GrindCaptureController.js';
+import { applyGrindEntry, resolveGrindCapture } from './GrindCaptureController.js';
 import { resolveRuntimeMovementMode } from './MovementStateResolver.js';
 import { resolveGroundStepStart } from './GroundStepResult.js';
 import {
@@ -72,7 +72,19 @@ export class CoreSkateController {
   }
 
   resolveGrindCapture(context) {
-    return resolveMagneticGrindCapture(context);
+    return resolveGrindCapture(context);
+  }
+
+  enterGrind(runtime, trick) {
+    if (!runtime) return false;
+    const capture = this.resolveGrindCapture({
+      position: runtime.position,
+      forward: runtime.forward,
+      velocity: runtime.velocity,
+      railNetwork: runtime.railNetwork,
+      trick,
+    });
+    return applyGrindEntry(runtime, capture, trick);
   }
 
   resolveMovementMode(runtime) {
