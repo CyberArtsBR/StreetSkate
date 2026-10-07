@@ -80,3 +80,25 @@ test('core composition root owns semantic ollie command interpretation', () => {
     pumpCooldown: 0,
   }), 'PUMP');
 });
+
+
+test('core travel transaction writes canonical state before legacy compatibility outputs', () => {
+  const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
+  const runtime = {
+    velocity: new THREE.Vector3(0, 0, 6),
+    heading: 0,
+    stance: 1,
+    travelDirection: new THREE.Vector3(0, 0, -1),
+    rollingSign: 1,
+    fakie: false,
+  };
+
+  const resolved = core.syncTravel(runtime);
+  assert.equal(resolved.rollingSign, -1);
+  assert.equal(core.state.fakie, true);
+  assert.ok(core.state.travelDirection.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
+  assert.equal(runtime.rollingSign, -1);
+  assert.equal(runtime.fakie, true);
+  assert.equal(runtime.travelDirection, runtime.travelDirection);
+  assert.ok(runtime.travelDirection.distanceTo(core.state.travelDirection) < 1e-9);
+});
