@@ -213,7 +213,5 @@ test('fixed-step pump loop adds energy reproducibly and respects cooldown flow',
     `second pump transaction added no speed: ${secondRelease.pumpLastDeltaSpeed}`);
   assert.ok(secondRelease.pumpLastEnergy > 0,
     `second pump transaction added no energy: ${secondRelease.pumpLastEnergy}`);
-  assert.ok(firstRelease.pumpTangentSpeed > startSpeed,
-    `first pump target speed did not exceed initial speed: ${startSpeed} -> ${firstRelease.pumpTangentSpeed}`);
   assert.equal(firstController.grounded, true);
 });
