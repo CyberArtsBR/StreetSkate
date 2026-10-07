@@ -181,13 +181,21 @@ try {
   assert.ok(steerEnd.cameraPosition.every(Number.isFinite), 'camera position became non-finite during steering');
   assert.ok(steerEnd.cameraQuaternion.every(Number.isFinite), 'camera quaternion became non-finite during steering');
 
-  // Build speed again if needed, then verify the official S/down brake path
-  // removes energy in the real browser input loop. Modifier-key semantics vary
-  // across headless browser drivers, so this smoke uses the non-modifier brake.
-  await page.waitForTimeout(700);
+  // Isolate braking from the steering line and park geometry. Reset to the real
+  // production spawn, seed a known forward speed, then apply the official S/down
+  // input through SkateInput. This remains a real browser-loop physics check.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(220);
+  await page.evaluate(() => {
+    const skater = window.streetSkate.skater;
+    skater.velocity.copy(skater.forward).multiplyScalar(6);
+    skater.speed = 6;
+  });
+  await page.waitForTimeout(60);
   const brakeStart = await page.evaluate(() => ({
     speed: window.streetSkate.skater.velocity.length(),
     grounded: window.streetSkate.skater.grounded,
+    movementState: window.streetSkate.skater.movementState,
   }));
   assert.equal(brakeStart.grounded, true, 'skater was not grounded before brake smoke');
   assert.ok(brakeStart.speed > 1.0, `insufficient speed before brake smoke: ${brakeStart.speed}`);
@@ -210,10 +218,16 @@ try {
     `brake did not remove enough speed: ${brakeStart.speed} -> ${brakeEnd.speed}`);
   assert.equal(brakeEnd.yawViolations, 0, 'brake smoke triggered a landing yaw violation');
 
+  // Ollie is a separate scenario. Reset again so a ramp/pump context reached by
+  // previous smoke steps cannot legitimately consume Space release as PUMP.
+  await page.keyboard.press('KeyR');
+  await page.waitForTimeout(240);
   const start = await page.evaluate(() => ({
     y: window.streetSkate.skater.position.y,
     grounded: window.streetSkate.skater.grounded,
+    movementState: window.streetSkate.skater.movementState,
   }));
+  assert.equal(start.grounded, true, 'reset spawn was not grounded before ollie smoke');
 
   await page.keyboard.down('Space');
   await page.waitForTimeout(320);
