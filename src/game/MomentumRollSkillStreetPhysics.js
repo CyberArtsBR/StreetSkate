@@ -163,6 +163,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
     this.wallImpactCooldown = 0;
     this.wallImpactSide = 0;
+    this.transitionLandingGrace = 0;
   }
 
   /**
@@ -204,6 +205,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
    * frame one instead of first pulling inward and reversing later.
    */
   takeoff(impulse = 0, transition = null) {
+    this.transitionLandingGrace = 0;
     const exitRequested = (this.rampExitIntentTime || 0) > 0;
     let edge = transition;
     if (exitRequested) {
@@ -237,6 +239,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   stepGround(dt, input = {}, drive = 0) {
+    this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
     this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
     this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
     this.rampExitIntentTime = Math.max(0, (this.rampExitIntentTime || 0) - dt);
