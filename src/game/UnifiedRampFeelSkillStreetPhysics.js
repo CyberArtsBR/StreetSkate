@@ -66,7 +66,7 @@ export class UnifiedRampFeelSkillStreetPhysics extends StableRampReturnSkillStre
       rampExitIntentTime: this.rampExitIntentTime,
     });
 
-    const result = super.takeoff(context.composedImpulse, transition);
+    const result = super.takeoff(context.composedImpulse, transition, context);
 
     // StableRampReturn uses this bit to apply identical no-auto-yaw/re-entry
     // semantics even when a generic lip became flat on the exact takeoff frame.
