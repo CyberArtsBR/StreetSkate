@@ -77,8 +77,10 @@ test('narrow real deck converts to same-wall return in the full runtime takeoff 
   const air = p.transitionAir;
 
   assert.ok(air, 'runtime takeoff did not create transition air');
-  assert.equal(air.transferring, true,
-    'compatibility transfer flag stays active for controlled return handling');
+  assert.equal(air.transferring, false,
+    'rejected transfer must return to the original transition, not stay in transfer flight');
+  assert.equal(air.transferRejected, true);
+  assert.equal(air.exitRequested, false);
   assert.equal(air.mode, 'return');
   assert.equal(air.exitControl?.geometryAware, true);
   assert.equal(air.exitControl?.abortToReturn, true);
