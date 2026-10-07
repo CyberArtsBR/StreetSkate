@@ -170,7 +170,7 @@ async function loadGame() {
         if (!r.ok) throw new Error('Park manifest unavailable');
         return r.json();
       }),
-      loader.loadAsync('/assets/park/halfnew.glb'),
+      loader.loadAsync('/assets/park/halfnew.glb?v=fixed-black'),
     ]);
     manifest = parkManifest;
     const expanded = assembleExpandedPark(expandedFile.scene, parkFile.scene, collisionFile.scene, manifest);

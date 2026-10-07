@@ -8,8 +8,7 @@ import {
 const UP = new THREE.Vector3(0, 1, 0);
 
 export const THPS_CAMERA = Object.freeze({
-  // Lower chase view; movement and vert context own the camera, never trick yaw.
-  // The rig follows world travel, not the deck nose, so a 180 stays visually stable.
+  // Fixed world-axis view. Only player position translates the gameplay rig.
   distance: 5.8,
   height: 1.55,
   anchorHeight: 1.15,
@@ -115,7 +114,7 @@ export class FollowCamera {
     this.distance = THPS_CAMERA.distance;
     this.height = THPS_CAMERA.height;
     this.occlusionDistance = null;
-    this.clearanceCache = {};
+    this.clearanceCache = { fixedAxis: true };
     this.initialized = false;
   }
 
@@ -139,52 +138,21 @@ export class FollowCamera {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
-    if (state.transitionReturning && !this.wasReturning) this.vertDirection.copy(this.direction);
-    if (!state.transitionReturning && this.wasReturning) this.returnHold = THPS_CAMERA.returnHoldTime;
-    this.wasReturning = state.transitionReturning;
-    this.returnHold = Math.max(0, this.returnHold - dt);
-    const holdSide = state.transitionReturning || (state.grounded && this.returnHold > 0);
-    const followDirection = holdSide ? this.vertDirection : state.travelDirection;
-    if (!this.initialized) this.direction.copy(followDirection);
-    else {
-      const rate = cameraDirectionRate(this.direction, followDirection);
-      this.direction.copy(smoothCameraDirection(this.direction, followDirection, dt, rate));
-    }
-
-    const desiredDistance = state.transitionReturning ? THPS_CAMERA.vertDistance
-      : !state.grounded ? THPS_CAMERA.airDistance : THPS_CAMERA.distance;
-    const desiredHeight = state.transitionReturning ? THPS_CAMERA.vertHeight
-      : !state.grounded ? THPS_CAMERA.airHeight : THPS_CAMERA.height;
-    const contextBlend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
-    this.distance = THREE.MathUtils.lerp(this.distance, desiredDistance, contextBlend);
-    this.height = THREE.MathUtils.lerp(this.height, desiredHeight, contextBlend);
-    const frame = fixedChaseFrame(state, this.direction, {
-      ...THPS_CAMERA, distance: this.distance, height: this.height,
-      lookAhead: holdSide ? 0.25 : THPS_CAMERA.lookAhead,
-    });
-    if (!this.initialized) {
-      this.position.copy(frame.desired);
-      this.target.copy(frame.target);
-      this.initialized = true;
-    } else {
-      this.position.lerp(
-        frame.desired,
-        1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt),
-      );
-      this.target.lerp(
-        frame.target,
-        1 - Math.exp(-THPS_CAMERA.targetFollowRate * dt),
-      );
-    }
+    // World orientation is fixed. Only the tracked position translates the rig.
+    // Neither ground steering, fakie, jumps nor spins may turn it behind the nose.
+    this.direction.set(0, 0, -1);
+    if (!this.initialized) this.followCenter = state.position.clone();
+    else this.followCenter.lerp(state.position,
+      1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt));
+    const frame = fixedChaseFrame({ position: this.followCenter }, this.direction,
+      { ...THPS_CAMERA, lookAhead: 0 });
+    this.position.copy(frame.desired);
+    this.target.copy(frame.target);
+    this.initialized = true;
 
     // Occlusion stays a presentation-only query against the collision surface.
     let resolvedPosition = resolveCameraClearance(player?.surface, frame.anchor,
       this.position, this.camera.position, this.clearanceCache);
-    const easedEye = this.camera.position.clone().lerp(resolvedPosition,
-      1 - Math.exp(-12 * dt));
-    const easedClear = player?.surface?.camera
-      ? player.surface.camera(frame.anchor, easedEye) : easedEye;
-    if (easedClear.distanceTo(frame.anchor) >= 1.8) resolvedPosition = easedClear;
     const eyeOffset = resolvedPosition.clone().sub(frame.anchor);
     const clearDistance = resolvedPosition.distanceTo(frame.anchor);
     if (clearDistance >= 1.8 && this.occlusionDistance !== null) {

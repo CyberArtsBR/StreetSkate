@@ -17,9 +17,9 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
   }
   let best = direct, bestScore = -Infinity;
   const candidates = [];
-  if (previousEye) candidates.push({ eye: previousEye.clone(), penalty: 0.1 });
+  if (previousEye && !cache?.fixedAxis) candidates.push({ eye: previousEye.clone(), penalty: 0.1 });
   for (const rise of [0, 1.8, 3.8]) {
-    for (const degrees of [0, 35, -35, 70, -70, 110, -110, 180]) {
+    for (const degrees of cache?.fixedAxis ? [0] : [0, 35, -35, 70, -70, 110, -110, 180]) {
       const eye = arm.clone().applyAxisAngle(UP, degrees * Math.PI / 180)
         .addScaledVector(UP, rise).add(anchor);
       candidates.push({ eye, penalty: Math.abs(degrees) / 180 + rise * 0.12 });
