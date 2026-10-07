@@ -78,6 +78,7 @@ let dusk = false;
 let mode = 'skate';
 let loaded = false;
 let paused = false;
+let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
 const clock = new THREE.Clock();
 
@@ -199,6 +200,10 @@ async function loadGame() {
       // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
       // with deterministic replay/debugging. This never repairs or mutates state.
       captureState: () => captureGameplayState(skater),
+      // QA-only readback of the semantic input object consumed by the latest
+      // focused animation frame. Returning a copy prevents tests/debug tools
+      // from mutating the live input path.
+      captureInput: () => ({ ...lastInputState }),
     };
   } catch (error) { showError(error); }
 }
@@ -253,6 +258,10 @@ renderer.setAnimationLoop(() => {
 
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
+    lastInputState = {
+      ...state,
+      directionTaps: [...(state.directionTaps || [])],
+    };
     if (state.pausePressed) setPaused(!paused);
     if (!paused) {
       skater.update(dt, state, elapsed);
