@@ -77,19 +77,11 @@ export function transitionReturnBoardDirection({
 export const arcadeGrindEligibility = grindCaptureEligibility;
 
 /**
- * THPS-like park mobility layer:
- * - explicit grind input gets a forgiving airborne rail/handrail magnet;
- * - steering gets a tighter carve radius at park speeds;
- * - transition re-entry briefly suppresses steering but never invents yaw.
+ * Compatibility surface for the former arcade mobility subclass.
  *
- * Ramp launch energy is intentionally NOT owned here anymore. Phase 1 moved all
- * ramp bonus composition to LaunchEnergyModel / UnifiedRampFeel so this layer can
- * never inject a second hidden takeoff boost.
+ * Ground steering/re-entry now belongs to GroundMotor/MomentumRoll, and grind
+ * capture/entry belongs to GrindCaptureController/CoreSkateController. Keeping
+ * the exported constructor as an alias preserves old imports without another
+ * runtime prototype level.
  */
-export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStreetPhysics {
-  reset(position = this.spawn, heading = 0) {
-    super.reset(position, heading);
-    this.rampReentrySteerLock = 0;
-  }
-
-}
+export const ArcadeParkMobilitySkillStreetPhysics = SafeCopingExitSkillStreetPhysics;
