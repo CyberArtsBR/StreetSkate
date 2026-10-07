@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { StableRampReturnSkillStreetPhysics } from './StableRampReturnSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
-import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
   PUMP_CONFIG,
   computePumpEnergy,
@@ -41,13 +40,13 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
   }
 
   syncMovementState() {
-    if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
-    else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
-    else if (this.wallRide) this.movementState = MOVEMENT_STATE.WALLRIDE;
-    else if (this.grounded) this.movementState = this.manual ? MOVEMENT_STATE.MANUAL : MOVEMENT_STATE.GROUND;
-    else if (this.transitionAir) this.movementState = MOVEMENT_STATE.VERT_AIR;
-    else this.movementState = MOVEMENT_STATE.AIR;
-    return this.movementState;
+    if (this.coreController) return this.coreController.syncMovementState(this);
+    // During super-construction CoreSkateController is not bound yet.
+    if (this.bailTime > 0) return (this.movementState = 'BAIL');
+    if (this.grind) return (this.movementState = 'GRIND');
+    if (this.wallRide) return (this.movementState = 'WALLRIDE');
+    if (this.grounded) return (this.movementState = this.manual ? 'MANUAL' : 'GROUND');
+    return (this.movementState = this.transitionAir ? 'VERT_AIR' : 'AIR');
   }
 
   syncCanonicalState() {
