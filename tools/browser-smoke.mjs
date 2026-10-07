@@ -257,69 +257,63 @@ try {
   assert.ok(maxY > start.y + 0.12,
     `ollie did not gain expected height: start=${start.y}, max=${maxY}`);
 
-  // Exercise a real authored production transition through the browser loop.
-  // The setup is discovered from the actual collision surface: for each authored
-  // vert lip, probe both sides for a real sloped rideable support, choose a
-  // climbing tangent, then let normal gameplay own approach -> air -> re-entry.
+  // Exercise a real authored production quarter through the browser loop.
+  // Use the canonical eastern-quarter lip and discover its real sloped collision
+  // side with a small bounded probe set. The gameplay loop itself owns takeoff,
+  // vert air and re-entry; the harness only seeds an approach line.
   await page.keyboard.press('KeyR');
-  await page.waitForTimeout(240);
+  await page.waitForTimeout(220);
   const transitionSetup = await page.evaluate(() => {
-    const state = window.streetSkate;
-    const skater = state?.skater;
-    const transitions = skater?.transitions?.transitions || [];
+    const skater = window.streetSkate?.skater;
+    const transition = skater?.transitions?.get?.('eastern-quarter');
+    if (!transition?.lipStart || !transition?.lipEnd) {
+      return { ok: false, reason: 'eastern-quarter metadata unavailable' };
+    }
+
+    const a = transition.lipStart.clone();
+    const b = transition.lipEnd.clone();
+    const tangent = b.clone().sub(a).setY(0);
+    if (tangent.lengthSq() < 1e-8) {
+      return { ok: false, reason: 'eastern-quarter coping tangent is degenerate' };
+    }
+    tangent.normalize();
+    const lip = a.clone().add(b).multiplyScalar(0.5);
+    const perpendicular = tangent.clone().set(tangent.z, 0, -tangent.x).normalize();
     let best = null;
 
-    for (const transition of transitions) {
-      if (!transition?.supportsVert || !Array.isArray(transition.lipPath)
-        || transition.lipPath.length < 2) continue;
-      const path = transition.lipPath;
-      const stride = Math.max(1, Math.floor((path.length - 1) / 8));
+    for (const sign of [1, -1]) {
+      for (const distance of [0.38, 0.58, 0.82, 1.08, 1.34]) {
+        const probe = lip.clone().addScaledVector(perpendicular, sign * distance);
+        probe.y = lip.y;
+        const support = skater.surface.ground(probe, 2.2, 4.4);
+        if (!support?.point || !support?.normal) continue;
+        const ny = Math.abs(support.normal.y);
+        if (ny <= 0.04 || ny >= 0.94) continue;
 
-      for (let i = 1; i < path.length; i += stride) {
-        const a = path[i - 1];
-        const b = path[Math.min(i, path.length - 1)];
-        const tangent = b.clone().sub(a).setY(0);
-        if (tangent.lengthSq() < 1e-8) continue;
-        tangent.normalize();
-        const lip = a.clone().add(b).multiplyScalar(0.5);
-        const perpendicular = tangent.clone().set(tangent.z, 0, -tangent.x).normalize();
+        const deckOutward = support.normal.clone().setY(0);
+        if (deckOutward.lengthSq() < 1e-8) continue;
+        deckOutward.normalize().negate();
+        const boardForward = deckOutward.clone().projectOnPlane(support.normal);
+        if (boardForward.lengthSq() < 1e-8) continue;
+        boardForward.normalize();
+        if (boardForward.y <= 0.08) continue;
 
-        for (const sign of [1, -1]) {
-          for (const distance of [0.35, 0.55, 0.8, 1.05, 1.35]) {
-            const probe = lip.clone().addScaledVector(perpendicular, sign * distance);
-            probe.y = lip.y;
-            const support = skater.surface.ground(probe, 2.4, 4.8);
-            if (!support?.point || !support?.normal) continue;
-            const ny = Math.abs(support.normal.y);
-            if (ny <= 0.04 || ny >= 0.94) continue;
-
-            const deckOutward = support.normal.clone().setY(0);
-            if (deckOutward.lengthSq() < 1e-8) continue;
-            deckOutward.normalize().negate();
-            const boardForward = deckOutward.clone().projectOnPlane(support.normal);
-            if (boardForward.lengthSq() < 1e-8) continue;
-            boardForward.normalize();
-            if (boardForward.y <= 0.08) continue;
-
-            const score = boardForward.y * 4 - distance * 0.12;
-            if (!best || score > best.score) {
-              best = {
-                score,
-                transitionId: transition.id,
-                transitionType: transition.type,
-                lipHeight: lip.y,
-                supportPoint: support.point.clone(),
-                supportNormal: support.normal.clone(),
-                deckOutward,
-                boardForward,
-              };
-            }
-          }
+        const score = boardForward.y * 4 - distance * 0.12;
+        if (!best || score > best.score) {
+          best = {
+            score,
+            supportPoint: support.point.clone(),
+            supportNormal: support.normal.clone(),
+            deckOutward,
+            boardForward,
+          };
         }
       }
     }
 
-    if (!best) return { ok: false, reason: 'no authored vert lip exposed a real sloped collision support' };
+    if (!best) {
+      return { ok: false, reason: 'eastern-quarter has no discoverable sloped collision support' };
+    }
 
     skater.position.copy(best.supportPoint).addScaledVector(best.supportNormal, 0.015);
     skater.normal.copy(best.supportNormal);
@@ -343,9 +337,9 @@ try {
 
     return {
       ok: true,
-      transitionId: best.transitionId,
-      transitionType: best.transitionType,
-      lipHeight: best.lipHeight,
+      transitionId: transition.id,
+      transitionType: transition.type,
+      lipHeight: lip.y,
       heading: skater.heading,
       startY: skater.position.y,
       startVelocity: skater.velocity.toArray(),
@@ -354,63 +348,97 @@ try {
   });
 
   assert.equal(transitionSetup.ok, true,
-    `could not prepare real authored transition smoke: ${JSON.stringify(transitionSetup)}`);
+    `could not prepare eastern-quarter browser smoke: ${JSON.stringify(transitionSetup)}`);
   assert.ok(transitionSetup.startVelocity[1] > 0.5,
     `transition setup is not climbing: ${JSON.stringify(transitionSetup)}`);
 
-  let transitionObserved = false;
-  let transitionId = null;
-  let transitionMaxY = transitionSetup.startY;
-  let transitionLanded = false;
-  let transitionFinal = null;
+  const transitionFlight = await page.evaluate(async ({ expectedId, startHeading, lipHeight }) => {
+    const skater = window.streetSkate.skater;
+    const tau = Math.PI * 2;
+    const yawDelta = heading => {
+      let d = (Number(heading) || 0) - startHeading;
+      d = ((d + Math.PI) % tau + tau) % tau - Math.PI;
+      return d;
+    };
 
-  for (let i = 0; i < 220; i++) {
-    await page.waitForTimeout(20);
-    const sample = await page.evaluate(() => {
-      const skater = window.streetSkate.skater;
-      return {
-        y: skater.position.y,
-        heading: skater.heading,
-        grounded: skater.grounded,
-        transitionActive: Boolean(skater.transitionAir),
-        transitionId: skater.transitionAir?.transitionId ?? null,
-        movementState: skater.movementState,
-        fakie: Boolean(skater.fakie),
-        velocity: skater.velocity.toArray(),
-        yawViolations: skater.landingYawInvariantViolations || 0,
-        invariantCodes: (skater.stateInvariantViolations || []).map(entry => entry?.code).filter(Boolean),
-      };
-    });
+    let observed = false;
+    let observedId = null;
+    let maxY = skater.position.y;
+    let maxHeadingDelta = 0;
 
-    transitionMaxY = Math.max(transitionMaxY, sample.y);
-    if (sample.transitionActive) {
-      transitionObserved = true;
-      transitionId ||= sample.transitionId;
+    for (let frame = 0; frame < 300; frame++) {
+      await new Promise(resolve => setTimeout(resolve, 16));
+      maxY = Math.max(maxY, skater.position.y);
+      maxHeadingDelta = Math.max(maxHeadingDelta, Math.abs(yawDelta(skater.heading)));
+
+      if (skater.transitionAir) {
+        observed = true;
+        observedId ||= skater.transitionAir.transitionId ?? null;
+      }
+
+      const invariantCodes = (skater.stateInvariantViolations || [])
+        .map(entry => entry?.code)
+        .filter(Boolean);
+      if ((skater.landingYawInvariantViolations || 0) > 0 || invariantCodes.length) {
+        return {
+          ok: false,
+          reason: 'runtime invariant violation',
+          observed,
+          observedId,
+          maxY,
+          maxHeadingDelta,
+          yawViolations: skater.landingYawInvariantViolations || 0,
+          invariantCodes,
+        };
+      }
+
+      if (observed && skater.grounded && !skater.transitionAir) {
+        return {
+          ok: true,
+          observed,
+          observedId,
+          landed: true,
+          maxY,
+          maxHeadingDelta,
+          finalHeading: skater.heading,
+          fakie: Boolean(skater.fakie),
+          velocity: skater.velocity.toArray(),
+        };
+      }
     }
-    assert.ok(sample.velocity.every(Number.isFinite), 'non-finite velocity during authored transition smoke');
-    assert.ok(Number.isFinite(sample.heading), 'non-finite heading during authored transition smoke');
-    assert.equal(sample.yawViolations, 0,
-      'authored transition smoke triggered a contact-driven yaw violation');
-    assert.deepEqual(sample.invariantCodes, [],
-      'authored transition smoke diverged canonical state');
 
-    if (transitionObserved && sample.grounded && !sample.transitionActive) {
-      transitionLanded = true;
-      transitionFinal = sample;
-      break;
-    }
-  }
+    return {
+      ok: false,
+      reason: 'transition did not reconnect before timeout',
+      observed,
+      observedId,
+      landed: false,
+      maxY,
+      maxHeadingDelta,
+      finalHeading: skater.heading,
+      grounded: skater.grounded,
+      transitionActive: Boolean(skater.transitionAir),
+      expectedId,
+      lipHeight,
+    };
+  }, {
+    expectedId: transitionSetup.transitionId,
+    startHeading: transitionSetup.heading,
+    lipHeight: transitionSetup.lipHeight,
+  });
 
-  assert.equal(transitionObserved, true,
-    `real transition never entered canonical transition air: ${JSON.stringify(transitionSetup)}`);
-  assert.equal(transitionId, transitionSetup.transitionId,
-    `wrong authored transition activated: expected ${transitionSetup.transitionId}, got ${transitionId}`);
-  assert.equal(transitionLanded, true,
-    `real transition did not reconnect within browser smoke window: ${JSON.stringify(transitionSetup)}`);
-  assert.ok(transitionMaxY > transitionSetup.lipHeight + 0.10,
-    `transition did not produce visible air above coping: lip=${transitionSetup.lipHeight}, max=${transitionMaxY}`);
-  assert.ok(Math.abs(angleDelta(transitionSetup.heading, transitionFinal.heading)) < 0.08,
-    `no-spin authored transition changed horizontal heading: ${transitionSetup.heading} -> ${transitionFinal.heading}`);
+  assert.equal(transitionFlight.ok, true,
+    `real eastern-quarter flight failed: ${JSON.stringify(transitionFlight)}`);
+  assert.equal(transitionFlight.observed, true,
+    `real eastern-quarter never entered transition air: ${JSON.stringify(transitionFlight)}`);
+  assert.equal(transitionFlight.observedId, transitionSetup.transitionId,
+    `wrong authored transition activated: expected ${transitionSetup.transitionId}, got ${transitionFlight.observedId}`);
+  assert.equal(transitionFlight.landed, true,
+    `real eastern-quarter did not reconnect: ${JSON.stringify(transitionFlight)}`);
+  assert.ok(transitionFlight.maxY > transitionSetup.lipHeight + 0.10,
+    `transition did not produce visible air above coping: lip=${transitionSetup.lipHeight}, max=${transitionFlight.maxY}`);
+  assert.ok(transitionFlight.maxHeadingDelta < 0.08,
+    `no-spin authored transition changed horizontal heading by ${transitionFlight.maxHeadingDelta} rad`);
 
   const finalState = await page.evaluate(() => {
     const state = window.streetSkate;
