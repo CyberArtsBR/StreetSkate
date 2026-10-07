@@ -37,6 +37,10 @@ export function captureGameplayState(controller) {
   const transitionAir = controller?.transitionAir || null;
   const travel = controller?.travelDirection || null;
   const yawInvariant = controller?.lastLandingYawInvariant || null;
+  const canonical = controller?.playerState || null;
+  const invariantCodes = (controller?.stateInvariantViolations || [])
+    .map(entry => entry?.code)
+    .filter(Boolean);
 
   return {
     position: vectorArray(controller?.position),
@@ -55,6 +59,18 @@ export function captureGameplayState(controller) {
     stance: Number.isFinite(Number(controller?.stance)) ? Number(controller.stance) : null,
     fakie: typeof controller?.fakie === 'boolean' ? controller.fakie : null,
     rollingSign: Number.isFinite(Number(controller?.rollingSign)) ? Number(controller.rollingSign) : null,
+
+    canonicalState: canonical ? {
+      deckHeading: roundNumber(canonical.deckHeading),
+      travelDirection: vectorArray(canonical.travelDirection),
+      stance: Number(canonical.stance),
+      fakie: Boolean(canonical.fakie),
+      mode: canonical.mode ?? null,
+      grounded: Boolean(canonical.grounded),
+      transitionId: canonical.transitionId ?? null,
+      transitionType: canonical.transitionType ?? null,
+    } : null,
+    stateInvariantCodes: invariantCodes,
 
     transitionId: transitionIdentifier(transitionAir),
     transitionType: transitionType(transitionAir),
