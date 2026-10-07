@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { StatefulSkillStreetPhysics as BaseStatefulSkillStreetPhysics } from './BaseStatefulSkillStreetPhysics.js';
+import { UnifiedRampFeelSkillStreetPhysics } from './UnifiedRampFeelSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
 import { MOVEMENT_STATE } from './StreetPhysics.js';
 import {
@@ -12,6 +12,8 @@ import {
 } from './PumpSystem.js';
 import { OLLIE_COMMAND } from '../input/InputInterpreter.js';
 import { CoreSkateController } from './core/CoreSkateController.js';
+import { PlayerState } from './core/PlayerState.js';
+import { legacyStateViolations } from './core/LegacyStateInvariants.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
@@ -20,7 +22,7 @@ import {
 const clamp = THREE.MathUtils.clamp;
 
 /** Skill-based transition pumping layered on top of board contact + vert physics. */
-export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
+export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysics {
   constructor(options = {}) {
     super(options);
     // Phase 1 composition root: canonical state, transition authority and body
@@ -32,10 +34,39 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
       playerState: this.playerState,
     });
     this.coreController.bindLegacyRuntime(this);
+    this.syncMovementState();
+    this.syncCanonicalState();
+  }
+
+  syncMovementState() {
+    if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
+    else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
+    else if (this.wallRide) this.movementState = MOVEMENT_STATE.WALLRIDE;
+    else if (this.grounded) this.movementState = this.manual ? MOVEMENT_STATE.MANUAL : MOVEMENT_STATE.GROUND;
+    else if (this.transitionAir) this.movementState = MOVEMENT_STATE.VERT_AIR;
+    else this.movementState = MOVEMENT_STATE.AIR;
+    return this.movementState;
+  }
+
+  syncCanonicalState() {
+    this.playerState ||= new PlayerState();
+    const canonical = this.coreController
+      ? this.coreController.syncState(this)
+      : this.playerState.syncFromLegacy(this);
+    this.playerState = canonical;
+    this.stateInvariantViolations = legacyStateViolations(this, canonical);
+    return canonical;
   }
 
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
+    this.landingYawInvariantViolations = 0;
+    this.lastLandingYawInvariant = null;
+    this.playerState ||= new PlayerState();
+    this.stateInvariantViolations = [];
+    this.syncMovementState();
+    this.syncCanonicalState();
+
     this.pumpReleaseQueued = false;
     this.pumpEligible = false;
     this.pumpPhase = 0.5;
@@ -202,14 +233,25 @@ export class StatefulSkillStreetPhysics extends BaseStatefulSkillStreetPhysics {
       this.pumpReleaseQueued = true;
     }
 
+    // Preserve the former BaseStateful wrapper order exactly: semantic input
+    // handling first, then canonical synchronization around lower execution.
+    this.syncMovementState();
+    this.syncCanonicalState();
     super.advance(delta, { ...input, ollieReleased: false });
+    this.syncMovementState();
+    this.syncCanonicalState();
   }
 
   step(dt, input = {}) {
     const releaseNow = this.pumpReleaseQueued;
     this.updatePumpState(dt, { ...input, ollieReleased: releaseNow });
     if (releaseNow) this.pumpReleaseQueued = false;
+
+    this.syncMovementState();
+    this.syncCanonicalState();
     super.step(dt, { ...input, ollieReleased: false });
+    this.syncMovementState();
+    this.syncCanonicalState();
   }
 
   takeoff(impulse = 0, transition = null) {
