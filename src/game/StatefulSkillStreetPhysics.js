@@ -291,6 +291,9 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
     this.pumpHoldTime = 0;
     this.pumpPreviousNormal = null;
 
+    // Preserve the pre-launch snapshot before consuming buffered transfer intent.
+    // The prepared edge is then the single transition candidate passed through
+    // orientation, transition-air creation and transfer-launch evaluation.
     const context = this.coreController
       ? this.coreController.captureTakeoff(this, impulse, transition)
       : captureTakeoffContext({
@@ -308,8 +311,15 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
         rampExitIntentTime: this.rampExitIntentTime,
       });
 
+    const prepared = this.coreController
+      ? this.coreController.prepareTransitionTakeoff(this, transition)
+      : { edge: transition };
+    const edge = prepared.edge;
+    this.transitionLandingGrace = 0;
+    this.rampExitIntentTime = 0;
+
     this.takeoffOllieRequested = context.requestedImpulse >= 4;
-    const result = super.takeoff(context.composedImpulse, transition, context);
+    const result = super.takeoff(context.composedImpulse, edge, context);
     if (context.rampContext) this.airTakeoffFromRamp = true;
 
     if (this.coreController) this.coreController.consumeRampEnergy(this);
