@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
+  CAMERA_MODE,
   captureCameraState,
+  resolveCameraMode,
   resolveCameraTravelDirection,
 } from '../src/game/core/CameraState.js';
 
@@ -74,4 +76,26 @@ test('camera snapshot exposes state flags without carrying the physics controlle
   assert.equal(state.transitionActive, true);
   assert.equal(Object.hasOwn(state, 'surface'), false);
   assert.equal(Object.hasOwn(state, 'controller'), false);
+});
+
+
+test('camera mode resolver owns vert ascent/descent and transfer context', () => {
+  const base = {
+    grounded: false,
+    velocity: new THREE.Vector3(0, 3, -5),
+    transitionAir: { transferring: false },
+  };
+  assert.equal(resolveCameraMode(base), CAMERA_MODE.VERT_ASCENT);
+  base.velocity.y = -2;
+  assert.equal(resolveCameraMode(base), CAMERA_MODE.VERT_DESCENT);
+  base.transitionAir.transferring = true;
+  assert.equal(resolveCameraMode(base), CAMERA_MODE.TRANSFER);
+});
+
+test('camera mode priority is deterministic for grind manual bail and ordinary air', () => {
+  assert.equal(resolveCameraMode({ grounded: true }), CAMERA_MODE.GROUND);
+  assert.equal(resolveCameraMode({ grounded: false }), CAMERA_MODE.AIR);
+  assert.equal(resolveCameraMode({ grounded: true, manual: 'manual' }), CAMERA_MODE.MANUAL);
+  assert.equal(resolveCameraMode({ grounded: false, grind: {} }), CAMERA_MODE.GRIND);
+  assert.equal(resolveCameraMode({ grounded: true, bailTime: 0.4, grind: {} }), CAMERA_MODE.BAIL);
 });
