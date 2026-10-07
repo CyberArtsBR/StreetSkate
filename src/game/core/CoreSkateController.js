@@ -3,6 +3,8 @@ import { TransitionController } from '../transitions/TransitionController.js';
 import { CollisionResolver } from '../collision/CollisionResolver.js';
 import { interpretOllieRelease } from '../../input/InputInterpreter.js';
 import { resolveTravelState } from './TravelState.js';
+import { rampLaunchBonus, updateRampLaunchMemory } from './LaunchEnergyModel.js';
+import { captureTakeoffContext } from './TakeoffContext.js';
 
 /**
  * Phase 1 composition root.
@@ -59,6 +61,49 @@ export class CoreSkateController {
     runtime.rollingSign = resolved.rollingSign;
     runtime.fakie = this.state.fakie;
     return resolved;
+  }
+
+  updateRampEnergy(runtime, dt = 0) {
+    if (!runtime) return 0;
+    const sample = runtime.grounded
+      ? rampLaunchBonus({
+        speed: runtime.velocity?.length?.() || 0,
+        normalY: runtime.normal?.y ?? 1,
+        verticalSpeed: runtime.velocity?.y ?? 0,
+      })
+      : 0;
+    const memory = updateRampLaunchMemory({
+      previousBoost: runtime.rampLaunchMemory,
+      previousTime: runtime.rampLaunchMemoryTime,
+      sampleBoost: sample,
+      dt,
+    });
+    runtime.rampLaunchMemory = memory.boost;
+    runtime.rampLaunchMemoryTime = memory.time;
+    return sample;
+  }
+
+  captureTakeoff(runtime, requestedImpulse = 0, transition = null) {
+    return captureTakeoffContext({
+      grounded: runtime?.grounded,
+      normal: runtime?.normal,
+      velocity: runtime?.velocity,
+      forward: runtime?.forward,
+      travelDirection: runtime?.travelDirection,
+      heading: runtime?.heading,
+      stance: runtime?.stance,
+      requestedImpulse,
+      transition,
+      rampLaunchMemory: runtime?.rampLaunchMemory,
+      rampLaunchMemoryTime: runtime?.rampLaunchMemoryTime,
+      rampExitIntentTime: runtime?.rampExitIntentTime,
+    });
+  }
+
+  consumeRampEnergy(runtime) {
+    if (!runtime) return;
+    runtime.rampLaunchMemory = 0;
+    runtime.rampLaunchMemoryTime = 0;
   }
 
   ensureCollision(surface) {
