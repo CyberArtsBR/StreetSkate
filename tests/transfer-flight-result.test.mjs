@@ -129,14 +129,11 @@ function compareCanonicalStep({ controller, air, position, velocity, dt }) {
   return expected;
 }
 
-test('DeckAware does not own a second transfer-flight method', () => {
+test('DeckAware is a compatibility alias over the single transfer-flight authority', () => {
   assert.equal(
-    Object.prototype.hasOwnProperty.call(
-      DeckAwareRampExitSkillStreetPhysics.prototype,
-      'advanceControlledTransfer',
-    ),
-    false,
-    'DeckAware must inherit the single RampWallSafety transfer-flight authority',
+    DeckAwareRampExitSkillStreetPhysics,
+    RampWallSafetySkillStreetPhysics,
+    'verified deck catch must not create a second transfer-flight prototype level',
   );
   assert.equal(
     DeckAwareRampExitSkillStreetPhysics.prototype.advanceControlledTransfer,
