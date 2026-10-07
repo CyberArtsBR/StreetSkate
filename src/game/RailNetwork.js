@@ -56,6 +56,11 @@ export class RailNetwork {
     return best;
   }
 
+  /**
+   * Compatibility capture oracle retained for older tests/tools.
+   * Final gameplay capture authority is GrindCaptureController; runtime callers
+   * should use CoreSkateController.enterGrind() instead of this method.
+   */
   capture(position, velocity, options = {}, legacyForward = null) {
     if (typeof options === 'number') options = { maxDistance: options, forward: legacyForward };
     const {
