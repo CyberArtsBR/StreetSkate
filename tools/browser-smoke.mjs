@@ -109,7 +109,7 @@ try {
       `park asset failed: ${response.status} ${response.url}`);
   }
 
-  await page.locator('canvas').click({ position: { x: 400, y: 300 } }).catch(() => {});
+  await page.evaluate(() => window.focus());
   const start = await page.evaluate(() => ({
     y: window.streetSkate.skater.position.y,
     grounded: window.streetSkate.skater.grounded,
