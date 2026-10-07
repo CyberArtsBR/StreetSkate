@@ -5,6 +5,7 @@ import { interpretOllieRelease } from '../../input/InputInterpreter.js';
 import { resolveTravelState } from './TravelState.js';
 import { rampLaunchBonus, updateRampLaunchMemory } from './LaunchEnergyModel.js';
 import { captureTakeoffContext } from './TakeoffContext.js';
+import { resolveMovementMode } from './MovementStateModel.js';
 
 /**
  * Phase 1 composition root.
@@ -27,6 +28,15 @@ export class CoreSkateController {
 
   syncState(runtime) {
     return this.state.syncFromLegacy(runtime);
+  }
+
+  syncMovementState(runtime) {
+    if (!runtime) return this.state.mode;
+    const mode = resolveMovementMode(runtime);
+    runtime.movementState = mode;
+    this.state.mode = mode;
+    this.state.grounded = Boolean(runtime.grounded);
+    return mode;
   }
 
   interpretOllieRelease(context) {
