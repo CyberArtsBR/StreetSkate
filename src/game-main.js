@@ -82,6 +82,7 @@ let paused = false;
 let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
 const clock = new THREE.Clock();
+const qaMode = new URLSearchParams(globalThis.location?.search || '').get('qa') === '1';
 
 function setExploreView(name, instant = false) {
   const view = views[name];
@@ -279,7 +280,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   const elapsed = clock.elapsedTime;
 
-  if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
+  if (loaded && mode === 'skate' && (qaMode || (document.hasFocus() && !document.hidden))) {
     const state = input.read();
     lastInputState = {
       ...state,
