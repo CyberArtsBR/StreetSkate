@@ -13,6 +13,10 @@ import {
 } from './GroundMotor.js';
 import { resolveAirMotion } from './AirController.js';
 import { evaluateDeckCatch } from './DeckCatchResult.js';
+import {
+  resolveSweepReentryCandidate,
+  resolveWheelReentryCandidate,
+} from './TransitionReentryResult.js';
 import { applyGrindEntry, resolveGrindCapture } from './GrindCaptureController.js';
 import { resolveRuntimeMovementMode } from './MovementStateResolver.js';
 import { resolveGroundStepStart } from './GroundStepResult.js';
@@ -74,6 +78,14 @@ export class CoreSkateController {
 
   resolveDeckCatch(context) {
     return evaluateDeckCatch(context);
+  }
+
+  resolveWheelReentry(context) {
+    return resolveWheelReentryCandidate(context);
+  }
+
+  resolveSweepReentry(context) {
+    return resolveSweepReentryCandidate(context);
   }
 
   resolveGrindCapture(context) {
