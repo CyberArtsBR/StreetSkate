@@ -56,3 +56,27 @@ test('core collision result contract has no yaw or heading authority', () => {
   assert.equal(Object.hasOwn(result, 'heading'), false);
   assert.equal(Object.hasOwn(result, 'yaw'), false);
 });
+
+
+test('core composition root owns semantic ollie command interpretation', () => {
+  const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
+  assert.equal(core.interpretOllieRelease({
+    ollieReleased: true,
+    grinding: true,
+    grounded: false,
+  }), 'GRIND_OLLIE_OUT');
+  assert.equal(core.interpretOllieRelease({
+    ollieReleased: true,
+    grounded: true,
+    nearCoping: true,
+    pumpEligible: true,
+    pumpHoldTime: 1,
+  }), 'VERT_OLLIE');
+  assert.equal(core.interpretOllieRelease({
+    ollieReleased: true,
+    grounded: true,
+    pumpEligible: true,
+    pumpHoldTime: 0.2,
+    pumpCooldown: 0,
+  }), 'PUMP');
+});
