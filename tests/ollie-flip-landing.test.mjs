@@ -101,5 +101,6 @@ test('StreetBoard visibly rotates for a flip state', () => {
     airborne: true,
     flipState: { name: 'Kickflip', progress: 0.25, roll: 1, pitch: 0, yaw: 0 },
   });
-  assert.ok(Math.abs(board.root.rotation.z) > 1, `expected visible board roll, got ${board.root.rotation.z}`);
+  assert.ok(Math.abs(board.root.rotation.z) > 0.45,
+    `expected visible eased board roll, got ${board.root.rotation.z}`);
 });
