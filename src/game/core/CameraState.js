@@ -2,6 +2,30 @@ import * as THREE from 'three';
 
 const EPSILON = 1e-6;
 
+export const CAMERA_MODE = Object.freeze({
+  GROUND: 'GROUND',
+  AIR: 'AIR',
+  VERT_ASCENT: 'VERT_ASCENT',
+  VERT_DESCENT: 'VERT_DESCENT',
+  TRANSFER: 'TRANSFER',
+  GRIND: 'GRIND',
+  MANUAL: 'MANUAL',
+  BAIL: 'BAIL',
+});
+
+export function resolveCameraMode(player = {}) {
+  if (Number(player.bailTime || 0) > 0) return CAMERA_MODE.BAIL;
+  if (player.grind) return CAMERA_MODE.GRIND;
+  if (player.manual) return CAMERA_MODE.MANUAL;
+  if (player.transitionAir) {
+    if (player.transitionAir.transferring) return CAMERA_MODE.TRANSFER;
+    return Number(player.velocity?.y || 0) > 0.05
+      ? CAMERA_MODE.VERT_ASCENT
+      : CAMERA_MODE.VERT_DESCENT;
+  }
+  return player.grounded ? CAMERA_MODE.GROUND : CAMERA_MODE.AIR;
+}
+
 function horizontalUnit(source, fallback = null) {
   const out = source?.clone?.() || new THREE.Vector3();
   out.y = 0;
@@ -56,6 +80,7 @@ export function captureCameraState(player, {
   );
 
   return Object.freeze({
+    mode: resolveCameraMode(player),
     position,
     velocity: player?.velocity?.clone?.() || new THREE.Vector3(),
     surfaceNormal: player?.normal?.clone?.() || new THREE.Vector3(0, 1, 0),
