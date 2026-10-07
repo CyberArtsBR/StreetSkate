@@ -14,11 +14,12 @@ Phase 1 keeps compatibility class names where useful, but moves decision authori
 
 ## Current runtime chain
 
+The final runtime now instantiates `StreetSkater` directly. `YawStableStreetSkater` is a compatibility alias only; its coping-safe orientation basis was moved into `StreetSkater`, eliminating the duplicate PlayerState / TransitionController instances that wrapper used to create.
+
 The final skater still uses compatibility inheritance for migration safety, but several levels are now aliases or thin adapters rather than independent gameplay authorities:
 
 ```text
-YawStableStreetSkater
-└─ StreetSkater
+StreetSkater
    └─ StatefulSkillStreetPhysics             input/pump + top landing composition
       └─ BaseStatefulSkillStreetPhysics      movement-state synchronization
          └─ UnifiedRampFeelSkillStreetPhysics
@@ -46,8 +47,8 @@ YawStableStreetSkater
 | transition identity / authored ramp selection | `TransitionMetadata` + `TransitionController` | `StatefulSkillStreetPhysics.transitions` | `TransitionGuide` retained as regression oracle only |
 | transition approach / launch detection | `TransitionController` | board/ramp takeoff paths | name-regex authority removed |
 | vert begin / advance trajectory | `TransitionController` | VERT_AIR path | old guide no longer runtime authority |
-| ollie / pump / vert / grind-out command meaning | `InputInterpreter` | top `StatefulSkillStreetPhysics.advance()` | raw release interpretation removed from PumpSystem |
-| world travel direction / sign / fakie | `TravelState` | `MomentumRoll.syncTravelDirection()` + landing post pipeline | legacy fields synchronized outputs only |
+| ollie / pump / vert / grind-out command meaning | `CoreSkateController` + `InputInterpreter` | top `StatefulSkillStreetPhysics.advance()` | raw release interpretation removed from PumpSystem |
+| world travel direction / sign / fakie | `CoreSkateController.syncTravel()` + `TravelState` | canonical PlayerState first, then compatibility outputs | legacy fields synchronized outputs only |
 | ramp launch energy | `LaunchEnergyModel` | `UnifiedRampFeel.takeoff()` | lower duplicate boost removed |
 | pre-launch facing / heading / stance / ramp context | `TakeoffContext` | `UnifiedRampFeel` + `StableRampReturn` | duplicated pre-launch math removed |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | `RampWallSafety.takeoff()` | local formula helper compatibility-only |
@@ -59,10 +60,22 @@ YawStableStreetSkater
 | accepted touchdown state mutation | `LandingExecutor` | all accepted landing paths | projected support tangent cannot write yaw |
 | post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top runtime + direct StableRampReturn compatibility path | nested post hooks deferred; one execution per landing |
 | horizontal yaw invariant | player steering + explicit air spin only | orientation + replay invariants | wall/coping/contact auto-yaw removed |
-| body continuous collision | `CollisionResolver` over validated `ParkCollision.move()` | `StableBoardContact.resolveMotion()` | collision result has no heading/yaw field |
+| body continuous collision | `CoreSkateController` + `CollisionResolver` over validated `ParkCollision.move()` | `StableBoardContact.resolveMotion()` | collision result has no heading/yaw field |
 | four-wheel support | board contact solver | StableBoardContact / LandingResult | preserved from validated baseline |
 | camera input snapshot | `CameraState` | `FollowCamera` | presentation cannot mutate physics |
 | replay state observation | `GameplayStateSnapshot` | deterministic replay + debug HUD | side-effect free |
+
+## Composition root
+
+`CoreSkateController` is now the shared owner for canonical services used by the final runtime:
+
+- `PlayerState`;
+- `TransitionController`;
+- `CollisionResolver`;
+- semantic Ollie/pump/vert/grind-out interpretation;
+- canonical travel synchronization.
+
+Compatibility subclasses still execute validated gameplay behavior, but new authority must attach to this composition root instead of adding another physics inheritance layer.
 
 ## Orientation contract
 
@@ -174,6 +187,7 @@ Phase 1 does not delete every historical filename simply to shorten the tree. Th
 - `IntegratedRampSafetySkillStreetPhysics` alias;
 - `WallContactAuthoritySkillStreetPhysics` alias;
 - `NoAutomaticYawSkillStreetPhysics` compatibility file outside final runtime;
+- `YawStableStreetSkater` compatibility alias; coping-safe basis lives in `StreetSkater`;
 - `TransitionGuide` oracle;
 - pure legacy helpers used only for parity/tuning tests.
 
