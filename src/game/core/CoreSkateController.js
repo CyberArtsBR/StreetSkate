@@ -10,6 +10,10 @@ import {
   resolveGroundPropulsion,
   signedGroundSpeed,
 } from './GroundMotor.js';
+import {
+  advanceTransitionExitIntent,
+  applyTransitionExitIntentToCandidate,
+} from '../transitions/TransitionIntent.js';
 
 /**
  * Phase 1 composition root.
@@ -48,6 +52,28 @@ export class CoreSkateController {
 
   resolveGroundPropulsion(context) {
     return resolveGroundPropulsion(context);
+  }
+
+  updateTransitionExitIntent(runtime, input, dt) {
+    const state = advanceTransitionExitIntent({
+      remaining: runtime?.rampExitIntentTime || 0,
+      dt,
+      input,
+      normalY: runtime?.normal?.y ?? 1,
+      verticalSpeed: runtime?.velocity?.y ?? 0,
+    });
+    if (runtime) runtime.rampExitIntentTime = state.remaining;
+    return state;
+  }
+
+  prepareTransitionTakeoff(runtime, transition = null) {
+    const result = applyTransitionExitIntentToCandidate({
+      controller: this,
+      runtime,
+      transition,
+    });
+    if (runtime && result.consumed) runtime.rampExitIntentTime = 0;
+    return result;
   }
 
   syncTravel(runtime, {
