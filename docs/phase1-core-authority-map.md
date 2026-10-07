@@ -44,7 +44,7 @@ StreetSkater
 | vert begin / advance trajectory | `TransitionController` | VERT_AIR path | old guide no longer runtime authority |
 | ollie / pump / vert / grind-out command meaning | `CoreSkateController` + `InputInterpreter` | top `StatefulSkillStreetPhysics.advance()` | raw release interpretation removed from PumpSystem |
 | world travel direction / sign / fakie | `CoreSkateController.syncTravel()` + `TravelState` | canonical PlayerState first, then compatibility outputs | legacy fields synchronized outputs only |
-| ground steering / propulsion / rolling resistance / flat auto-push | `CoreSkateController` + `GroundMotor` | `MomentumRoll.stepGround()` adapter applies explicit results | duplicated motor math removed from inheritance layer |
+| ground steering / propulsion / rolling resistance / flat auto-push | `CoreSkateController` + `GroundMotor` | `MomentumRoll.stepGround()` adapter applies explicit results | full carve gain + re-entry steering suppression are canonical; `ArcadeParkMobility` no longer rewrites `steer` |
 | ramp launch energy | `CoreSkateController` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.stepGround()/takeoff()` | `UnifiedRampFeel` compatibility wrapper bypassed |
 | pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics` + `StableRampReturn` | duplicated pre-launch math removed |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
