@@ -55,3 +55,13 @@ test('transfer launch has one runtime takeoff application seam', () => {
 test('yaw-stable presentation compatibility alias is not a runtime prototype level', () => {
   assert.equal(YawStableStreetSkater, StreetSkater);
 });
+
+
+test('final momentum chain bypasses standalone BowlLanding compatibility class', async () => {
+  const { MomentumRollSkillStreetPhysics } = await import('../src/game/MomentumRollSkillStreetPhysics.js');
+  const { StableBoardContactSkillStreetPhysics } = await import('../src/game/StableBoardContactSkillStreetPhysics.js');
+  const { BowlLandingSkillStreetPhysics } = await import('../src/game/BowlLandingSkillStreetPhysics.js');
+
+  assert.equal(Object.getPrototypeOf(MomentumRollSkillStreetPhysics.prototype), StableBoardContactSkillStreetPhysics.prototype);
+  assert.notEqual(Object.getPrototypeOf(MomentumRollSkillStreetPhysics.prototype), BowlLandingSkillStreetPhysics.prototype);
+});
