@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { yawStableSurfaceBasis } from '../src/game/YawStableStreetSkater.js';
+import { yawStableSurfaceBasis } from '../src/game/core/PresentationOrientation.js';
 
 function horizontal(v) {
   const out = v.clone();
