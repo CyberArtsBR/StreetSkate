@@ -87,13 +87,22 @@ try {
   assert.ok(Number.isFinite(boot.heading), 'skater heading is not finite');
   assert.equal(boot.yawViolations, 0, 'landing yaw invariant already violated during bootstrap');
 
-  const resourceList = boot.resources.join('\n');
-  assert.match(resourceList, /\/assets\/park\/insanity-inspired-park\.glb(?:$|\?)/,
-    'original visual arena was not requested');
-  assert.match(resourceList, /\/assets\/park\/park-collision\.glb(?:$|\?)/,
-    'optimized collision arena was not requested');
-  assert.doesNotMatch(resourceList, /halfpipenew\.glb/i,
-    'halfpipenew must remain inactive during Phase 1 staging');
+  const hasResource = pattern => boot.resources.some(url => pattern.test(url));
+  assert.equal(
+    hasResource(/\/assets\/park\/insanity-inspired-park\.glb(?:$|\?)/),
+    true,
+    'original visual arena was not requested',
+  );
+  assert.equal(
+    hasResource(/\/assets\/park\/park-collision\.glb(?:$|\?)/),
+    true,
+    'optimized collision arena was not requested',
+  );
+  assert.equal(
+    hasResource(/halfpipenew\.glb/i),
+    false,
+    'halfpipenew must remain inactive during Phase 1 staging',
+  );
 
   for (const response of parkResponses) {
     assert.ok(response.status >= 200 && response.status < 400,
@@ -145,6 +154,11 @@ try {
     parkResponses,
     screenshotPath,
   }, null, 2) + '\n');
+} catch (error) {
+  try {
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+  } catch {}
+  throw error;
 } finally {
   await browser.close();
 }
