@@ -75,6 +75,7 @@ let collision = null;
 let manifest = null;
 let skater = null;
 let followCamera = null;
+let transitionDebug = null;
 let dusk = false;
 let mode = 'skate';
 let loaded = false;
@@ -194,6 +195,12 @@ async function loadGame() {
     followCamera = new FollowCamera(camera);
     followCamera.snap(skater);
 
+    const debugTransitions = new URLSearchParams(window.location.search).get('debug') === '1';
+    if (debugTransitions) {
+      transitionDebug = new TransitionDebugVisualizer(skater.transitions);
+      scene.add(transitionDebug.group);
+    }
+
     document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
     document.querySelector('.asset-meta > span').textContent = '136 × 92 m · 3 AREAS';
     const center = new THREE.Vector3(34, 0, 23);
@@ -217,6 +224,8 @@ async function loadGame() {
       // focused animation frame. Returning a copy prevents tests/debug tools
       // from mutating the live input path.
       captureInput: () => ({ ...lastInputState }),
+      transitionDebug,
+      captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
   } catch (error) { showError(error); }
 }
