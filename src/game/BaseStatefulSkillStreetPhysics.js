@@ -31,9 +31,12 @@ export class StatefulSkillStreetPhysics extends UnifiedRampFeelSkillStreetPhysic
 
   syncCanonicalState() {
     this.playerState ||= new PlayerState();
-    this.playerState.syncFromLegacy(this);
-    this.stateInvariantViolations = legacyStateViolations(this, this.playerState);
-    return this.playerState;
+    const canonical = this.coreController
+      ? this.coreController.syncState(this)
+      : this.playerState.syncFromLegacy(this);
+    this.playerState = canonical;
+    this.stateInvariantViolations = legacyStateViolations(this, canonical);
+    return canonical;
   }
 
   advance(delta, input = {}) {
