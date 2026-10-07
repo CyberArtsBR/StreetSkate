@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import {
-  WallContactAuthoritySkillStreetPhysics,
-} from './WallContactAuthoritySkillStreetPhysics.js';
-import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
+  ArcadeParkMobilitySkillStreetPhysics,
+  ARCADE_PARK_MOBILITY,
+} from './ArcadeParkMobilitySkillStreetPhysics.js';
 import {
   explicitAirHalfTurns,
   rampLandingFacing,
@@ -59,7 +59,7 @@ export function transitionAirSpinInput(input = {}) {
  * - fakie is NOT stored/restored here anymore. It is derived after touchdown by
  *   canonical TravelState from final deck heading versus actual travel.
  */
-export class StableRampReturnSkillStreetPhysics extends WallContactAuthoritySkillStreetPhysics {
+export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillStreetPhysics {
   reset(position = this.spawn, heading = 0) {
     super.reset(position, heading);
     this.rampTakeoffFacing ||= new THREE.Vector3(0, 0, -1);
