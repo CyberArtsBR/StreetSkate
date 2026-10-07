@@ -16,6 +16,7 @@ import { PlayerState } from './core/PlayerState.js';
 import { legacyStateViolations } from './core/LegacyStateInvariants.js';
 import { rampLaunchBonus, updateRampLaunchMemory } from './core/LaunchEnergyModel.js';
 import { captureTakeoffContext } from './core/TakeoffContext.js';
+import { resolveRuntimeMovementMode } from './core/MovementStateResolver.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
@@ -41,12 +42,9 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
   }
 
   syncMovementState() {
-    if (this.bailTime > 0) this.movementState = MOVEMENT_STATE.BAIL;
-    else if (this.grind) this.movementState = MOVEMENT_STATE.GRIND;
-    else if (this.wallRide) this.movementState = MOVEMENT_STATE.WALLRIDE;
-    else if (this.grounded) this.movementState = this.manual ? MOVEMENT_STATE.MANUAL : MOVEMENT_STATE.GROUND;
-    else if (this.transitionAir) this.movementState = MOVEMENT_STATE.VERT_AIR;
-    else this.movementState = MOVEMENT_STATE.AIR;
+    this.movementState = this.coreController
+      ? this.coreController.resolveMovementMode(this)
+      : resolveRuntimeMovementMode(this);
     return this.movementState;
   }
 
