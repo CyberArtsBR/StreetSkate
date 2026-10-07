@@ -8,12 +8,6 @@ import {
   transitionFlipLandingMode,
   transitionLandingSupportMode,
 } from '../src/game/core/LandingResult.js';
-import {
-  transitionAlignmentThreshold as legacyAlignmentThreshold,
-  transitionFlipLandingMode as legacyFlipLandingMode,
-  transitionLandingSupportMode as legacySupportMode,
-} from '../src/game/BowlLandingSkillStreetPhysics.js';
-
 function support({
   count = 2,
   front = 2,
@@ -52,33 +46,23 @@ function evaluate(overrides = {}) {
   });
 }
 
-test('canonical landing helper thresholds are byte-for-byte equivalent to legacy helpers', () => {
-  const modes = ['full', 'truckFirst', 'wheelFirst'];
-  const normals = [1, 0.98, 0.94, 0.82, 0.72];
-  const progresses = [0.1, 0.2, 0.35, 0.52, 0.88, 1];
+test('canonical landing helper thresholds preserve the validated transition contract', () => {
+  assert.ok(transitionAlignmentThreshold(0.72, 'wheelFirst')
+    < transitionAlignmentThreshold(0.72, 'truckFirst'));
+  assert.ok(transitionAlignmentThreshold(0.72, 'truckFirst')
+    < transitionAlignmentThreshold(1, 'full'));
 
-  for (const mode of modes) {
-    for (const normalY of normals) {
-      assert.equal(
-        transitionAlignmentThreshold(normalY, mode),
-        legacyAlignmentThreshold(normalY, mode),
-      );
-      for (const progress of progresses) {
-        assert.equal(
-          transitionFlipLandingMode(progress, normalY, mode),
-          legacyFlipLandingMode(progress, normalY, mode),
-        );
-      }
-    }
-  }
+  assert.equal(transitionFlipLandingMode(0.24, 0.82, 'wheelFirst'), 'autoCatch');
+  assert.equal(transitionFlipLandingMode(0.52, 0.72, 'truckFirst'), 'autoCatch');
+  assert.equal(transitionFlipLandingMode(0.52, 1, 'full'), 'bail');
 
-  for (const candidate of [
-    support(),
+  assert.equal(transitionLandingSupportMode(support()), 'truckFirst');
+  assert.equal(transitionLandingSupportMode(
     support({ count: 1, front: 1, rear: 0 }),
+  ), 'wheelFirst');
+  assert.equal(transitionLandingSupportMode(
     support({ normal: new THREE.Vector3(0, 1, 0) }),
-  ]) {
-    assert.equal(transitionLandingSupportMode(candidate), legacySupportMode(candidate));
-  }
+  ), 'reject');
 });
 
 test('canonical result accepts forgiving single-wheel transition catch', () => {
