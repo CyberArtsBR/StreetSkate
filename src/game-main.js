@@ -213,6 +213,7 @@ async function loadGame() {
       // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
       // with deterministic replay/debugging. This never repairs or mutates state.
       captureState: () => captureGameplayState(skater),
+      captureCamera: () => followCamera?.captureDebugState?.() || null,
       // QA-only readback of the semantic input object consumed by the latest
       // focused animation frame. Returning a copy prevents tests/debug tools
       // from mutating the live input path.
