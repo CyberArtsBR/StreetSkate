@@ -93,6 +93,7 @@ export class TransitionController {
 
     this.edges = [];
     for (const transition of this.transitions) {
+      if (!transition.supportsVert) continue;
       const path = transition.lipPath;
       for (let i = 1; i < path.length; i++) {
         const a = path[i - 1].clone();
@@ -128,6 +129,7 @@ export class TransitionController {
     let bestGap = Number(maxGap);
 
     for (const transition of this.transitions) {
+      if (!transition.supportsVert) continue;
       const path = transition.lipPath;
       for (let i = 1; i < path.length; i++) {
         const point = nearestPointOnSegmentXZ(position, path[i - 1], path[i]);
