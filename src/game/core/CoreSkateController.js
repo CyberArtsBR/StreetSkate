@@ -10,6 +10,7 @@ import {
   resolveGroundPropulsion,
   signedGroundSpeed,
 } from './GroundMotor.js';
+import { resolveAirMotion } from './AirController.js';
 import {
   advanceTransitionExitIntent,
   applyTransitionExitIntentToCandidate,
@@ -52,6 +53,10 @@ export class CoreSkateController {
 
   resolveGroundPropulsion(context) {
     return resolveGroundPropulsion(context);
+  }
+
+  resolveAirMotion(context) {
+    return resolveAirMotion(context);
   }
 
   updateTransitionExitIntent(runtime, input, dt) {
