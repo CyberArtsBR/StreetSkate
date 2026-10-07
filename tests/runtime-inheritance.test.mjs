@@ -32,11 +32,12 @@ test('wall authority compatibility alias is not a runtime prototype level', () =
   );
 });
 
-test('integrated ramp safety compatibility alias is not a runtime prototype level', () => {
+test('integrated and deck-aware compatibility aliases are not runtime prototype levels', () => {
   assert.equal(IntegratedRampSafetySkillStreetPhysics, RampWallSafetySkillStreetPhysics);
   assert.equal(
-    Object.getPrototypeOf(DeckAwareRampExitSkillStreetPhysics),
+    DeckAwareRampExitSkillStreetPhysics,
     RampWallSafetySkillStreetPhysics,
+    'verified deck catch must not require a dedicated inheritance level',
   );
 });
 
