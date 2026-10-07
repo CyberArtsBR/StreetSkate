@@ -2,14 +2,12 @@ import * as THREE from 'three';
 import {
   SafeCopingExitSkillStreetPhysics,
 } from './SafeCopingExitSkillStreetPhysics.js';
+import { createBalanceState } from './SkateSystems.js';
 import {
-  GRIND_CAPTURE,
-  contactLongitudinalOffsets,
-  createBalanceState,
-  grindProfile,
-  projectedGrindSpeed,
-  railSurfaceHeight,
-} from './SkateSystems.js';
+  GRIND_CAPTURE_POLICY,
+  grindCaptureEligibility,
+  resolveMagneticGrindCapture,
+} from './core/GrindCaptureController.js';
 import {
   GROUND_MOTOR,
   arcadeTurnGain,
@@ -21,20 +19,19 @@ export {
   rampReentrySteerScale,
 } from './core/GroundMotor.js';
 
-const clamp = THREE.MathUtils.clamp;
 
 export const ARCADE_PARK_MOBILITY = Object.freeze({
   // THPS-style rail magnetism. This is only consulted while airborne with an
   // explicit grind intent, so normal riding cannot snap to nearby rails.
-  railCaptureDistance: 0.52,
-  railCaptureAbove: 0.46,
-  railCaptureBelow: 0.44,
-  railMaxRiseVelocity: 4.2,
-  railPredictionTime: 0.16,
-  railAlignmentRelax: 0.58,
-  railMaxAlignmentSlack: 0.16,
-  railMinTangentSpeed: 0.12,
-  railBlendTime: 0.14,
+  railCaptureDistance: GRIND_CAPTURE_POLICY.railCaptureDistance,
+  railCaptureAbove: GRIND_CAPTURE_POLICY.railCaptureAbove,
+  railCaptureBelow: GRIND_CAPTURE_POLICY.railCaptureBelow,
+  railMaxRiseVelocity: GRIND_CAPTURE_POLICY.railMaxRiseVelocity,
+  railPredictionTime: GRIND_CAPTURE_POLICY.railPredictionTime,
+  railAlignmentRelax: GRIND_CAPTURE_POLICY.railAlignmentRelax,
+  railMaxAlignmentSlack: GRIND_CAPTURE_POLICY.railMaxAlignmentSlack,
+  railMinTangentSpeed: GRIND_CAPTURE_POLICY.railMinTangentSpeed,
+  railBlendTime: GRIND_CAPTURE_POLICY.railBlendTime,
 
   // Tighter arcade carving without changing regular/fakie semantics.
   turnGainLowSpeed: GROUND_MOTOR.turnGainLowSpeed,
@@ -79,26 +76,7 @@ export function transitionReturnBoardDirection({
   return travel.multiplyScalar(initialDeckSign * spinSign);
 }
 
-export function arcadeGrindEligibility({
-  surfaceDistance = Infinity,
-  verticalDelta = 0,
-  velocityY = 0,
-  tangentAlignment = 0,
-  tangentSpeed = 0,
-  profile = grindProfile('50-50'),
-  config = ARCADE_PARK_MOBILITY,
-} = {}) {
-  if (velocityY > config.railMaxRiseVelocity) return false;
-  if (surfaceDistance > config.railCaptureDistance) return false;
-  if (verticalDelta < -config.railCaptureBelow || verticalDelta > config.railCaptureAbove) return false;
-
-  const alignment = Math.abs(tangentAlignment);
-  const minAlignment = Math.max(0.08, profile.approach.minAlignment * config.railAlignmentRelax);
-  const maxAlignment = Math.min(1, profile.approach.maxAlignment + config.railMaxAlignmentSlack);
-  if (alignment < minAlignment || alignment > maxAlignment) return false;
-  if (Math.abs(tangentSpeed) < Math.min(profile.approach.minTangentSpeed, config.railMinTangentSpeed)) return false;
-  return true;
-}
+export const arcadeGrindEligibility = grindCaptureEligibility;
 
 /**
  * THPS-like park mobility layer:
@@ -117,65 +95,16 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
   }
 
   magneticRailCapture(trick) {
-    const profile = grindProfile(trick?.name);
-    const flatForward = horizontal(this.forward, this.velocity);
-    let best = null;
-
-    for (const longitudinal of contactLongitudinalOffsets(profile)) {
-      const contact = this.position.clone().addScaledVector(flatForward, longitudinal);
-      const hit = this.railNetwork.nearest(contact, ARCADE_PARK_MOBILITY.railCaptureDistance + 0.20);
-      if (!hit) continue;
-
-      const surfaceY = railSurfaceHeight(hit.point.y, hit.rail.radius, profile.clearance);
-      const verticalDelta = contact.y - surfaceY;
-      const surfaceDistance = Math.max(0, hit.distance - hit.rail.radius);
-      const horizontalVelocity = horizontal(this.velocity, flatForward);
-      const tangentHorizontal = horizontal(hit.tangent);
-      const tangentAlignment = horizontalVelocity.dot(tangentHorizontal);
-      const tangentSpeed = this.velocity.dot(hit.tangent);
-
-      if (!arcadeGrindEligibility({
-        surfaceDistance,
-        verticalDelta,
-        velocityY: this.velocity.y,
-        tangentAlignment,
-        tangentSpeed,
-        profile,
-      })) continue;
-
-      const predictedContact = contact.clone().addScaledVector(
-        this.velocity,
-        ARCADE_PARK_MOBILITY.railPredictionTime,
-      );
-      predictedContact.y -= 0.5 * 20 * ARCADE_PARK_MOBILITY.railPredictionTime ** 2;
-      const predicted = this.railNetwork.nearest(
-        predictedContact,
-        ARCADE_PARK_MOBILITY.railCaptureDistance + 0.22,
-      );
-      const predictedDistance = predicted?.rail === hit.rail
-        ? Math.max(0, predicted.distance - hit.rail.radius)
-        : surfaceDistance + 0.08;
-      const closingBonus = clamp(surfaceDistance - predictedDistance, -0.08, 0.18);
-      const score = surfaceDistance + Math.abs(verticalDelta) * 0.42 - closingBonus * 0.55;
-
-      if (!best || score < best.score) {
-        best = {
-          score,
-          rail: hit.rail,
-          s: hit.s,
-          point: hit.point,
-          tangent: hit.tangent,
-          direction: tangentSpeed >= 0 ? 1 : -1,
-          speed: projectedGrindSpeed(tangentSpeed),
-          projectedSpeed: Math.abs(tangentSpeed),
-          surfaceDistance,
-          verticalDelta,
-          contactLongitudinal: longitudinal,
-          profile,
-        };
-      }
-    }
-    return best;
+    const context = {
+      position: this.position,
+      forward: this.forward,
+      velocity: this.velocity,
+      railNetwork: this.railNetwork,
+      trick,
+    };
+    return this.coreController
+      ? this.coreController.resolveGrindCapture(context)
+      : resolveMagneticGrindCapture(context);
   }
 
   enterGrind(trick) {
