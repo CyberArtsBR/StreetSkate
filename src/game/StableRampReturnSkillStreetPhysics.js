@@ -46,9 +46,9 @@ export function naturalRampReturnProgress() {
 export const rampReturnHalfTurns = explicitAirHalfTurns;
 export const rampReturnFacing = rampLandingFacing;
 
-/** Direct directional input and bumpers rotate the rider; inertial steering does not. */
+/** Only explicit air-spin input may rotate the rider while airborne. */
 export function transitionAirSpinInput(input = {}) {
-  return clamp((Number(input.spin) || 0) + (Number(input.steer) || 0), -1, 1);
+  return clamp(Number(input.spin) || 0, -1, 1);
 }
 
 /**
