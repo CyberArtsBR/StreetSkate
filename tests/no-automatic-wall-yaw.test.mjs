@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { MomentumRollSkillStreetPhysics } from '../src/game/MomentumRollSkillStreetPhysics.js';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
-import { MOVEMENT_STATE } from '../src/game/StreetPhysics.js';
+import { MOVEMENT_STATE, StreetPhysics } from '../src/game/StreetPhysics.js';
 
 function wallWorld() {
   const root = new THREE.Group();
@@ -58,4 +58,38 @@ test('final runtime and lower momentum layer agree: contact cannot create yaw', 
   const heading = armGrounded(p);
   p.stepGround(1 / 120, { brake: false }, 0);
   assert.equal(p.heading, heading, 'only explicit steer may alter grounded heading');
+});
+
+
+test('base StreetPhysics landing preserves player yaw on steep support', () => {
+  const p = new StreetPhysics({
+    collision: wallWorld(),
+    spawn: [0, 0.5, 1.5],
+    rails: [],
+  });
+  const heading = 0.41;
+  p.heading = heading;
+  p.airHeading = heading;
+  p.airSpin = 0;
+  p.grounded = false;
+  p.airTime = 0.4;
+  p.groundDirection();
+
+  const normal = new THREE.Vector3(0.55, 0.75, 0.37).normalize();
+  const boardTangent = p.forward.clone().projectOnPlane(normal).normalize();
+  p.velocity.copy(boardTangent).multiplyScalar(5).addScaledVector(normal, -0.6);
+
+  const point = new THREE.Vector3(0, 0, 0);
+  p.position.copy(point).addScaledVector(normal, 0.018);
+  const landed = p.land({
+    wheelCount: 4,
+    frontSupported: 2,
+    rearSupported: 2,
+    point,
+    normal,
+    maxWheelGap: 0,
+  });
+
+  assert.equal(landed, true);
+  assert.equal(p.heading, heading, 'base landing contact must not derive yaw from support geometry');
 });
