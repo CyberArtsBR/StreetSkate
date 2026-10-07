@@ -2,6 +2,7 @@ import { PlayerState } from './PlayerState.js';
 import { TransitionController } from '../transitions/TransitionController.js';
 import { CollisionResolver } from '../collision/CollisionResolver.js';
 import { interpretOllieRelease } from '../../input/InputInterpreter.js';
+import { resolveTravelState } from './TravelState.js';
 
 /**
  * Phase 1 composition root.
@@ -28,6 +29,36 @@ export class CoreSkateController {
 
   interpretOllieRelease(context) {
     return interpretOllieRelease(context);
+  }
+
+  syncTravel(runtime, {
+    preserveIfSlow = true,
+    signMemoryThreshold = 0.18,
+    directionThreshold = signMemoryThreshold,
+  } = {}) {
+    if (!runtime) return null;
+    const resolved = resolveTravelState({
+      velocity: runtime.velocity,
+      deckHeading: runtime.heading,
+      previousDirection: runtime.travelDirection || this.state.travelDirection,
+      previousSign: runtime.rollingSign,
+      preserveDirectionIfSlow: preserveIfSlow,
+      config: { signMemoryThreshold, directionThreshold },
+    });
+
+    // Canonical state receives the resolved relationship first.
+    this.state.deckHeading = Number.isFinite(Number(runtime.heading))
+      ? Number(runtime.heading)
+      : this.state.deckHeading;
+    this.state.travelDirection.copy(resolved.travelDirection);
+    this.state.stance = Number(runtime.stance) < 0 ? -1 : 1;
+
+    // Compatibility fields remain outputs while old callers migrate away.
+    runtime.travelDirection ||= resolved.travelDirection.clone();
+    runtime.travelDirection.copy(this.state.travelDirection);
+    runtime.rollingSign = resolved.rollingSign;
+    runtime.fakie = this.state.fakie;
+    return resolved;
   }
 
   ensureCollision(surface) {
