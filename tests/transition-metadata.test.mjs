@@ -20,7 +20,8 @@ const manifest = JSON.parse(fs.readFileSync(
 test('current production park has explicit metadata for every authored transition anchor', () => {
   const coverage = transitionMetadataCoverage(manifest.rails);
   assert.equal(coverage.complete, true, JSON.stringify(coverage));
-  assert.equal(coverage.authoredCount, 8);
+  assert.equal(coverage.authoredCount, 12);
+  assert.equal(coverage.requiredAuthoredCount, 8);
   assert.equal(coverage.presentAuthoredCount, 8);
   assert.deepEqual(coverage.missingAuthoredRails, []);
   assert.deepEqual(coverage.unclassifiedCopingRails, []);
@@ -133,5 +134,28 @@ test('non-vert transition anchors can never enter vert lip detection', () => {
     const candidate = controller.launchAt(sample, normal, velocity);
     assert.notEqual(candidate?.transitionId, transition.id,
       `${transition.id} must not become transitionAir`);
+  }
+});
+
+
+test('runtime extension halfpipe copings are explicit authored transitions when assembled', () => {
+  const runtimeRails = [
+    ...manifest.rails,
+    { name: 'Extension halfpipe 1 west coping', radius: 0.055, points: [[61, 6.74, -9.04], [61, 6.74, 7.30]] },
+    { name: 'Extension halfpipe 1 east coping', radius: 0.055, points: [[76.8, 6.74, -9.04], [76.8, 6.74, 7.30]] },
+    { name: 'Extension halfpipe 2 west coping', radius: 0.055, points: [[60.9, 6.69, 36.94], [60.9, 6.69, 53.30]] },
+    { name: 'Extension halfpipe 2 east coping', radius: 0.055, points: [[76.7, 6.69, 36.94], [76.7, 6.69, 53.30]] },
+  ];
+  const coverage = transitionMetadataCoverage(runtimeRails);
+  assert.equal(coverage.complete, true, JSON.stringify(coverage));
+  const compiled = compileTransitionMetadata(runtimeRails);
+  assert.equal(compiled.length, 12);
+  for (const id of [
+    'extension-halfpipe-1-west', 'extension-halfpipe-1-east',
+    'extension-halfpipe-2-west', 'extension-halfpipe-2-east',
+  ]) {
+    const transition = compiled.find(entry => entry.id === id);
+    assert.ok(transition, `missing runtime transition ${id}`);
+    assert.equal(transition.supportsVert, true);
   }
 });
