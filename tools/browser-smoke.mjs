@@ -185,9 +185,9 @@ try {
   assert.equal(brakeStart.grounded, true, 'skater was not grounded before brake smoke');
   assert.ok(brakeStart.speed > 1.0, `insufficient speed before brake smoke: ${brakeStart.speed}`);
 
-  await page.keyboard.down('ShiftLeft');
+  await page.keyboard.down('Shift');
   await page.waitForTimeout(420);
-  await page.keyboard.up('ShiftLeft');
+  await page.keyboard.up('Shift');
   const brakeEnd = await page.evaluate(() => ({
     speed: window.streetSkate.skater.velocity.length(),
     grounded: window.streetSkate.skater.grounded,
