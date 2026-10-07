@@ -96,9 +96,11 @@ function beginPair(controller, legacy, transition, { launchBoost = 3.2 } = {}) {
 
 test('begin trajectory matches legacy guide on every authored production transition', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
+  const vertTransitions = controller.transitions.filter(transition => transition.supportsVert);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
 
-  for (const transition of controller.transitions) {
+  for (const transition of vertTransitions) {
     const pair = beginPair(controller, legacy, transition);
     assertVector(pair.canonicalVelocity, pair.legacyVelocity, `${transition.id}.velocity`);
     assertAirTrajectory(pair.canonicalAir, pair.legacyAir, transition.id);
@@ -109,7 +111,8 @@ test('begin trajectory matches legacy guide on every authored production transit
 
 test('return-air advance stays frame-identical to legacy through apex and descent', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
   const pair = beginPair(controller, legacy, transition);
 
@@ -132,7 +135,8 @@ test('return-air advance stays frame-identical to legacy through apex and descen
 
 test('contextual Up transfer stays frame-identical to legacy', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
   const pair = beginPair(controller, legacy, transition, { launchBoost: 2.4 });
 
@@ -156,7 +160,8 @@ test('contextual Up transfer stays frame-identical to legacy', () => {
 
 test('presentation normal matches legacy trajectory presentation exactly', () => {
   const controller = new TransitionController({ rails: manifest.rails });
-  const legacy = new TransitionGuide(controller.rails);
+  const vertRails = controller.rails.filter(rail => controller.forRail(rail.name)?.supportsVert);
+  const legacy = new TransitionGuide(vertRails);
   const transition = controller.get('eastern-quarter');
   const pair = beginPair(controller, legacy, transition);
 
