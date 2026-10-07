@@ -2,24 +2,29 @@ import * as THREE from 'three';
 import { StableBoardContactSkillStreetPhysics } from './StableBoardContactSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
+import {
+  GROUND_MOTOR,
+  automaticPushAcceleration,
+  groundSteeringDelta,
+  passiveRollingResistance,
+  resolveGroundPropulsion,
+  signedGroundSpeed,
+  transitionGravityScale,
+} from './core/GroundMotor.js';
 import { wantsVertTransfer } from '../input/InputInterpreter.js';
+
+export {
+  automaticPushAcceleration,
+  passiveRollingResistance,
+  transitionGravityScale,
+} from './core/GroundMotor.js';
 
 const clamp = THREE.MathUtils.clamp;
 
 export const MOMENTUM_ROLL = Object.freeze({
-  // THPS-style park flow: reach useful park speed quickly without using forward
-  // as a throttle. 12.5 m/s ~= 45 km/h and gives enough entry energy for small
-  // and medium ramps even with the game's intentionally strong air gravity.
-  autoPushTarget: 12.5,
-  autoPushSurfaceY: 0.965,
-  autoPushMinAccel: 3.6,
-  autoPushMaxAccel: 10.8,
-  rollingBase: 0.025,
-  rollingQuadratic: 0.00115,
+  // Compatibility surface: movement tuning now comes from canonical GroundMotor.
+  ...GROUND_MOTOR,
   signMemoryThreshold: 0.18,
-  transitionSurfaceY: 0.992,
-  uphillGravityScale: 0.38,
-  downhillGravityScale: 1.0,
 
   // Explicit transfer modifier survives the last wheel-contact frames.
   rampExitInputThreshold: 0.35,
@@ -38,52 +43,6 @@ export const MOMENTUM_ROLL = Object.freeze({
   wallImpactCooldown: 0.46,
   wallProbePadding: 0.20,
 });
-
-const clamp01 = value => Math.max(0, Math.min(1, value));
-
-/** Skate wheels should coast; neutral input must preserve useful park speed. */
-export function passiveRollingResistance(speed, config = MOMENTUM_ROLL) {
-  const magnitude = Math.abs(Number(speed) || 0);
-  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude;
-}
-
-/**
- * Neutral auto-push is only a flat-ground speed source. It gets the skater to a
- * useful cruise quickly, then momentum/gravity/pumping own the line.
- */
-export function automaticPushAcceleration({
-  speed = 0,
-  normalY = 1,
-  braking = false,
-  manual = false,
-  config = MOMENTUM_ROLL,
-} = {}) {
-  if (braking || manual || normalY < config.autoPushSurfaceY) return 0;
-  const magnitude = Math.abs(speed);
-  if (magnitude >= config.autoPushTarget) return 0;
-  const deficit = clamp01((config.autoPushTarget - magnitude) / config.autoPushTarget);
-  return config.autoPushMinAccel
-    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit;
-}
-
-/**
- * The simulation uses ~2g air gravity for responsive tricks. Applying that full
- * value tangentially while climbing a ramp drained park speed unrealistically.
- * Keep full downhill gravity, but soften only the uphill loss. This is an arcade
- * energy model, not free throttle: the rider still slows while climbing.
- */
-export function transitionGravityScale({
-  signedSpeed = 0,
-  forwardY = 0,
-  normalY = 1,
-  config = MOMENTUM_ROLL,
-} = {}) {
-  if (Math.abs(normalY) >= config.transitionSurfaceY) return 1;
-  const verticalTravel = signedSpeed * forwardY;
-  if (verticalTravel > 0.05) return config.uphillGravityScale;
-  if (verticalTravel < -0.05) return config.downhillGravityScale;
-  return 1;
-}
 
 /** A held approach direction must never arm an outward launch. */
 export function shouldBufferRampExit({
@@ -253,50 +212,54 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
       this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
     }
 
-    const measuredSigned = this.velocity.dot(this.forward);
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
       this.syncTravelDirection();
     }
-    const travelSign = this.rollingSign < 0 ? -1 : 1;
-    let speed = Math.max(Math.abs(measuredSigned), this.velocity.length()) * travelSign;
+    const speedContext = {
+      velocity: this.velocity,
+      forward: this.forward,
+      rollingSign: this.rollingSign,
+    };
+    const speedState = this.coreController
+      ? this.coreController.measureGroundSpeed(speedContext)
+      : signedGroundSpeed(speedContext);
+    let speed = speedState.speed;
 
     if (this.manual) this.updateManualBalance(dt, input, speed);
     if (this.bailTime) return;
 
-    // Camera-relative steering: the same stick direction produces the same world
-    // travel curve in regular and fakie. Deck orientation may be reversed, but
-    // controls are never mirrored merely because the rider landed a 180.
-    const rate = THREE.MathUtils.lerp(2.7, 1.2, clamp(Math.abs(speed) / 12, 0, 1));
-    this.heading -= this.steer * rate * dt;
+    // GroundMotor owns player-authored steering math; contact geometry has no yaw
+    // field and therefore cannot manufacture a horizontal turn.
+    const steeringContext = {
+      steer: this.steer,
+      speed,
+      dt,
+      config: MOMENTUM_ROLL,
+    };
+    const headingDelta = this.coreController
+      ? this.coreController.resolveGroundSteering(steeringContext)
+      : groundSteeringDelta(steeringContext);
+    this.heading += headingDelta;
     this.groundDirection();
 
-    const gravityScale = transitionGravityScale({
-      signedSpeed: speed,
+    const motorContext = {
+      speed,
+      travelSign: speedState.travelSign,
       forwardY: this.forward.y,
       normalY: this.normal.y,
-    });
-    speed += (-PHYSICS.gravity * this.forward.y) * gravityScale * dt;
-
-    const braking = Boolean(input.brake || drive < -0.12);
-    const pushAccel = automaticPushAcceleration({
-      speed,
-      normalY: this.normal.y,
-      braking,
+      drive,
+      brake: input.brake,
       manual: Boolean(this.manual),
-    });
-    this.autoPushActive = pushAccel > 0;
-    if (pushAccel > 0) {
-      const nextMagnitude = Math.min(
-        MOMENTUM_ROLL.autoPushTarget,
-        Math.abs(speed) + pushAccel * dt,
-      );
-      speed = travelSign * nextMagnitude;
-    }
-
-    const resistance = passiveRollingResistance(speed)
-      + (braking ? PHYSICS.brake : 0);
-    speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - resistance * dt);
-    speed = clamp(speed, -17, 17);
+      dt,
+      gravity: PHYSICS.gravity,
+      brakeDecel: PHYSICS.brake,
+      config: MOMENTUM_ROLL,
+    };
+    const motor = this.coreController
+      ? this.coreController.resolveGroundPropulsion(motorContext)
+      : resolveGroundPropulsion(motorContext);
+    this.autoPushActive = motor.autoPushActive;
+    speed = motor.nextSpeed;
     this.velocity.copy(this.forward).multiplyScalar(speed);
     // Keep the collision's slide vector instead of accelerating into the same
     // wall again next frame. Steering still belongs entirely to the player.
