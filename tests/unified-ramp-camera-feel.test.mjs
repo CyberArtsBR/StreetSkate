@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
 import {
-  UNIFIED_RAMP_FEEL,
-  unifiedRampAirBoost,
-  updateRampBoostMemory,
-} from '../src/game/UnifiedRampFeelSkillStreetPhysics.js';
+  LAUNCH_ENERGY as UNIFIED_RAMP_FEEL,
+  rampLaunchBonus as unifiedRampAirBoost,
+  updateRampLaunchMemory as updateRampBoostMemory,
+} from '../src/game/core/LaunchEnergyModel.js';
 import {
   THPS_CAMERA,
   cameraDirectionRate,
