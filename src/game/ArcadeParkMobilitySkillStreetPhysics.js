@@ -10,6 +10,16 @@ import {
   projectedGrindSpeed,
   railSurfaceHeight,
 } from './SkateSystems.js';
+import {
+  GROUND_MOTOR,
+  arcadeTurnGain,
+  rampReentrySteerScale,
+} from './core/GroundMotor.js';
+
+export {
+  arcadeTurnGain,
+  rampReentrySteerScale,
+} from './core/GroundMotor.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -27,16 +37,16 @@ export const ARCADE_PARK_MOBILITY = Object.freeze({
   railBlendTime: 0.14,
 
   // Tighter arcade carving without changing regular/fakie semantics.
-  turnGainLowSpeed: 1.55,
-  turnGainHighSpeed: 1.78,
-  turnGainFullSpeed: 12.5,
-  manualTurnGain: 1.14,
+  turnGainLowSpeed: GROUND_MOTOR.turnGainLowSpeed,
+  turnGainHighSpeed: GROUND_MOTOR.turnGainHighSpeed,
+  turnGainFullSpeed: GROUND_MOTOR.turnGainFullSpeed,
+  manualTurnGain: GROUND_MOTOR.manualTurnGain,
 
   // Re-entry steering protection. A steep transition has almost no horizontal
   // tangent near vertical, so steering is briefly suppressed after touchdown.
   // Contact itself never changes heading.
-  rampReentrySteerLock: 0.20,
-  rampReentryHardLock: 0.08,
+  rampReentrySteerLock: GROUND_MOTOR.rampReentrySteerLock,
+  rampReentryHardLock: GROUND_MOTOR.rampReentryHardLock,
   rampReentrySlopeY: 0.995,
 });
 
@@ -49,21 +59,6 @@ function horizontal(source, fallback = null) {
     if (out.lengthSq() > 1e-8) return out.normalize();
   }
   return out.set(0, 0, -1);
-}
-
-export function arcadeTurnGain(speed, config = ARCADE_PARK_MOBILITY) {
-  const t = clamp(Math.abs(Number(speed) || 0) / config.turnGainFullSpeed, 0, 1);
-  return THREE.MathUtils.lerp(config.turnGainLowSpeed, config.turnGainHighSpeed, t);
-}
-
-export function rampReentrySteerScale(remaining = 0, config = ARCADE_PARK_MOBILITY) {
-  const left = Math.max(0, Number(remaining) || 0);
-  if (left <= 0) return 1;
-  const elapsed = Math.max(0, config.rampReentrySteerLock - left);
-  if (elapsed <= config.rampReentryHardLock) return 0;
-  const blendDuration = Math.max(0.001,
-    config.rampReentrySteerLock - config.rampReentryHardLock);
-  return clamp((elapsed - config.rampReentryHardLock) / blendDuration, 0, 1);
 }
 
 /**
@@ -239,23 +234,4 @@ export class ArcadeParkMobilitySkillStreetPhysics extends SafeCopingExitSkillStr
     return true;
   }
 
-  stepGround(dt, input = {}, drive = 0) {
-    this.rampReentrySteerLock = Math.max(0,
-      (this.rampReentrySteerLock || 0) - dt);
-
-    const originalSteer = this.steer;
-    const speed = this.velocity?.length?.() || 0;
-    const gain = this.manual
-      ? ARCADE_PARK_MOBILITY.manualTurnGain
-      : arcadeTurnGain(speed);
-    const reentryScale = rampReentrySteerScale(this.rampReentrySteerLock);
-    this.steer = clamp(originalSteer * gain * reentryScale, -1.8, 1.8);
-    try {
-      super.stepGround(dt, input, drive);
-    } finally {
-      // Preserve the input smoothing state. Only deliberate physical steering is
-      // amplified, so presentation/camera and regular/fakie controls stay stable.
-      this.steer = originalSteer;
-    }
-  }
 }
