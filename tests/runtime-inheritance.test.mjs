@@ -16,6 +16,14 @@ import { SafeCopingExitSkillStreetPhysics } from '../src/game/SafeCopingExitSkil
 import { StreetSkater } from '../src/game/StreetSkater.js';
 import { YawStableStreetSkater } from '../src/game/YawStableStreetSkater.js';
 
+test('arcade mobility compatibility alias is not a runtime prototype level', () => {
+  assert.equal(ArcadeParkMobilitySkillStreetPhysics, SafeCopingExitSkillStreetPhysics);
+  assert.equal(
+    Object.getPrototypeOf(StableRampReturnSkillStreetPhysics.prototype),
+    SafeCopingExitSkillStreetPhysics.prototype,
+  );
+});
+
 test('wall authority compatibility alias is not a runtime prototype level', () => {
   assert.equal(WallContactAuthoritySkillStreetPhysics, ArcadeParkMobilitySkillStreetPhysics);
   assert.equal(
