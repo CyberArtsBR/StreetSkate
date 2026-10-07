@@ -6,16 +6,18 @@ import { authoredTransitionRails } from '../src/game/transitions/TransitionContr
 import { shouldReleaseRampLip } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { shouldBufferRampExit } from '../src/game/MomentumRollSkillStreetPhysics.js';
 
-test('Up is a contextual ramp-exit command', () => {
-  assert.equal(wantsRampExit({ drive: 1 }), true);
-  assert.equal(wantsRampExit({ drive: 0, directionTaps: ['up'] }), true);
-  assert.equal(wantsRampExit({ drive: 0 }), false);
+test('vert exit is explicit; forward hold never requests transfer', () => {
+  assert.equal(wantsRampExit({ vertExit: true }), true);
+  assert.equal(wantsRampExit({ drive: 1 }, { apexPassed: true }), false);
+  assert.equal(wantsRampExit({ directionTaps: ['up'] }, { apexPassed: false }), false);
+  assert.equal(wantsRampExit({ directionTaps: ['up'] }, { apexPassed: true }), true);
 });
 
-test('Up only buffers while actually climbing a sloped surface', () => {
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 0.86, verticalSpeed: 4 }), true);
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 1, verticalSpeed: 4 }), false);
-  assert.equal(shouldBufferRampExit({ drive: 1, normalY: 0.86, verticalSpeed: -1 }), false);
+test('explicit vert exit only buffers while actually climbing a sloped surface', () => {
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 0.86, verticalSpeed: 4 }), true);
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 1, verticalSpeed: 4 }), false);
+  assert.equal(shouldBufferRampExit({ vertExit: true, normalY: 0.86, verticalSpeed: -1 }), false);
+  assert.equal(shouldBufferRampExit({ vertExit: false, normalY: 0.86, verticalSpeed: 4 }), false);
 });
 
 test('regular riding releases when front truck clears an uphill lip', () => {
