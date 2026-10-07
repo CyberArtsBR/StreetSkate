@@ -6,6 +6,7 @@ import {
   transitionLandingSupportMode,
 } from './core/LandingResult.js';
 import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
+import { resolveAirMotion } from './core/AirController.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -110,11 +111,24 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
 
   stepAir(dt, input, drive, before) {
     this.airTime += dt;
-    const airTurn = clamp(this.steer + clamp(input.spin || 0, -1, 1), -1.65, 1.65);
-    this.airSpin -= airTurn * 3.8 * dt;
-    this.heading = this.airHeading + this.airSpin;
+    const turnInput = Number.isFinite(Number(input?.airTurnCommand))
+      ? Number(input.airTurnCommand)
+      : clamp(this.steer + clamp(input?.spin || 0, -1, 1), -1.65, 1.65);
+    const airContext = {
+      airHeading: this.airHeading,
+      airSpin: this.airSpin,
+      turnInput,
+      velocityY: this.velocity.y,
+      gravity: PHYSICS.gravity,
+      dt,
+    };
+    const air = this.coreController
+      ? this.coreController.resolveAirMotion(airContext)
+      : resolveAirMotion(airContext);
+    this.airSpin = air.airSpin;
+    this.heading = air.heading;
     this.airDirection();
-    this.velocity.y -= PHYSICS.gravity * dt;
+    this.velocity.y = air.velocityY;
 
     if (this.movementState === MOVEMENT_STATE.VERT_AIR && this.transitionAir) {
       if (this.transitionAir.transferring && this.transitionAir.exitControl) {
