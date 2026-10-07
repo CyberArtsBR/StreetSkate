@@ -53,7 +53,7 @@ export class CoreSkateController {
       velocity: runtime.velocity,
       deckHeading: runtime.heading,
       previousDirection: runtime.travelDirection || this.state.travelDirection,
-      previousSign: runtime.rollingSign,
+      previousSign: this.state.travelSign,
       preserveDirectionIfSlow: preserveIfSlow,
       config: { signMemoryThreshold, directionThreshold },
     });
@@ -64,6 +64,7 @@ export class CoreSkateController {
       : this.state.deckHeading;
     this.state.travelDirection.copy(resolved.travelDirection);
     this.state.stance = Number(runtime.stance) < 0 ? -1 : 1;
+    this.state.travelSign = resolved.rollingSign;
 
     // Compatibility fields remain outputs while old callers migrate away.
     runtime.travelDirection ||= resolved.travelDirection.clone();
