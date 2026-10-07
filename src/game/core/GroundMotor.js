@@ -92,6 +92,7 @@ export function transitionGravityScale({
  */
 export function resolveGroundPropulsion({
   speed = 0,
+  travelSign = Number(speed) < 0 ? -1 : 1,
   forwardY = 0,
   normalY = 1,
   drive = 0,
@@ -103,7 +104,7 @@ export function resolveGroundPropulsion({
   config = GROUND_MOTOR,
 } = {}) {
   const step = Math.max(0, Number(dt) || 0);
-  const travelSign = Number(speed) < 0 ? -1 : 1;
+  const directionSign = Number(travelSign) < 0 ? -1 : 1;
   let nextSpeed = Number(speed) || 0;
 
   const gravityScale = transitionGravityScale({
