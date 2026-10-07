@@ -97,6 +97,8 @@ export function captureGameplayState(controller) {
     pumpState: controller?.pumpState ?? null,
     pumpQuality: roundNumber(controller?.pumpQuality),
     pumpLastEnergy: roundNumber(controller?.pumpLastEnergy),
+    pumpLastDeltaSpeed: roundNumber(controller?.pumpLastDeltaSpeed),
+    pumpTangentSpeed: roundNumber(controller?.pumpTangentSpeed),
     rampLaunchMemory: roundNumber(controller?.rampLaunchMemory),
     rampLaunchMemoryTime: roundNumber(controller?.rampLaunchMemoryTime),
   };
