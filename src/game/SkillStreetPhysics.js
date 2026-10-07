@@ -9,6 +9,7 @@ import {
   manualSupportOffsets,
   stepBalance,
 } from './SkateSystems.js';
+import { applyGrindEntry, resolveGrindCapture } from './core/GrindCaptureController.js';
 
 const GRAVITY = new THREE.Vector3(0, -PHYSICS.gravity, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -240,42 +241,16 @@ export class SkillStreetPhysics extends StreetPhysics {
   }
 
   enterGrind(trick) {
-    const capture = this.railNetwork.capture(this.position, this.velocity, {
-      maxDistance: GRIND_CAPTURE.distance,
+    if (this.coreController) return this.coreController.enterGrind(this, trick);
+
+    const capture = resolveGrindCapture({
+      position: this.position,
       forward: this.forward,
+      velocity: this.velocity,
+      railNetwork: this.railNetwork,
       trick,
     });
-    if (!capture) return false;
-    const sample = this.railNetwork.sample(capture.rail, capture.s, { clearance: capture.profile.clearance });
-    if (!sample) return false;
-    this.grind = {
-      ...capture,
-      trick: { ...trick, name: capture.profile.name },
-      profile: capture.profile,
-      speed: capture.speed,
-      time: 0,
-      balance: 0,
-      balanceState: createBalanceState(1.18),
-      instability: 0,
-      blendElapsed: 0,
-      blendDuration: GRIND_CAPTURE.blendTime,
-      blendPosition: this.position.clone(),
-      incomingVelocity: this.velocity.clone(),
-      entryHeading: this.heading,
-      contactClearance: capture.profile.clearance,
-      contactClearanceTarget: capture.profile.clearance,
-    };
-    this.grindBalanceState = this.grind.balanceState;
-    this.grindBalance = 0;
-    this.grounded = false;
-    this.manual = null;
-    this.flatland = null;
-    this.transitionAir = null;
-    this.wallRide = null;
-    this.airHeading = this.heading;
-    this.recordTrick(this.grind.trick.name, this.grind.trick.points);
-    this.stableGroundTime = 0;
-    return true;
+    return applyGrindEntry(this, capture, trick);
   }
 
   updateGrindBalance(dt, input) {

@@ -2,30 +2,35 @@ import * as THREE from 'three';
 import { StableBoardContactSkillStreetPhysics } from './StableBoardContactSkillStreetPhysics.js';
 import { PHYSICS } from './StreetPhysics.js';
 import { resolveTravelState } from './core/TravelState.js';
-import { wantsVertTransfer } from '../input/InputInterpreter.js';
+import { resolveGroundStepStart } from './core/GroundStepResult.js';
+import {
+  GROUND_MOTOR,
+  automaticPushAcceleration,
+  passiveRollingResistance,
+  resolveGroundMotion,
+  transitionGravityScale,
+} from './core/GroundMotor.js';
+import {
+  TRANSITION_INTENT,
+  shouldArmTransitionExit,
+} from './transitions/TransitionIntent.js';
 
-const clamp = THREE.MathUtils.clamp;
+export {
+  automaticPushAcceleration,
+  passiveRollingResistance,
+  transitionGravityScale,
+} from './core/GroundMotor.js';
 
 export const MOMENTUM_ROLL = Object.freeze({
-  // THPS-style park flow: reach useful park speed quickly without using forward
-  // as a throttle. 12.5 m/s ~= 45 km/h and gives enough entry energy for small
-  // and medium ramps even with the game's intentionally strong air gravity.
-  autoPushTarget: 12.5,
-  autoPushSurfaceY: 0.965,
-  autoPushMinAccel: 3.6,
-  autoPushMaxAccel: 10.8,
-  rollingBase: 0.025,
-  rollingQuadratic: 0.00115,
+  // Compatibility surface: movement tuning now comes from canonical GroundMotor.
+  ...GROUND_MOTOR,
   signMemoryThreshold: 0.18,
-  transitionSurfaceY: 0.992,
-  uphillGravityScale: 0.38,
-  downhillGravityScale: 1.0,
 
   // Explicit transfer modifier survives the last wheel-contact frames.
   rampExitInputThreshold: 0.35,
-  rampExitBuffer: 0.32,
-  rampExitSlopeY: 0.992,
-  rampExitMinRise: 0.06,
+  rampExitBuffer: TRANSITION_INTENT.bufferTime,
+  rampExitSlopeY: TRANSITION_INTENT.slopeY,
+  rampExitMinRise: TRANSITION_INTENT.minRise,
   rampLipBoost: 0.9,
 
   // Deprecated wall-response tuning retained only while collision migration and
@@ -39,52 +44,6 @@ export const MOMENTUM_ROLL = Object.freeze({
   wallProbePadding: 0.20,
 });
 
-const clamp01 = value => Math.max(0, Math.min(1, value));
-
-/** Skate wheels should coast; neutral input must preserve useful park speed. */
-export function passiveRollingResistance(speed, config = MOMENTUM_ROLL) {
-  const magnitude = Math.abs(Number(speed) || 0);
-  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude;
-}
-
-/**
- * Neutral auto-push is only a flat-ground speed source. It gets the skater to a
- * useful cruise quickly, then momentum/gravity/pumping own the line.
- */
-export function automaticPushAcceleration({
-  speed = 0,
-  normalY = 1,
-  braking = false,
-  manual = false,
-  config = MOMENTUM_ROLL,
-} = {}) {
-  if (braking || manual || normalY < config.autoPushSurfaceY) return 0;
-  const magnitude = Math.abs(speed);
-  if (magnitude >= config.autoPushTarget) return 0;
-  const deficit = clamp01((config.autoPushTarget - magnitude) / config.autoPushTarget);
-  return config.autoPushMinAccel
-    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit;
-}
-
-/**
- * The simulation uses ~2g air gravity for responsive tricks. Applying that full
- * value tangentially while climbing a ramp drained park speed unrealistically.
- * Keep full downhill gravity, but soften only the uphill loss. This is an arcade
- * energy model, not free throttle: the rider still slows while climbing.
- */
-export function transitionGravityScale({
-  signedSpeed = 0,
-  forwardY = 0,
-  normalY = 1,
-  config = MOMENTUM_ROLL,
-} = {}) {
-  if (Math.abs(normalY) >= config.transitionSurfaceY) return 1;
-  const verticalTravel = signedSpeed * forwardY;
-  if (verticalTravel > 0.05) return config.uphillGravityScale;
-  if (verticalTravel < -0.05) return config.downhillGravityScale;
-  return 1;
-}
-
 /** A held approach direction must never arm an outward launch. */
 export function shouldBufferRampExit({
   vertExit = false,
@@ -92,10 +51,16 @@ export function shouldBufferRampExit({
   verticalSpeed = 0,
   config = MOMENTUM_ROLL,
 } = {}) {
-  const up = wantsVertTransfer({ vertExit });
-  return Boolean(up
-    && Math.abs(normalY) < config.rampExitSlopeY
-    && verticalSpeed > config.rampExitMinRise);
+  return shouldArmTransitionExit({
+    input: { vertExit },
+    normalY,
+    verticalSpeed,
+    config: {
+      bufferTime: config.rampExitBuffer,
+      slopeY: config.rampExitSlopeY,
+      minRise: config.rampExitMinRise,
+    },
+  });
 }
 
 function horizontalDirection(source, fallback = null) {
@@ -157,6 +122,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.travelDirection.copy(horizontalDirection(this.forward));
     this.autoPushActive = false;
     this.rampExitIntentTime = 0;
+    this.rampReentrySteerLock = 0;
     this.wallImpactTime = 0;
     this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
     this.wallImpactCooldown = 0;
@@ -199,35 +165,6 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     return this.travelDirection;
   }
 
-  /**
-   * Preserve explicit exit intent through the last contact frame. If this is an authored
-   * coping transition, tag the edge so TransitionController launches outward on
-   * frame one instead of first pulling inward and reversing later.
-   */
-  takeoff(impulse = 0, transition = null) {
-    this.transitionLandingGrace = 0;
-    const exitRequested = (this.rampExitIntentTime || 0) > 0;
-    let edge = transition;
-    if (exitRequested) {
-      edge ||= this.transitions.launchAt(this.position, this.normal, this.velocity);
-      if (edge) edge = { ...edge, exitRequested: true };
-    }
-    const result = super.takeoff(impulse, edge);
-    this.rampExitIntentTime = 0;
-    return result;
-  }
-
-  land(support) {
-    // In the final controller the ordered post-landing pipeline owns the immediate
-    // travel/fakie sync. Direct subsystem instances keep the historical hook.
-    if (this.deferLandingPostHooks) return super.land(support);
-
-    const landed = super.land(support);
-    if (!landed) return false;
-    this.syncTravelDirection();
-    return true;
-  }
-
   /** Automatic wall-turn detection has no runtime authority. */
   detectGroundWallImpact() {
     return null;
@@ -239,65 +176,66 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   stepGround(dt, input = {}, drive = 0) {
-    this.wallSlideTime = Math.max(0, (this.wallSlideTime || 0) - dt);
-    this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
-    this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
-    this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
-    this.rampExitIntentTime = Math.max(0, (this.rampExitIntentTime || 0) - dt);
-
-    if (shouldBufferRampExit({
-      vertExit: input.vertExit,
-      normalY: this.normal.y,
-      verticalSpeed: this.velocity.y,
-    })) {
-      this.rampExitIntentTime = MOMENTUM_ROLL.rampExitBuffer;
-    }
-
-    const measuredSigned = this.velocity.dot(this.forward);
     if (!Number.isFinite(this.rollingSign) || this.rollingSign === 0) {
       this.syncTravelDirection();
     }
-    const travelSign = this.rollingSign < 0 ? -1 : 1;
-    let speed = Math.max(Math.abs(measuredSigned), this.velocity.length()) * travelSign;
+
+    const startContext = {
+      dt,
+      input,
+      velocity: this.velocity,
+      forward: this.forward,
+      rollingSign: this.rollingSign,
+      normalY: this.normal.y,
+      verticalSpeed: this.velocity.y,
+      rampReentrySteerLock: this.rampReentrySteerLock,
+      wallSlideTime: this.wallSlideTime,
+      transitionLandingGrace: this.transitionLandingGrace,
+      wallImpactTime: this.wallImpactTime,
+      wallImpactCooldown: this.wallImpactCooldown,
+      rampExitIntentTime: this.rampExitIntentTime,
+    };
+    const start = this.coreController
+      ? this.coreController.resolveGroundStepStart(startContext)
+      : resolveGroundStepStart(startContext);
+
+    this.rampReentrySteerLock = start.timers.rampReentrySteerLock;
+    this.wallSlideTime = start.timers.wallSlideTime;
+    this.transitionLandingGrace = start.timers.transitionLandingGrace;
+    this.wallImpactTime = start.timers.wallImpactTime;
+    this.wallImpactCooldown = start.timers.wallImpactCooldown;
+    this.rampExitIntentTime = start.transitionIntent.remaining;
+
+    const speedState = start.speedState;
+    let speed = speedState.speed;
 
     if (this.manual) this.updateManualBalance(dt, input, speed);
     if (this.bailTime) return;
 
-    // Camera-relative steering: the same stick direction produces the same world
-    // travel curve in regular and fakie. Deck orientation may be reversed, but
-    // controls are never mirrored merely because the rider landed a 180.
-    const rate = THREE.MathUtils.lerp(2.7, 1.2, clamp(Math.abs(speed) / 12, 0, 1));
-    this.heading -= this.steer * rate * dt;
-    this.groundDirection();
-
-    const gravityScale = transitionGravityScale({
-      signedSpeed: speed,
-      forwardY: this.forward.y,
-      normalY: this.normal.y,
-    });
-    speed += (-PHYSICS.gravity * this.forward.y) * gravityScale * dt;
-
-    const braking = Boolean(input.brake || drive < -0.12);
-    const pushAccel = automaticPushAcceleration({
-      speed,
-      normalY: this.normal.y,
-      braking,
+    // One pure GroundMotor transaction owns deliberate steering plus tangent
+    // propulsion. Contact geometry still owns only clearance/support/collision.
+    const motionContext = {
+      heading: this.heading,
+      normal: this.normal,
+      speedState,
+      steer: this.steer,
       manual: Boolean(this.manual),
-    });
-    this.autoPushActive = pushAccel > 0;
-    if (pushAccel > 0) {
-      const nextMagnitude = Math.min(
-        MOMENTUM_ROLL.autoPushTarget,
-        Math.abs(speed) + pushAccel * dt,
-      );
-      speed = travelSign * nextMagnitude;
-    }
-
-    const resistance = passiveRollingResistance(speed)
-      + (braking ? PHYSICS.brake : 0);
-    speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - resistance * dt);
-    speed = clamp(speed, -17, 17);
-    this.velocity.copy(this.forward).multiplyScalar(speed);
+      reentryRemaining: this.rampReentrySteerLock,
+      drive,
+      brake: input.brake,
+      dt,
+      gravity: PHYSICS.gravity,
+      brakeDecel: PHYSICS.brake,
+      config: MOMENTUM_ROLL,
+    };
+    const motion = this.coreController
+      ? this.coreController.resolveGroundMotion(motionContext)
+      : resolveGroundMotion(motionContext);
+    this.heading = motion.heading;
+    this.forward.copy(motion.forward);
+    this.autoPushActive = motion.propulsion.autoPushActive;
+    speed = motion.speed;
+    this.velocity.copy(motion.velocity);
     // Keep the collision's slide vector instead of accelerating into the same
     // wall again next frame. Steering still belongs entirely to the player.
     if (this.wallSlideTime > 0 && this.wallSlideNormal) {

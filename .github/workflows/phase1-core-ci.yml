@@ -9,6 +9,12 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  # Push and PR runs for the same head branch share one group. New commits cancel
+  # stale browser jobs so the gate always represents the latest Phase 1 head.
+  group: phase1-core-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

@@ -5,6 +5,25 @@ import { interpretOllieRelease } from '../../input/InputInterpreter.js';
 import { resolveTravelState } from './TravelState.js';
 import { rampLaunchBonus, updateRampLaunchMemory } from './LaunchEnergyModel.js';
 import { captureTakeoffContext } from './TakeoffContext.js';
+import {
+  groundSteeringDelta,
+  resolveGroundMotion,
+  resolveGroundPropulsion,
+  signedGroundSpeed,
+} from './GroundMotor.js';
+import { resolveAirMotion } from './AirController.js';
+import { evaluateDeckCatch } from './DeckCatchResult.js';
+import {
+  resolveSweepReentryCandidate,
+  resolveWheelReentryCandidate,
+} from './TransitionReentryResult.js';
+import { applyGrindEntry, resolveGrindCapture } from './GrindCaptureController.js';
+import { resolveRuntimeMovementMode } from './MovementStateResolver.js';
+import { resolveGroundStepStart } from './GroundStepResult.js';
+import {
+  advanceTransitionExitIntent,
+  applyTransitionExitIntentToCandidate,
+} from '../transitions/TransitionIntent.js';
 
 /**
  * Phase 1 composition root.
@@ -31,6 +50,84 @@ export class CoreSkateController {
 
   interpretOllieRelease(context) {
     return interpretOllieRelease(context);
+  }
+
+  measureGroundSpeed(context) {
+    return signedGroundSpeed(context);
+  }
+
+  resolveGroundSteering(context) {
+    return groundSteeringDelta(context);
+  }
+
+  resolveGroundMotion(context) {
+    return resolveGroundMotion(context);
+  }
+
+  resolveGroundPropulsion(context) {
+    return resolveGroundPropulsion(context);
+  }
+
+  resolveGroundStepStart(context) {
+    return resolveGroundStepStart(context);
+  }
+
+  resolveAirMotion(context) {
+    return resolveAirMotion(context);
+  }
+
+  resolveDeckCatch(context) {
+    return evaluateDeckCatch(context);
+  }
+
+  resolveWheelReentry(context) {
+    return resolveWheelReentryCandidate(context);
+  }
+
+  resolveSweepReentry(context) {
+    return resolveSweepReentryCandidate(context);
+  }
+
+  resolveGrindCapture(context) {
+    return resolveGrindCapture(context);
+  }
+
+  enterGrind(runtime, trick) {
+    if (!runtime) return false;
+    const capture = this.resolveGrindCapture({
+      position: runtime.position,
+      forward: runtime.forward,
+      velocity: runtime.velocity,
+      railNetwork: runtime.railNetwork,
+      trick,
+    });
+    return applyGrindEntry(runtime, capture, trick);
+  }
+
+  resolveMovementMode(runtime) {
+    return resolveRuntimeMovementMode(runtime);
+  }
+
+  updateTransitionExitIntent(runtime, input, dt) {
+    const state = advanceTransitionExitIntent({
+      remaining: runtime?.rampExitIntentTime || 0,
+      dt,
+      input,
+      normalY: runtime?.normal?.y ?? 1,
+      verticalSpeed: runtime?.velocity?.y ?? 0,
+    });
+    if (runtime) runtime.rampExitIntentTime = state.remaining;
+    return state;
+  }
+
+  prepareTransitionTakeoff(runtime, transition = null) {
+    const result = applyTransitionExitIntentToCandidate({
+      controller: this,
+      runtime,
+      transition,
+    });
+    if (runtime && result.consumed) runtime.rampExitIntentTime = 0;
+    return result;
   }
 
   syncTravel(runtime, {

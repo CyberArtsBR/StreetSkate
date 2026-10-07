@@ -95,11 +95,23 @@ test('ollie then kickflip exposes visible flip progression and lands', () => {
   assert.equal(physics.grounded, true, 'kickflip ollie should land back on floor');
 });
 
-test('StreetBoard visibly rotates for a flip state', () => {
+test('StreetBoard uses eased prepare-to-rotation timing for a flip state', () => {
   const board = new StreetBoard('/unused.glb');
   board.update({
     airborne: true,
     flipState: { name: 'Kickflip', progress: 0.25, roll: 1, pitch: 0, yaw: 0 },
   });
-  assert.ok(Math.abs(board.root.rotation.z) > 1, `expected visible board roll, got ${board.root.rotation.z}`);
+  const earlyRoll = Math.abs(board.root.rotation.z);
+  assert.ok(earlyRoll > 0.4 && earlyRoll < 1,
+    `prepare phase should show controlled early roll, got ${earlyRoll}`);
+
+  board.update({
+    airborne: true,
+    flipState: { name: 'Kickflip', progress: 0.55, roll: 1, pitch: 0, yaw: 0 },
+  });
+  const rotationRoll = Math.abs(board.root.rotation.z);
+  assert.ok(rotationRoll > 3,
+    `rotation phase should clearly rotate the deck, got ${rotationRoll}`);
+  assert.ok(rotationRoll > earlyRoll * 4,
+    'flip rotation should accelerate after the preparation phase');
 });

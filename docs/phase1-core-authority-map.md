@@ -1,10 +1,12 @@
 # StreetSkate Phase 1 — Core Authority Map
 
-Baseline production `main`: `b9d657ad813975857219dab37089dd2ec96ccb24`
+Historical Phase 1 starting baseline: `b9d657ad813975857219dab37089dd2ec96ccb24`
+
+Current production merge base (2026-10-07): `caf36682a61444e19fddf20599652029836f17df`
 
 Development branch: `refactor/core-skate-controller-v1`
 
-Production `main` is unchanged by Phase 1.
+Phase 1-specific commits remain isolated from production. Independent production changes made after the original baseline—including the current expanded park/camera work—have been incorporated into this branch; Phase 1 must preserve those newer `main` decisions.
 
 ## Why Phase 1 was needed
 
@@ -20,17 +22,14 @@ The final skater still uses compatibility inheritance for migration safety, but 
 
 ```text
 StreetSkater
-   └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + landing post
-      └─ StableRampReturnSkillStreetPhysics  explicit-spin air orientation + return semantics
-         └─ ArcadeParkMobility...            carve + grind magnet + re-entry steer lock
-            └─ SafeCopingExit...             coping safety / continuous re-entry geometry
-               └─ DeckAwareRampExit...       real deck scan / landing corridor / catch
-                  └─ RampWallSafety...        transition landing + transfer-flight executor
-                     └─ MomentumRoll...       ground momentum + canonical travel sync
-                        └─ StableBoardContact... board support + explicit collision-result application
-                           └─ BoardContact...
-                              └─ SkillStreetPhysics
-                                 └─ StreetPhysics
+   └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + takeoff/landing post
+      └─ SafeCopingExit...                   transition landing/transfer/re-entry + verified deck catch application
+         └─ RampWallSafety...                 single airborne + transfer-flight executor
+            └─ MomentumRoll...                ground adapter + canonical travel sync
+                  └─ StableBoardContact...    board support + explicit collision-result application
+                     └─ BoardContact...
+                        └─ SkillStreetPhysics
+                           └─ StreetPhysics
 ```
 
 `NoAutomaticYawSkillStreetPhysics` still exists as a compatibility file but is no longer in the final runtime chain.
@@ -44,17 +43,25 @@ StreetSkater
 | vert begin / advance trajectory | `TransitionController` | VERT_AIR path | old guide no longer runtime authority |
 | ollie / pump / vert / grind-out command meaning | `CoreSkateController` + `InputInterpreter` | top `StatefulSkillStreetPhysics.advance()` | raw release interpretation removed from PumpSystem |
 | world travel direction / sign / fakie | `CoreSkateController.syncTravel()` + `TravelState` | canonical PlayerState first, then compatibility outputs | legacy fields synchronized outputs only |
+| ground-step timers / transition intent / signed speed | `GroundStepResult` + `CoreSkateController` | `MomentumRoll.stepGround()` applies one start transaction | ad-hoc timer/intent/speed sequencing removed |
+| ground steering / propulsion / rolling resistance / flat auto-push | `CoreSkateController` + `GroundMotor.resolveGroundMotion()` | `MomentumRoll.stepGround()` applies one motor result | heading/tangent/velocity math is canonical; contact still owns only movement clearance/support |
+| airborne yaw + gravity fixed-step integration | `CoreSkateController` + `AirController` | single `RampWallSafety.stepAir()` executor | `StableRampReturn.stepAir()` removed; `InputInterpreter.interpretAirTurn()` supplies deliberate current-frame rotation only |
+| movement mode priority | `CoreSkateController` + `MovementStateResolver` | `StatefulSkillStreetPhysics.syncMovementState()` applies result | mode priority is no longer duplicated in leaf logic |
 | ramp launch energy | `CoreSkateController` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.stepGround()/takeoff()` | `UnifiedRampFeel` compatibility wrapper bypassed |
-| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics` + `StableRampReturn` | duplicated pre-launch math removed |
+| transition-exit takeoff preparation / ramp energy | `CoreSkateController` + `TakeoffContext` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.takeoff()` | lower `MomentumRoll.takeoff()` adapter removed |
+| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics.takeoff()` applies canonical orientation context | `StableRampReturn` bypassed by final runtime |
+| verified deck catch window | `DeckCatchResult` + `CoreSkateController.resolveDeckCatch()` | `SafeCopingExit.stepAir()` performs the short verified support probe | `DeckAwareRampExitSkillStreetPhysics` is a compatibility alias; scan/target helpers remain geometry services only |
+| continuous same-transition re-entry / anti-tunnelling candidate | `TransitionReentryResult` + `CoreSkateController` | `SafeCopingExit.tryContinuousTransitionReentry()` applies wheel-sweep / center-sweep results | inline geometry selection and emergency-support construction removed from runtime seam |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
 | real-deck transfer / missing-deck return decision | `TransferLaunchResult` | deck geometry evidence feeds the `SafeCopingExit` launch seam | scan remains geometry service; decision math centralized |
 | narrow/unsafe deck return decision | `TransferLaunchResult` | `SafeCopingExit.takeoff()` | deck-fit rule centralized |
 | airborne transfer flight | `TransferFlightResult` | single `RampWallSafety.advanceControlledTransfer()` | DeckAware override removed and structurally forbidden by test |
-| landing route priority | `LandingPolicy` | DeckAware / SafeCoping landing filters | independent route trees removed |
-| landing acceptance / alignment / catch/bail | `LandingResult` | stable/base + bowl/ramp adapters | duplicated acceptance bodies removed |
+| landing route priority | `LandingPolicy` | single `SafeCopingExit.land()` transition seam | DeckAware/RampWall nested landing routers removed |
+| landing acceptance / alignment / catch/bail | `LandingResult` | single transition seam + stable/base compatibility | duplicated transition acceptance bodies removed |
 | accepted touchdown state mutation | `LandingExecutor` | all accepted landing paths | projected support tangent cannot write yaw |
-| post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top runtime + direct StableRampReturn compatibility path | nested post hooks deferred; one execution per landing |
+| post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top `StatefulSkillStreetPhysics.land()` | `StableRampReturn` retained only for direct compatibility tests |
 | horizontal yaw invariant | player steering + explicit air spin only | orientation + replay invariants | wall/coping/contact auto-yaw removed |
+| grind capture / strict-first magnetic fallback / grind entry | `GrindCaptureController` + `CoreSkateController` | `SkillStreetPhysics.enterGrind()` adapter | `RailNetwork.capture()` retained as compatibility oracle only; `ArcadeParkMobility` override removed |
 | body continuous collision | `CoreSkateController` + `CollisionResolver` over validated `ParkCollision.move()` | `StableBoardContact.resolveMotion()` | collision result has no heading/yaw field |
 | four-wheel support | board contact solver | StableBoardContact / LandingResult | preserved from validated baseline |
 | camera input snapshot | `CameraState` | `FollowCamera` | presentation cannot mutate physics |
@@ -67,8 +74,15 @@ StreetSkater
 - `PlayerState`;
 - `TransitionController`;
 - `CollisionResolver`;
+- `GrindCaptureController` strict-first + THPS magnetic fallback and grind entry orchestration;
+- `DeckCatchResult` verified transfer-deck catch eligibility;
+- `TransitionReentryResult` same-transition wheel/sweep recovery candidates and emergency support construction;
 - semantic Ollie/pump/vert/grind-out interpretation;
 - canonical travel synchronization;
+- canonical ground-step start transaction (timers, transition intent, signed speed);
+- canonical ground motor result (player steering, support tangent, gravity/push/drag, velocity);
+- canonical airborne motion (explicit yaw command + gravity);
+- canonical movement-mode resolution;
 - remembered ramp-energy sampling / takeoff context orchestration.
 
 Compatibility subclasses still execute validated gameplay behavior, but new authority must attach to this composition root instead of adding another physics inheritance layer.
@@ -108,6 +122,8 @@ Passive same-wall vert return therefore keeps yaw but may become fakie when trav
 ## Transition / transfer contract
 
 Authored transition identity is explicit. Important production coping/vert rails are selected by metadata, not by arbitrary names containing `coping`.
+
+The current runtime manifest compiles **12 explicit transition anchors**: bowl, western vert, rear mini north/south, eastern quarter, central hip, south spine, east bank, and four extension-halfpipe lips. Hip/spine/bank anchors are semantic area metadata only and cannot enter vert-air detection; unrelated angled/down/flat grind rails remain grind-only.
 
 Takeoff is now separated into explicit responsibilities:
 
@@ -176,7 +192,12 @@ It cannot return or mutate yaw. High-speed wall tests cover approximately 3 / 6 
 - generic bank/kicker ramp-memory launch through the real Ollie/takeoff path;
 - >2 m deterministic big-air result with zero no-input yaw;
 - collision speed coverage at approximately 3 / 6 / 9 / 12 / 15+ m/s;
+- thin-wall / low-ledge / narrow-post collision coverage;
+- coping/rail body collision with active-grind rail exclusion;
+- nose/tail finite-sphere sweep against thin ledge faces;
+- deterministic airborne grind-intent → rail capture replay plus no-intent/out-of-range rejection;
 - existing grind/manual balance regressions;
+- 30 / 60 / 120 / 144 FPS render-cadence parity over the same 120 Hz simulation;
 - board / vert / pump dedicated verifiers.
 
 Replay snapshots also expose pump energy/delta speed, transition identity, wheel support, canonical travel/fakie state, and landing-yaw invariant counters.
@@ -191,6 +212,9 @@ Phase 1 does not delete every historical filename simply to shorten the tree. Th
 - `YawStableStreetSkater` compatibility alias; coping-safe basis lives in `StreetSkater`;
 - `BaseStatefulSkillStreetPhysics` compatibility wrapper outside final runtime;
 - `UnifiedRampFeelSkillStreetPhysics` compatibility wrapper outside final runtime;
+- `StableRampReturnSkillStreetPhysics` compatibility/regression class outside final runtime;
+- `ArcadeParkMobilitySkillStreetPhysics` compatibility alias to `SafeCopingExitSkillStreetPhysics`;
+- `DeckAwareRampExitSkillStreetPhysics` compatibility alias to `RampWallSafetySkillStreetPhysics`; real-deck scan helpers remain available;
 - `BowlLandingSkillStreetPhysics` standalone compatibility/regression class outside final runtime;
 - `TransitionGuide` oracle;
 - pure legacy helpers used only for parity/tuning tests.

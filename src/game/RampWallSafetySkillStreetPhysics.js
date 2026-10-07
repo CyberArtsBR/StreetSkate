@@ -1,12 +1,9 @@
 import * as THREE from 'three';
 import { MomentumRollSkillStreetPhysics } from './MomentumRollSkillStreetPhysics.js';
-import { applyAcceptedLanding } from './core/LandingExecutor.js';
-import {
-  evaluateTransitionLanding,
-  transitionLandingSupportMode,
-} from './core/LandingResult.js';
 import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
+import { resolveAirMotion } from './core/AirController.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
+import { interpretAirTurn } from '../input/InputInterpreter.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -108,13 +105,36 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     this.velocity.copy(result.velocity);
   }
 
-  stepAir(dt, input, drive, before) {
+  stepAir(dt, input = {}, drive, before) {
     this.airTime += dt;
-    const airTurn = clamp(this.steer + clamp(input.spin || 0, -1, 1), -1.65, 1.65);
-    this.airSpin -= airTurn * 3.8 * dt;
-    this.heading = this.airHeading + this.airSpin;
+
+    // Air orientation is anchored to takeoff facing every fixed step. Only the
+    // deliberate current-frame command from InputInterpreter may accumulate spin;
+    // residual ground steering never participates in airborne yaw.
+    const frameHeading = this.transitionAir?.frame?.takeoffHeading;
+    const takeoffHeading = Number.isFinite(frameHeading)
+      ? frameHeading
+      : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
+    this.airHeading = takeoffHeading;
+
+    const turnInput = Number.isFinite(Number(input?.airTurnCommand))
+      ? Number(input.airTurnCommand)
+      : interpretAirTurn(input);
+    const airContext = {
+      airHeading: this.airHeading,
+      airSpin: this.airSpin,
+      turnInput,
+      velocityY: this.velocity.y,
+      gravity: PHYSICS.gravity,
+      dt,
+    };
+    const air = this.coreController
+      ? this.coreController.resolveAirMotion(airContext)
+      : resolveAirMotion(airContext);
+    this.airSpin = air.airSpin;
+    this.heading = air.heading;
     this.airDirection();
-    this.velocity.y -= PHYSICS.gravity * dt;
+    this.velocity.y = air.velocityY;
 
     if (this.movementState === MOVEMENT_STATE.VERT_AIR && this.transitionAir) {
       if (this.transitionAir.transferring && this.transitionAir.exitControl) {
@@ -143,33 +163,4 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     if (support) this.land(support);
   }
 
-  land(support) {
-    const detectedSupportMode = transitionLandingSupportMode(support);
-    const deckExitTouchdown = detectedSupportMode === 'reject'
-      && isControlledDeckExitTouchdown(support, this.transitionAir);
-    const landing = evaluateTransitionLanding({
-      support,
-      position: this.position,
-      velocity: this.velocity,
-      forward: this.forward,
-      airTime: this.airTime,
-      flipProgress: this.flipState?.progress ?? null,
-      maxLandingCorrection: PHYSICS.maxLandingCorrection,
-      supportModeOverride: deckExitTouchdown ? 'deckExit' : null,
-    });
-
-    // Preserve legacy side-effect order: catch first, then a possible alignment
-    // bail. All acceptance thresholds now come from canonical LandingResult.
-    if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
-
-    if (!landing.accepted) {
-      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
-      return false;
-    }
-
-    return applyAcceptedLanding(this, support, landing, {
-      partialGrace: 0.16,
-      slopedGrace: 0.07,
-    });
-  }
 }

@@ -1,0 +1,274 @@
+import * as THREE from 'three';
+
+const UP = new THREE.Vector3(0, 1, 0);
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
+
+export const GROUND_MOTOR = Object.freeze({
+  autoPushTarget: 12.5,
+  autoPushSurfaceY: 0.965,
+  autoPushMinAccel: 3.6,
+  autoPushMaxAccel: 10.8,
+  rollingBase: 0.025,
+  rollingQuadratic: 0.00115,
+  transitionSurfaceY: 0.992,
+  uphillGravityScale: 0.38,
+  downhillGravityScale: 1.0,
+  steerRateLowSpeed: 2.7,
+  steerRateHighSpeed: 1.2,
+  steerFullSpeed: 12,
+  turnGainLowSpeed: 1.55,
+  turnGainHighSpeed: 1.78,
+  turnGainFullSpeed: 12.5,
+  manualTurnGain: 1.14,
+  rampReentrySteerLock: 0.20,
+  rampReentryHardLock: 0.08,
+  maxPhysicalSteer: 1.8,
+  brakeDriveThreshold: -0.12,
+  absoluteSpeedCap: 17,
+});
+
+/** Signed speed follows the canonical deck-relative travel sign, not raw magnitude. */
+export function signedGroundSpeed({
+  velocity,
+  forward,
+  rollingSign = 1,
+} = {}) {
+  const measuredSigned = velocity?.dot?.(forward) || 0;
+  const magnitude = Math.max(Math.abs(measuredSigned), velocity?.length?.() || 0);
+  const travelSign = Number(rollingSign) < 0 ? -1 : 1;
+  return {
+    measuredSigned,
+    magnitude,
+    travelSign,
+    speed: magnitude * travelSign,
+  };
+}
+
+export function arcadeTurnGain(speed, config = GROUND_MOTOR) {
+  const t = clamp(Math.abs(Number(speed) || 0) / config.turnGainFullSpeed, 0, 1);
+  return lerp(config.turnGainLowSpeed, config.turnGainHighSpeed, t);
+}
+
+export function rampReentrySteerScale(remaining = 0, config = GROUND_MOTOR) {
+  const left = Math.max(0, Number(remaining) || 0);
+  if (left <= 0) return 1;
+  const elapsed = Math.max(0, config.rampReentrySteerLock - left);
+  if (elapsed <= config.rampReentryHardLock) return 0;
+  const blendDuration = Math.max(0.001,
+    config.rampReentrySteerLock - config.rampReentryHardLock);
+  return clamp((elapsed - config.rampReentryHardLock) / blendDuration, 0, 1);
+}
+
+/**
+ * Player steering is the only ground-motor source of horizontal heading change.
+ * Park-speed carve gain and post-transition steering suppression are part of the
+ * same pure decision, so no upper inheritance layer rewrites `this.steer`.
+ */
+export function groundSteeringDelta({
+  steer = 0,
+  speed = 0,
+  manual = false,
+  reentryRemaining = 0,
+  dt = 0,
+  config = GROUND_MOTOR,
+} = {}) {
+  const gain = manual
+    ? config.manualTurnGain
+    : arcadeTurnGain(speed, config);
+  const reentryScale = rampReentrySteerScale(reentryRemaining, config);
+  const physicalSteer = clamp(
+    (Number(steer) || 0) * gain * reentryScale,
+    -config.maxPhysicalSteer,
+    config.maxPhysicalSteer,
+  );
+  const rate = lerp(
+    config.steerRateLowSpeed,
+    config.steerRateHighSpeed,
+    Math.abs(Number(speed) || 0) / config.steerFullSpeed,
+  );
+  return -physicalSteer * rate * Math.max(0, Number(dt) || 0);
+}
+
+/** Skate wheels should coast; neutral input must preserve useful park speed. */
+export function passiveRollingResistance(speed, config = GROUND_MOTOR) {
+  const magnitude = Math.abs(Number(speed) || 0);
+  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude;
+}
+
+/** Neutral auto-push is only a flat-ground speed source. */
+export function automaticPushAcceleration({
+  speed = 0,
+  normalY = 1,
+  braking = false,
+  manual = false,
+  config = GROUND_MOTOR,
+} = {}) {
+  if (braking || manual || normalY < config.autoPushSurfaceY) return 0;
+  const magnitude = Math.abs(Number(speed) || 0);
+  if (magnitude >= config.autoPushTarget) return 0;
+  const deficit = clamp((config.autoPushTarget - magnitude) / config.autoPushTarget, 0, 1);
+  return config.autoPushMinAccel
+    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit;
+}
+
+/** Preserve downhill gravity while softening uphill transition energy loss. */
+export function transitionGravityScale({
+  signedSpeed = 0,
+  forwardY = 0,
+  normalY = 1,
+  config = GROUND_MOTOR,
+} = {}) {
+  if (Math.abs(normalY) >= config.transitionSurfaceY) return 1;
+  const verticalTravel = signedSpeed * forwardY;
+  if (verticalTravel > 0.05) return config.uphillGravityScale;
+  if (verticalTravel < -0.05) return config.downhillGravityScale;
+  return 1;
+}
+
+/**
+ * Pure propulsion/drag step. It never touches heading, position, contact state,
+ * transition state, or the runtime object.
+ */
+export function resolveGroundPropulsion({
+  speed = 0,
+  travelSign = Number(speed) < 0 ? -1 : 1,
+  forwardY = 0,
+  normalY = 1,
+  drive = 0,
+  brake = false,
+  manual = false,
+  dt = 0,
+  gravity = 20,
+  brakeDecel = 13,
+  config = GROUND_MOTOR,
+} = {}) {
+  const step = Math.max(0, Number(dt) || 0);
+  const directionSign = Number(travelSign) < 0 ? -1 : 1;
+  let nextSpeed = Number(speed) || 0;
+
+  const gravityScale = transitionGravityScale({
+    signedSpeed: nextSpeed,
+    forwardY,
+    normalY,
+    config,
+  });
+  nextSpeed += (-gravity * forwardY) * gravityScale * step;
+
+  const braking = Boolean(brake || drive < config.brakeDriveThreshold);
+  const pushAccel = automaticPushAcceleration({
+    speed: nextSpeed,
+    normalY,
+    braking,
+    manual,
+    config,
+  });
+  if (pushAccel > 0) {
+    const nextMagnitude = Math.min(
+      config.autoPushTarget,
+      Math.abs(nextSpeed) + pushAccel * step,
+    );
+    nextSpeed = directionSign * nextMagnitude;
+  }
+
+  const resistance = passiveRollingResistance(nextSpeed, config)
+    + (braking ? brakeDecel : 0);
+  nextSpeed = Math.sign(nextSpeed)
+    * Math.max(0, Math.abs(nextSpeed) - resistance * step);
+  nextSpeed = clamp(nextSpeed, -config.absoluteSpeedCap, config.absoluteSpeedCap);
+
+  return {
+    nextSpeed,
+    braking,
+    autoPushActive: pushAccel > 0,
+    pushAccel,
+    resistance,
+    gravityScale,
+  };
+}
+
+
+/**
+ * Rebuild the board tangent from player-authored horizontal heading and the
+ * current support normal. This matches StreetPhysics.groundDirection(), including
+ * the limiting tangent used on near-vertical faces, but performs no runtime mutation.
+ */
+export function groundForwardFromHeading({
+  heading = 0,
+  normal = null,
+} = {}) {
+  const supportNormal = normal?.clone?.() || new THREE.Vector3(0, 1, 0);
+  const forward = new THREE.Vector3(
+    -Math.sin(Number(heading) || 0),
+    0,
+    -Math.cos(Number(heading) || 0),
+  );
+  const facingInto = forward.dot(supportNormal);
+  forward.projectOnPlane(supportNormal);
+  if (forward.lengthSq() < 1e-8) {
+    forward.copy(UP).projectOnPlane(supportNormal)
+      .multiplyScalar(facingInto > 0 ? -1 : 1);
+  }
+  if (forward.lengthSq() < 1e-8) return new THREE.Vector3(0, 0, -1);
+  return forward.normalize();
+}
+
+/**
+ * Canonical post-balance grounded motor transaction.
+ *
+ * Contact/collision geometry is deliberately outside this result. The motor owns
+ * only deliberate steering and energy along the current rideable tangent.
+ */
+export function resolveGroundMotion({
+  heading = 0,
+  normal = null,
+  speedState = null,
+  steer = 0,
+  manual = false,
+  reentryRemaining = 0,
+  drive = 0,
+  brake = false,
+  dt = 0,
+  gravity = 20,
+  brakeDecel = 13,
+  config = GROUND_MOTOR,
+} = {}) {
+  const sourceSpeed = Number(speedState?.speed) || 0;
+  const travelSign = Number(speedState?.travelSign) < 0 ? -1 : 1;
+  const headingDelta = groundSteeringDelta({
+    steer,
+    speed: sourceSpeed,
+    manual,
+    reentryRemaining,
+    dt,
+    config,
+  });
+  const nextHeading = (Number(heading) || 0) + headingDelta;
+  const forward = groundForwardFromHeading({
+    heading: nextHeading,
+    normal,
+  });
+  const propulsion = resolveGroundPropulsion({
+    speed: sourceSpeed,
+    travelSign,
+    forwardY: forward.y,
+    normalY: normal?.y ?? 1,
+    drive,
+    brake,
+    manual,
+    dt,
+    gravity,
+    brakeDecel,
+    config,
+  });
+  const velocity = forward.clone().multiplyScalar(propulsion.nextSpeed);
+
+  return Object.freeze({
+    headingDelta,
+    heading: nextHeading,
+    forward,
+    velocity,
+    speed: propulsion.nextSpeed,
+    propulsion: Object.freeze({ ...propulsion }),
+  });
+}
