@@ -136,37 +136,10 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
 }
 
 /**
- * Final ramp-exit layer driven by real deck geometry captured from the collision
- * mesh. It prevents narrow quarter-pipe decks from launching the rider off their
- * back edge and rejects lower/outer geometry as a false late landing.
+ * Compatibility surface for the former deck-catch subclass.
  *
- * Transfer flight stepping is inherited from RampWallSafety, which now owns one
- * canonical TransferFlightResult executor for generic, deck-target and abort-return.
+ * Real-deck scan/target helpers remain here as geometry services. Runtime deck
+ * catch eligibility/application moved to DeckCatchResult + SafeCopingExit, so
+ * this file no longer creates a prototype level.
  */
-export class DeckAwareRampExitSkillStreetPhysics extends RampWallSafetySkillStreetPhysics {
-  stepAir(dt, input, drive, before) {
-    const controlledAir = this.transitionAir;
-    super.stepAir(dt, input, drive, before);
-
-    if (!controlledAir || this.grounded || this.transitionAir !== controlledAir) return;
-    const control = controlledAir.exitControl;
-    if (!control?.geometryAware || control.abortToReturn || !control.targetPoint) return;
-    if (this.velocity.y > 0) return;
-
-    const horizontalError = horizontal(control.targetPoint.clone().sub(this.position)).length();
-    const verticalAboveDeck = this.position.y - control.targetPoint.y;
-    if (horizontalError > DECK_AWARE_EXIT.catchHorizontalRadius
-      || verticalAboveDeck < -0.08
-      || verticalAboveDeck > DECK_AWARE_EXIT.catchVerticalWindow) return;
-
-    // Last-resort four-wheel catch inside the verified deck corridor. This is a
-    // short local probe, not a teleport; it prevents a one-frame seam miss from
-    // letting the board cross the deck and later bail on geometry underneath.
-    const support = this.ensureBoardContact().snapToGround(
-      this.position, this.heading, 0.34, 0.48,
-    );
-    if (support?.supported && supportMatchesDeckTarget(support, controlledAir)) {
-      this.land(support);
-    }
-  }
-}
+export const DeckAwareRampExitSkillStreetPhysics = RampWallSafetySkillStreetPhysics;
