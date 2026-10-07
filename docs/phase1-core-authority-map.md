@@ -21,12 +21,12 @@ The final skater still uses compatibility inheritance for migration safety, but 
 ```text
 StreetSkater
    └─ StatefulSkillStreetPhysics             composition root + input/pump/ramp-energy + landing post
-      └─ StableRampReturnSkillStreetPhysics  explicit-spin air orientation + return semantics
-         └─ ArcadeParkMobility...            carve + grind magnet + re-entry steer lock
-            └─ SafeCopingExit...             coping safety / continuous re-entry geometry
-               └─ DeckAwareRampExit...       real deck scan / landing corridor / catch
-                  └─ RampWallSafety...        transition landing + transfer-flight executor
-                     └─ MomentumRoll...       ground momentum + canonical travel sync
+      └─ StableRampReturnSkillStreetPhysics  takeoff/landing orientation compatibility
+         └─ ArcadeParkMobility...            grind magnet + re-entry tuning compatibility
+            └─ SafeCopingExit...             single transition landing + transfer launch/re-entry
+               └─ DeckAwareRampExit...       real deck scan / verified deck catch
+                  └─ RampWallSafety...        single airborne + transfer-flight executor
+                     └─ MomentumRoll...       ground adapter + canonical travel sync
                         └─ StableBoardContact... board support + explicit collision-result application
                            └─ BoardContact...
                               └─ SkillStreetPhysics
@@ -44,17 +44,19 @@ StreetSkater
 | vert begin / advance trajectory | `TransitionController` | VERT_AIR path | old guide no longer runtime authority |
 | ollie / pump / vert / grind-out command meaning | `CoreSkateController` + `InputInterpreter` | top `StatefulSkillStreetPhysics.advance()` | raw release interpretation removed from PumpSystem |
 | world travel direction / sign / fakie | `CoreSkateController.syncTravel()` + `TravelState` | canonical PlayerState first, then compatibility outputs | legacy fields synchronized outputs only |
-| ground steering / propulsion / rolling resistance / flat auto-push | `CoreSkateController` + `GroundMotor` | `MomentumRoll.stepGround()` adapter applies explicit results | full carve gain + re-entry steering suppression are canonical; `ArcadeParkMobility` no longer rewrites `steer` |
-| airborne yaw + gravity fixed-step integration | `CoreSkateController` + `AirController` | `RampWallSafety.stepAir()` applies explicit result | `InputInterpreter.interpretAirTurn()` supplies deliberate current-frame rotation only |
+| ground-step timers / transition intent / signed speed | `GroundStepResult` + `CoreSkateController` | `MomentumRoll.stepGround()` applies one start transaction | ad-hoc timer/intent/speed sequencing removed |
+| ground steering / propulsion / rolling resistance / flat auto-push | `CoreSkateController` + `GroundMotor.resolveGroundMotion()` | `MomentumRoll.stepGround()` applies one motor result | heading/tangent/velocity math is canonical; contact still owns only movement clearance/support |
+| airborne yaw + gravity fixed-step integration | `CoreSkateController` + `AirController` | single `RampWallSafety.stepAir()` executor | `StableRampReturn.stepAir()` removed; `InputInterpreter.interpretAirTurn()` supplies deliberate current-frame rotation only |
 | movement mode priority | `CoreSkateController` + `MovementStateResolver` | `StatefulSkillStreetPhysics.syncMovementState()` applies result | mode priority is no longer duplicated in leaf logic |
 | ramp launch energy | `CoreSkateController` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.stepGround()/takeoff()` | `UnifiedRampFeel` compatibility wrapper bypassed |
-| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | top `StatefulSkillStreetPhysics` + `StableRampReturn` | duplicated pre-launch math removed |
+| transition-exit takeoff preparation / ramp energy | `CoreSkateController` + `TakeoffContext` + `LaunchEnergyModel` | top `StatefulSkillStreetPhysics.takeoff()` | lower `MomentumRoll.takeoff()` adapter removed |
+| pre-launch facing / heading / stance / ramp context | `TakeoffContext` | `StableRampReturn.takeoff()` applies canonical orientation context | duplicated pre-launch math removed |
 | controlled coping-transfer launch profile | `TransferLaunchResult` | single `SafeCopingExit.takeoff()` transfer-launch seam | lower ramp layers cannot mutate transfer launch |
 | real-deck transfer / missing-deck return decision | `TransferLaunchResult` | deck geometry evidence feeds the `SafeCopingExit` launch seam | scan remains geometry service; decision math centralized |
 | narrow/unsafe deck return decision | `TransferLaunchResult` | `SafeCopingExit.takeoff()` | deck-fit rule centralized |
 | airborne transfer flight | `TransferFlightResult` | single `RampWallSafety.advanceControlledTransfer()` | DeckAware override removed and structurally forbidden by test |
-| landing route priority | `LandingPolicy` | DeckAware / SafeCoping landing filters | independent route trees removed |
-| landing acceptance / alignment / catch/bail | `LandingResult` | stable/base + bowl/ramp adapters | duplicated acceptance bodies removed |
+| landing route priority | `LandingPolicy` | single `SafeCopingExit.land()` transition seam | DeckAware/RampWall nested landing routers removed |
+| landing acceptance / alignment / catch/bail | `LandingResult` | single transition seam + stable/base compatibility | duplicated transition acceptance bodies removed |
 | accepted touchdown state mutation | `LandingExecutor` | all accepted landing paths | projected support tangent cannot write yaw |
 | post-landing orientation / travel / pump bookkeeping | `LandingPostPipeline` | top runtime + direct StableRampReturn compatibility path | nested post hooks deferred; one execution per landing |
 | horizontal yaw invariant | player steering + explicit air spin only | orientation + replay invariants | wall/coping/contact auto-yaw removed |
@@ -72,7 +74,8 @@ StreetSkater
 - `CollisionResolver`;
 - semantic Ollie/pump/vert/grind-out interpretation;
 - canonical travel synchronization;
-- canonical ground motor decisions (signed speed, player steering delta, gravity/push/drag);
+- canonical ground-step start transaction (timers, transition intent, signed speed);
+- canonical ground motor result (player steering, support tangent, gravity/push/drag, velocity);
 - canonical airborne motion (explicit yaw command + gravity);
 - canonical movement-mode resolution;
 - remembered ramp-energy sampling / takeoff context orchestration.
