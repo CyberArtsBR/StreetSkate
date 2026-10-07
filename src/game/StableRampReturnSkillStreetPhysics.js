@@ -12,6 +12,7 @@ import {
   captureLandingPostContext,
 } from './core/LandingPostPipeline.js';
 import { captureTakeoffContext } from './core/TakeoffContext.js';
+import { interpretAirTurn } from '../input/InputInterpreter.js';
 
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
@@ -48,7 +49,7 @@ export const rampReturnFacing = rampLandingFacing;
 
 /** Direct directional input and bumpers rotate the rider; inertial steering does not. */
 export function transitionAirSpinInput(input = {}) {
-  return clamp((Number(input.spin) || 0) + (Number(input.steer) || 0), -1, 1);
+  return interpretAirTurn(input);
 }
 
 /**
@@ -110,20 +111,17 @@ export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillS
    * after authored VERT_AIR had been fixed. Explicit spin remains fully functional.
    */
   stepAir(dt, input = {}, drive, before) {
-    const originalSteer = this.steer;
-    const explicitSpin = transitionAirSpinInput(input);
+    const explicitTurn = transitionAirSpinInput(input);
     const frameHeading = this.transitionAir?.frame?.takeoffHeading;
     const takeoffHeading = Number.isFinite(frameHeading)
       ? frameHeading
       : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
 
     this.airHeading = takeoffHeading;
-    this.steer = 0;
-    try {
-      return super.stepAir(dt, { ...input, spin: explicitSpin }, drive, before);
-    } finally {
-      this.steer = originalSteer;
-    }
+    return super.stepAir(dt, {
+      ...input,
+      airTurnCommand: explicitTurn,
+    }, drive, before);
   }
 
   /** Disable every lower-layer automatic transition alignment. */
