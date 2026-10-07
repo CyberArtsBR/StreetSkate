@@ -26,6 +26,7 @@ export const PRODUCTION_TRANSITION_AUTHORING = Object.freeze({
       id: `extension-halfpipe-${area}-${side}`, type: TRANSITION_TYPE.VERT,
       axisMode: 'LINEAR', supportsVert: true, supportsTransfer: true,
       supportsPump: true, supportsLipTricks: true, cameraHint: 'VERT',
+      runtimeOnly: true,
     }),
   ]))),
   'Bowl coping loop': Object.freeze({
@@ -182,7 +183,10 @@ export function transitionMetadataCoverage(
   const authoredNames = new Set(Object.keys(authoring));
   const presentNames = new Set(rails.map(rail => rail?.name).filter(Boolean));
   const expectedPresent = [...authoredNames].filter(name => presentNames.has(name));
-  const missingAuthoredRails = [...authoredNames].filter(name => !presentNames.has(name));
+  const requiredNames = new Set(Object.entries(authoring)
+    .filter(([, metadata]) => !metadata?.runtimeOnly)
+    .map(([name]) => name));
+  const missingAuthoredRails = [...requiredNames].filter(name => !presentNames.has(name));
   const unclassifiedCopingRails = rails
     .filter(rail => /coping/i.test(String(rail?.name || '')) && !authoredNames.has(rail.name))
     .map(rail => rail.name);
@@ -191,6 +195,7 @@ export function transitionMetadataCoverage(
     presentAuthoredCount: expectedPresent.length,
     missingAuthoredRails,
     unclassifiedCopingRails,
+    requiredAuthoredCount: requiredNames.size,
     complete: missingAuthoredRails.length === 0 && unclassifiedCopingRails.length === 0,
   };
 }
