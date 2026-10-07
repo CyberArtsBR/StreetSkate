@@ -1,10 +1,12 @@
 # StreetSkate Phase 1 — Core Authority Map
 
-Baseline production `main`: `b9d657ad813975857219dab37089dd2ec96ccb24`
+Historical Phase 1 starting baseline: `b9d657ad813975857219dab37089dd2ec96ccb24`
+
+Current production merge base (2026-10-07): `caf36682a61444e19fddf20599652029836f17df`
 
 Development branch: `refactor/core-skate-controller-v1`
 
-Production `main` is unchanged by Phase 1.
+Phase 1-specific commits remain isolated from production. Independent production changes made after the original baseline—including the current expanded park/camera work—have been incorporated into this branch; Phase 1 must preserve those newer `main` decisions.
 
 ## Why Phase 1 was needed
 
