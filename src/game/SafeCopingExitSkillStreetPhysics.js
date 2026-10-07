@@ -4,9 +4,17 @@ import {
   DECK_AWARE_EXIT,
   scanDeckTransferTarget,
 } from './DeckAwareRampExitSkillStreetPhysics.js';
-import { RAMP_WALL_SAFETY } from './RampWallSafetySkillStreetPhysics.js';
+import {
+  RAMP_WALL_SAFETY,
+  isControlledDeckExitTouchdown,
+} from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
 import { PHYSICS } from './StreetPhysics.js';
+import { applyAcceptedLanding } from './core/LandingExecutor.js';
+import {
+  evaluateTransitionLanding,
+  transitionLandingSupportMode,
+} from './core/LandingResult.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 import { VERT_RETURN } from './transitions/VertReturnFlight.js';
 import {
@@ -178,30 +186,54 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
         && support.position.y > air.frame.lipPoint.y - 0.25;
       if (nearLip && Math.abs(support.normal?.y ?? 1) > 0.985) return false;
     }
+
     const control = air?.exitControl;
     const originalTransition = Boolean(air
       && supportMatchesOriginalTransition(support, air));
-    const route = resolveLandingRoute({ originalTransition });
+    const deckTargetMatches = supportMatchesDeckTarget(support, air);
+    const route = resolveLandingRoute({
+      originalTransition,
+      geometryAware: Boolean(control?.geometryAware),
+      abortToReturn: Boolean(control?.abortToReturn),
+      deckTargetMatches,
+    });
 
-    if (route === LANDING_ROUTE.ORIGINAL_TRANSITION) {
-      // Keep the call as a compatibility seam; it is deliberately yaw-inert.
-      this.autoAlignOriginalTransition(support, air);
+    if (route === LANDING_ROUTE.REJECT_DECK_TARGET) return false;
 
-      // Any verified contact with the original ramp outranks deck-transfer
-      // filtering. This applies to both normal transfers and abort-to-return.
-      const wasGeometryAware = control?.geometryAware;
-      const wasTransferring = air.transferring;
-      if (control?.geometryAware) control.geometryAware = false;
-      air.transferring = false;
-      const landed = super.land(support);
-      if (!landed && this.transitionAir === air) {
-        if (control && wasGeometryAware !== undefined) control.geometryAware = wasGeometryAware;
-        air.transferring = wasTransferring;
-      }
-      return landed;
+    // Flat one-wheel deck contact is a special bridge only for a real outward
+    // controlled transfer. Original-transition recovery and abort-to-return keep
+    // normal transition support rules, matching the previous nested land chain.
+    const detectedSupportMode = transitionLandingSupportMode(support);
+    const allowDeckExitBridge = route === LANDING_ROUTE.STANDARD
+      && Boolean(air?.transferring)
+      && Boolean(control?.geometryAware)
+      && !control?.abortToReturn;
+    const deckExitTouchdown = detectedSupportMode === 'reject'
+      && allowDeckExitBridge
+      && isControlledDeckExitTouchdown(support, air);
+
+    const landing = evaluateTransitionLanding({
+      support,
+      position: this.position,
+      velocity: this.velocity,
+      forward: this.forward,
+      airTime: this.airTime,
+      flipProgress: this.flipState?.progress ?? null,
+      maxLandingCorrection: PHYSICS.maxLandingCorrection,
+      supportModeOverride: deckExitTouchdown ? 'deckExit' : null,
+    });
+
+    if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
+
+    if (!landing.accepted) {
+      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
+      return false;
     }
 
-    return super.land(support);
+    return applyAcceptedLanding(this, support, landing, {
+      partialGrace: 0.16,
+      slopedGrace: 0.07,
+    });
   }
 
   makeEmergencyTransitionSupport(hit) {
