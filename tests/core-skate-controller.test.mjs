@@ -44,6 +44,20 @@ test('final physics runtime shares the exact services owned by CoreSkateControll
   assert.equal(p.playerState, p.coreController.state);
 });
 
+test('core movement authority resolves runtime mode deterministically', () => {
+  const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
+  const runtime = { grounded: true, manual: null, grind: null, wallRide: null, bailTime: 0, transitionAir: null };
+  assert.equal(core.syncMovementState(runtime), 'GROUND');
+  runtime.manual = 'manual';
+  assert.equal(core.syncMovementState(runtime), 'MANUAL');
+  runtime.grounded = false; runtime.manual = null; runtime.transitionAir = { transitionId: 'test' };
+  assert.equal(core.syncMovementState(runtime), 'VERT_AIR');
+  runtime.grind = {};
+  assert.equal(core.syncMovementState(runtime), 'GRIND');
+  runtime.bailTime = 0.5;
+  assert.equal(core.syncMovementState(runtime), 'BAIL');
+});
+
 test('core collision result contract has no yaw or heading authority', () => {
   const core = new CoreSkateController({ surface: new ParkCollision(floorWorld()), rails: [] });
   const result = core.collision.resolveBody({
