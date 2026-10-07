@@ -75,3 +75,13 @@ test('final stateful runtime bypasses BaseStateful compatibility wrapper', async
   assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), UnifiedRampFeelSkillStreetPhysics.prototype);
   assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), BaseStateful.prototype);
 });
+
+
+test('final stateful runtime bypasses UnifiedRampFeel compatibility wrapper', async () => {
+  const { StatefulSkillStreetPhysics } = await import('../src/game/StatefulSkillStreetPhysics.js');
+  const { StableRampReturnSkillStreetPhysics } = await import('../src/game/StableRampReturnSkillStreetPhysics.js');
+  const { UnifiedRampFeelSkillStreetPhysics } = await import('../src/game/UnifiedRampFeelSkillStreetPhysics.js');
+
+  assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), StableRampReturnSkillStreetPhysics.prototype);
+  assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), UnifiedRampFeelSkillStreetPhysics.prototype);
+});
