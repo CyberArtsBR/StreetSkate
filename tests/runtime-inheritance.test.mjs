@@ -69,10 +69,10 @@ test('final momentum chain bypasses standalone BowlLanding compatibility class',
 
 test('final stateful runtime bypasses BaseStateful compatibility wrapper', async () => {
   const { StatefulSkillStreetPhysics } = await import('../src/game/StatefulSkillStreetPhysics.js');
-  const { UnifiedRampFeelSkillStreetPhysics } = await import('../src/game/UnifiedRampFeelSkillStreetPhysics.js');
+  const { StableRampReturnSkillStreetPhysics } = await import('../src/game/StableRampReturnSkillStreetPhysics.js');
   const { StatefulSkillStreetPhysics: BaseStateful } = await import('../src/game/BaseStatefulSkillStreetPhysics.js');
 
-  assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), UnifiedRampFeelSkillStreetPhysics.prototype);
+  assert.equal(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), StableRampReturnSkillStreetPhysics.prototype);
   assert.notEqual(Object.getPrototypeOf(StatefulSkillStreetPhysics.prototype), BaseStateful.prototype);
 });
 
