@@ -83,6 +83,7 @@ try {
       cameraQuaternion: state?.camera?.quaternion?.toArray?.() || null,
       resources,
       rendererFrame: Number(state?.renderer?.info?.render?.frame || 0),
+      qaState: state?.captureState?.() || null,
     };
   });
 
@@ -102,6 +103,12 @@ try {
   assert.ok(Array.isArray(boot.cameraQuaternion) && boot.cameraQuaternion.every(Number.isFinite),
     'camera quaternion is not finite at bootstrap');
   assert.ok(boot.rendererFrame >= 0, 'renderer frame counter is invalid at bootstrap');
+  assert.ok(boot.qaState && typeof boot.qaState === 'object',
+    'canonical staging QA snapshot hook is unavailable');
+  assert.equal(boot.qaState.landingYawInvariantViolations, 0,
+    'QA snapshot reports a landing yaw violation at bootstrap');
+  assert.deepEqual(boot.qaState.stateInvariantCodes, [],
+    'QA snapshot reports canonical state divergence at bootstrap');
 
   const hasResource = pattern => boot.resources.some(url => pattern.test(url));
   assert.equal(
