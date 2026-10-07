@@ -105,25 +105,6 @@ export class StableRampReturnSkillStreetPhysics extends ArcadeParkMobilitySkillS
     return result;
   }
 
-  /**
-   * Neutralize steering for EVERY airborne state. The parent air solver historically
-   * used `this.steer + input.spin`; that meant generic ramp AIR still rotated even
-   * after authored VERT_AIR had been fixed. Explicit spin remains fully functional.
-   */
-  stepAir(dt, input = {}, drive, before) {
-    const explicitTurn = transitionAirSpinInput(input);
-    const frameHeading = this.transitionAir?.frame?.takeoffHeading;
-    const takeoffHeading = Number.isFinite(frameHeading)
-      ? frameHeading
-      : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
-
-    this.airHeading = takeoffHeading;
-    return super.stepAir(dt, {
-      ...input,
-      airTurnCommand: explicitTurn,
-    }, drive, before);
-  }
-
   /** Disable every lower-layer automatic transition alignment. */
   autoAlignOriginalTransition() {}
 
