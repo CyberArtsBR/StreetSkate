@@ -119,7 +119,7 @@ export class FollowCamera {
   }
 
   snap(player) {
-    this.clearanceCache = {};
+    this.clearanceCache = { fixedAxis: true };
     this.initialized = false;
     this.wasReturning = false;
     this.returnHold = 0;
@@ -130,8 +130,7 @@ export class FollowCamera {
   }
 
   update(player, dt, input = {}) {
-    // Automatic chase follows travel with contextual air framing; deck spins and
-    // stance changes never orbit the camera around the rider.
+    // Follow translation from a fixed world angle, including after a reset.
     void input;
 
     const state = captureCameraState(player, {

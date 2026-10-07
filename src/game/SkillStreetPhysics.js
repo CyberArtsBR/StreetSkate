@@ -345,6 +345,7 @@ export class SkillStreetPhysics extends StreetPhysics {
   }
 
   finishStep(dt) {
+    if (this.recoverInvalidState()) return;
     this.finishAirborneTrickScoring();
     constrainToPark(this);
     if (this.grounded && !this.manual && !this.grind && !this.bailTime) {
@@ -354,7 +355,6 @@ export class SkillStreetPhysics extends StreetPhysics {
         if (this.stableGroundTime > 0.38 && this.tricks.combo.length) this.settleCombo();
       }
     } else this.stableGroundTime = 0;
-    if (this.position.y < -6 || !Number.isFinite(this.position.lengthSq())) this.reset();
   }
 
   bail(message) {

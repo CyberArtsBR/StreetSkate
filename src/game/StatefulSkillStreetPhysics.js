@@ -173,6 +173,12 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
   }
 
   updatePumpState(dt, input) {
+    if (this.bailTime > 0) {
+      this.pumpReleaseQueued = false;
+      this.pumpHoldTime = 0;
+      this.charge = 0;
+      return;
+    }
     this.pumpCooldown = Math.max(0, this.pumpCooldown - dt);
     this.pumpLandingWindow = Math.max(0, this.pumpLandingWindow - dt);
     this.pumpPresentationTimer = Math.max(0, this.pumpPresentationTimer - dt);
@@ -236,9 +242,10 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
       } else if (releaseCommand === OLLIE_COMMAND.PUMP_BLOCKED) {
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
+      } else if (releaseCommand === OLLIE_COMMAND.AIR_RELEASE && !(this.coyote > 0)) {
+        // Releasing crouch in an existing air must not queue another takeoff.
+        this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
       } else if (releaseCommand !== OLLIE_COMMAND.NONE) {
-        // OLLIE, VERT_OLLIE and AIR_RELEASE keep their validated legacy execution.
-        // The interpreter owns semantics; releaseJump remains the temporary executor.
         this.releaseJump();
       }
       this.pumpHoldTime = 0;
@@ -271,7 +278,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
       // Preserve the validated immediate grind-pop timing, but execute the command
       // here so the base class never reinterprets this physical button release.
       this.exitGrind(true);
-    } else if (input.ollieReleased) {
+    } else if (input.ollieReleased && !this.bailTime) {
       this.pumpReleaseQueued = true;
     }
 

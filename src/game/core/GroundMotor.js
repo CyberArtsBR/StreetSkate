@@ -155,7 +155,7 @@ export function resolveGroundPropulsion({
   });
   nextSpeed += (-gravity * forwardY) * gravityScale * step;
 
-  const braking = Boolean(brake || drive < config.brakeDriveThreshold);
+  const braking = Boolean(brake || (!manual && drive < config.brakeDriveThreshold));
   const pushAccel = automaticPushAcceleration({
     speed: nextSpeed,
     normalY,

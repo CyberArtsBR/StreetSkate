@@ -24,6 +24,13 @@ export class SkateTricks {
     this.lastLabel = '';
   }
 
+  cancelCombo() {
+    const time = this.time;
+    this.reset();
+    this.time = time;
+    this.comboStartedAt = time;
+  }
+
   tick(dt) {
     this.time += dt;
     this.buttonBuffer = this.buttonBuffer.filter(x => this.time - x.time <= COMBO_WINDOW);
@@ -34,6 +41,7 @@ export class SkateTricks {
   }
 
   resolve(input, context) {
+    if (context.bailing) { this.cancelCombo(); return {}; }
     const events = {};
     const direction = directionKey(input.steer, input.drive);
 

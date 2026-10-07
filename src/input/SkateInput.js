@@ -16,8 +16,9 @@ export class SkateInput {
     this.pointerLook = false;
 
     this._down = e => {
-      if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName) || e.target?.isContentEditable) return;
       if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
+      if (e.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR'].includes(e.code)) e.preventDefault();
       if (!e.repeat) this.pressed.add(e.code);
       this.keys.add(e.code);
     };
@@ -33,9 +34,9 @@ export class SkateInput {
       this.element?.setPointerCapture?.(e.pointerId);
     };
     this._pointerUp = e => {
-      if (e.button !== 0) return;
+      if (e.type !== 'pointercancel' && e.button !== 0) return;
       this.pointerLook = false;
-      this.element?.releasePointerCapture?.(e.pointerId);
+      if (this.element?.hasPointerCapture?.(e.pointerId)) this.element.releasePointerCapture(e.pointerId);
     };
     this._pointerMove = e => {
       if (!this.enabled || !this.pointerLook) return;
@@ -54,7 +55,7 @@ export class SkateInput {
 
   clear() {
     this.keys.clear(); this.pressed.clear(); this.released.clear();
-    this.padPrevious = {};
+    // Keep physical button edges: clearing on pause must not retrigger held Start.
     this.analogTaps.reset();
     this.mouseDX = 0; this.mouseDY = 0; this.pointerLook = false;
   }
@@ -104,8 +105,8 @@ export class SkateInput {
       directionTaps: [...directionTaps],
       brake: held('ShiftLeft', 'ShiftRight'),
       ollieHeld: held('Space') || buttons.ollie,
-      olliePressed: just('Space') || edge('ollie'),
-      ollieReleased: this.released.has('Space') || release('ollie'),
+      olliePressed: (just('Space') && !this.padPrevious.ollie) || (edge('ollie') && !held('Space')),
+      ollieReleased: !held('Space') && !buttons.ollie && (this.released.has('Space') || release('ollie')),
       flipPressed: just('ArrowLeft') || edge('flip'),
       grabPressed: just('ArrowRight') || edge('grab'),
       grabHeld: held('ArrowRight') || buttons.grab,

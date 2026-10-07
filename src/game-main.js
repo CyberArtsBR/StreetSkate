@@ -112,7 +112,17 @@ function setExploreView(name, instant = false) {
 function setPaused(value) {
   paused = Boolean(value) && mode === 'skate';
   app.dataset.paused = String(paused);
-  if (paused) input.clear();
+  if (paused) {
+    input.clear();
+    if (skater) {
+      skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0;
+      skater.pumpReleaseQueued = false; skater.pumpHoldTime = 0;
+      skater.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
+      skater.tricks.pendingAirFlip = null; skater.tricks.pendingAirGrab = null;
+      skater.tricks.pendingManual = null; skater.tricks.lastDirectionTap = null;
+      skater.tricks.buttonBuffer.length = 0;
+    }
+  }
   updateHud();
 }
 
@@ -127,6 +137,11 @@ function setMode(nextMode) {
   input.enabled = skating;
   skater.charge = 0;
   skater.jumpBuffer = 0;
+  skater.pumpReleaseQueued = false;
+  skater.pumpHoldTime = 0;
+  skater.accumulator = 0;
+  skater.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
+  skater.visual.visible = true;
   document.querySelector('#mode-toggle').classList.toggle('active', skating);
   document.querySelector('#mode-toggle').setAttribute('aria-pressed', String(skating));
   document.querySelector('#mode-toggle').setAttribute('aria-label', skating ? 'Switch to park explore mode' : 'Start skating');
@@ -157,8 +172,16 @@ function updateHud() {
 
 function showError(error) {
   const loading = document.querySelector('#loading');
-  loading.querySelector('p').innerHTML = 'The playable park could not load.<span id="load-progress">Check the console for details.</span>';
+  loading.querySelector('p').innerHTML = 'The game could not continue.<span id="load-progress"></span>';
+  loading.querySelector('#load-progress').textContent = error?.message || 'Reload the game to try again.';
   loading.querySelector('.loader').style.display = 'none';
+  loading.classList.remove('done');
+  if (!loading.querySelector('button')) {
+    const retry = document.createElement('button');
+    retry.textContent = 'Reload game';
+    retry.addEventListener('click', () => location.reload());
+    loading.append(retry);
+  }
   console.error(error);
 }
 
@@ -268,9 +291,19 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
-window.addEventListener('blur', () => {
+function suspendSkating() {
   input.clear();
-  if (skater) { skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0; }
+  if (loaded && mode === 'skate') setPaused(true);
+}
+window.addEventListener('blur', suspendSkating);
+window.addEventListener('gamepaddisconnected', suspendSkating);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) suspendSkating();
+});
+renderer.domElement.addEventListener('webglcontextlost', event => {
+  event.preventDefault();
+  suspendSkating();
+  showError(new Error('Graphics context lost. Reload to recover.'));
 });
 setExploreView('overview', true);
 loadGame();
@@ -278,6 +311,7 @@ loadGame();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   const elapsed = clock.elapsedTime;
+  if (document.hidden) return;
 
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();

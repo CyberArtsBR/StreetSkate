@@ -67,6 +67,7 @@ export class StreetPhysics {
     this.flipState = null; this.grabState = null; this.manual = null; this.flatland = null;
     this.grind = null; this.wallRide = null; this.stance = 1;
     this.airTime = 0; this.accumulator = 0; this.coyote = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
+    this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
@@ -187,7 +188,8 @@ export class StreetPhysics {
   handleEvents(events) {
     if (events.switchStance) {
       this.stance *= -1;
-      this.recordTrick(this.stance < 0 ? 'Switch Stance' : 'Regular Stance', 50);
+      this.feedback = this.stance < 0 ? 'Switch Stance' : 'Regular Stance';
+      this.feedbackTime = 1;
     }
     if (events.manual && this.grounded && !this.grind && !this.bailTime) {
       this.manual = events.manual;
@@ -227,33 +229,42 @@ export class StreetPhysics {
 
   advance(delta, input = {}) {
     if (input.reset) { this.reset(); return; }
+    if (this.recoverInvalidState()) return;
     this.tricks.tick(delta);
     const context = {
       grounded: this.grounded, grinding: this.movementState === MOVEMENT_STATE.GRIND,
       manual: this.movementState === MOVEMENT_STATE.MANUAL ? this.manual : null,
-      speed: Math.abs(this.speed), airborne: !this.grounded,
+      speed: Math.abs(this.speed), airborne: !this.grounded, bailing: this.bailTime > 0,
     };
     this.handleEvents(this.tricks.resolve(input, context));
-    if (input.grindHeld && !this.grind) {
+    if (input.grindHeld && !this.grind && !this.bailTime) {
       this.pendingGrindTrick ||= { ...grindFor(directionKey(input.steer, input.drive)) };
       this.grindIntentTime = 0.18;
     }
 
-    if (input.ollieReleased) {
+    if (input.ollieReleased && !this.bailTime) {
       if (this.grind) this.exitGrind(true);
       else this.releaseJump();
     }
     if (!input.grabHeld && this.grabState) this.grabState = null;
 
     this.justLanded = false;
+    // Retain edges until a simulation step actually consumes them (high-refresh displays).
+    this.pendingStepInput.olliePressed ||= Boolean(input.olliePressed && !this.bailTime);
+    this.pendingStepInput.grindPressed ||= Boolean(input.grindPressed && !this.bailTime);
+    if (!this.bailTime) this.pendingStepInput.directionTaps = [...new Set([
+      ...this.pendingStepInput.directionTaps, ...(input.directionTaps || []),
+    ])];
     this.accumulator += clamp(delta, 0, 0.2);
     let firstStep = true;
     while (this.accumulator + 1e-9 >= PHYSICS.step) {
       this.step(PHYSICS.step, {
         ...input,
-        olliePressed: firstStep && input.olliePressed,
-        grindPressed: firstStep && input.grindPressed,
+        olliePressed: firstStep && this.pendingStepInput.olliePressed,
+        grindPressed: firstStep && this.pendingStepInput.grindPressed,
+        directionTaps: firstStep ? this.pendingStepInput.directionTaps : [],
       });
+      if (firstStep) this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
       firstStep = false;
       this.accumulator = Math.max(0, this.accumulator - PHYSICS.step);
     }
@@ -561,22 +572,34 @@ export class StreetPhysics {
     }
   }
 
+  recoverInvalidState() {
+    const finite = Number.isFinite(this.position.lengthSq()) && Number.isFinite(this.velocity.lengthSq()) && Number.isFinite(this.heading);
+    if (this.position.y >= -6 && finite) return false;
+    const score = Number.isFinite(this.score) ? this.score : 0;
+    this.reset();
+    this.score = score;
+    return true;
+  }
+
   finishStep(dt) {
+    if (this.recoverInvalidState()) return;
     this.finishAirborneTrickScoring();
     constrainToPark(this);
     if (this.grounded && !this.manual && !this.grind && !this.bailTime) {
       this.stableGroundTime += dt;
       if (this.stableGroundTime > 0.38 && this.tricks.combo.length) this.settleCombo();
     } else this.stableGroundTime = 0;
-    const finite = Number.isFinite(this.position.lengthSq()) && Number.isFinite(this.velocity.lengthSq()) && Number.isFinite(this.heading);
-    if (this.position.y < -6 || !finite) this.reset();
   }
 
   bail(message) {
     this.velocity.set(0, 0, 0); this.bailTime = 0.9;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
     this.setMovementState(MOVEMENT_STATE.BAIL);
-    this.tricks.combo = []; this.tricks.comboBase = 0; this.tricks.comboMultiplier = 0;
+    this.tricks.cancelCombo();
+    this.pendingOllieScore = null;
+    this.jumpBuffer = 0; this.charge = 0; this.vertJumpTimer = 0;
+    this.pumpReleaseQueued = false; this.pumpHoldTime = 0;
+    this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
     this.feedback = message; this.feedbackTime = 2;
   }
 }
