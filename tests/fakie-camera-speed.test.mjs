@@ -71,9 +71,10 @@ test('Tony Hawk chase camera keeps one high fixed aerial angle', () => {
   cameraToTarget.y = 0;
   const angleDeg = Math.atan2(vertical, cameraToTarget.length()) * 180 / Math.PI;
 
-  assert.equal(THPS_CAMERA.distance, 7.0);
-  assert.equal(THPS_CAMERA.height, 6.0);
-  assert.ok(angleDeg > 34 && angleDeg < 39, `fixed aerial angle should be about 36°, got ${angleDeg}`);
+  assert.equal(THPS_CAMERA.distance, 5.8);
+  assert.equal(THPS_CAMERA.height, 1.55);
+  assert.ok(angleDeg > 12 && angleDeg < 16,
+    `fixed classic skate angle should stay low/readable, got ${angleDeg}`);
 });
 
 test('regular and fakie use the exact same camera frame for the same world travel direction', () => {
