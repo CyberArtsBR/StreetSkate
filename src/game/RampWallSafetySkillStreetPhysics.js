@@ -92,21 +92,6 @@ export function isControlledDeckExitTouchdown(support, transitionAir) {
  * collision can correct position/velocity but never owns horizontal yaw.
  */
 export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhysics {
-  reset(position = this.spawn, heading = 0) {
-    super.reset(position, heading);
-    this.transitionLandingGrace = 0;
-  }
-
-  takeoff(impulse = 0, transition = null) {
-    this.transitionLandingGrace = 0;
-    return super.takeoff(impulse, transition);
-  }
-
-  stepGround(dt, input, drive) {
-    this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
-    super.stepGround(dt, input, drive);
-  }
-
   advanceControlledTransfer(air, dt) {
     const result = resolveTransferFlightStep({
       air,
