@@ -12,6 +12,7 @@ import {
 } from './GroundMotor.js';
 import { resolveAirMotion } from './AirController.js';
 import { resolveRuntimeMovementMode } from './MovementStateResolver.js';
+import { resolveGroundStepStart } from './GroundStepResult.js';
 import {
   advanceTransitionExitIntent,
   applyTransitionExitIntentToCandidate,
@@ -54,6 +55,10 @@ export class CoreSkateController {
 
   resolveGroundPropulsion(context) {
     return resolveGroundPropulsion(context);
+  }
+
+  resolveGroundStepStart(context) {
+    return resolveGroundStepStart(context);
   }
 
   resolveAirMotion(context) {
