@@ -5,6 +5,7 @@ import { StreetBoard } from '../skateboard/StreetBoard.js';
 import { ensureBalanceHud } from './BalanceHud.js';
 import { captureGameplayState } from './core/GameplayStateSnapshot.js';
 import { flipPhaseFor, physicsMovementState, resolvePresentationState } from '../character/PresentationState.js';
+import { yawStableSurfaceBasis } from './core/PresentationOrientation.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -19,6 +20,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._forwardVisual = new THREE.Vector3();
     this._backVisual = new THREE.Vector3();
     this._rightVisual = new THREE.Vector3();
+    this._presentationUp = new THREE.Vector3(0, 1, 0);
     this._basis = new THREE.Matrix4();
     this._wallPoseQ = new THREE.Quaternion();
     this._wallPoseAxisX = new THREE.Vector3(1, 0, 0);
@@ -179,10 +181,17 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this.root.position.copy(this.position);
     const surfaceUp = this.bodyUp();
     this.presentationNormal.lerp(surfaceUp, 1 - Math.exp(-18 * Math.max(delta, 1 / 120))).normalize();
-    this._forwardVisual.set(-Math.sin(this.heading), 0, -Math.cos(this.heading)).projectOnPlane(this.presentationNormal).normalize();
-    this._backVisual.copy(this._forwardVisual).negate();
-    this._rightVisual.crossVectors(this.presentationNormal, this._backVisual).normalize();
-    this.visual.quaternion.setFromRotationMatrix(this._basis.makeBasis(this._rightVisual, this.presentationNormal, this._backVisual));
+    yawStableSurfaceBasis(
+      this.heading,
+      this.presentationNormal,
+      this._rightVisual,
+      this._backVisual,
+      this._presentationUp,
+    );
+    this._forwardVisual.copy(this._backVisual).negate();
+    this.visual.quaternion.setFromRotationMatrix(
+      this._basis.makeBasis(this._rightVisual, this._presentationUp, this._backVisual),
+    );
 
     const grabActive = Boolean(this.grabState && input.grabHeld);
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
