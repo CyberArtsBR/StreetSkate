@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './style.css';
 
@@ -195,6 +196,9 @@ async function loadGame() {
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1', rampTuning,
+      // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
+      // with deterministic replay/debugging. This never repairs or mutates state.
+      captureState: () => captureGameplayState(skater),
     };
   } catch (error) { showError(error); }
 }
