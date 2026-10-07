@@ -170,6 +170,14 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
 
   land(support) {
     const air = this.transitionAir;
+    if (air && !air.transferring) {
+      // Wheel probes can still see the coping while the rider is leaving it.
+      // That is departure contact, not another touchdown/takeoff cycle.
+      if (!air.apexPassed && this.velocity.y > 0.05) return false;
+      const nearLip = support?.position && air.frame?.lipPoint
+        && support.position.y > air.frame.lipPoint.y - 0.25;
+      if (nearLip && Math.abs(support.normal?.y ?? 1) > 0.985) return false;
+    }
     const control = air?.exitControl;
     const originalTransition = Boolean(air
       && supportMatchesOriginalTransition(support, air));

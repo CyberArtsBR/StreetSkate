@@ -23,7 +23,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 container.appendChild(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.08, 1000);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.08, 1000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;

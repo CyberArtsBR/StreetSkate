@@ -151,6 +151,11 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     collision.applyBodyResult(this, result);
 
     const wall = result.wallContacts[0] || null;
+    const slideContact = result.contacts.find(hit => Math.abs(hit.normal?.y ?? 1) < 0.3);
+    if (slideContact && this.grounded) {
+      this.wallSlideNormal = slideContact.normal.clone().setY(0).normalize();
+      this.wallSlideTime = 0.18;
+    }
     if (wall && !this.grounded && !this.grind && !this.wallRide && this.contactCooldown <= 0
       && this.movementState !== MOVEMENT_STATE.VERT_AIR) {
       if (input.olliePressed) this.wallPlant(wall, this.position.clone());

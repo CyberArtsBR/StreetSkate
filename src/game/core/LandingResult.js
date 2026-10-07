@@ -112,6 +112,11 @@ function evaluateLandingCore({
 
   const boardForward = (forward?.clone?.() || new THREE.Vector3(0, 0, -1))
     .projectOnPlane(support.normal);
+  if (boardForward.lengthSq() < 1e-7 && Math.abs(support.normal.y) < 0.2) {
+    const facingInto = forward?.dot?.(support.normal) || -1;
+    boardForward.set(0, 1, 0).projectOnPlane(support.normal)
+      .multiplyScalar(facingInto > 0 ? -1 : 1);
+  }
   if (boardForward.lengthSq() < 1e-7) {
     return rejected(LANDING_REJECT_REASON.BOARD_FORWARD, supportMode, {
       rulesMode,

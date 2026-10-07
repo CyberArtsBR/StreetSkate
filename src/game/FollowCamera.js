@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveCameraClearance } from './CameraClearance.js';
 import {
   captureCameraState,
   resolveCameraTravelDirection,
@@ -10,14 +11,14 @@ export const THPS_CAMERA = Object.freeze({
   // Lower chase view; movement and vert context own the camera, never trick yaw.
   // The rig follows world travel, not the deck nose, so a 180 stays visually stable.
   distance: 5.8,
-  height: 2.6,
+  height: 1.55,
   anchorHeight: 1.15,
   lookAhead: 1.1,
   targetHeight: 1.0,
   airDistance: 6.5,
-  airHeight: 3.1,
+  airHeight: 2.2,
   vertDistance: 6.8,
-  vertHeight: 3.3,
+  vertHeight: 2.6,
   contextFollowRate: 5,
   returnHoldTime: 0.35,
   occlusionReleaseRate: 4,
@@ -175,11 +176,18 @@ export class FollowCamera {
     }
 
     // Occlusion stays a presentation-only query against the collision surface.
-    const resolvedPosition = player?.surface?.camera
-      ? player.surface.camera(frame.anchor, this.position)
-      : this.position;
-    const eyeOffset = this.position.clone().sub(frame.anchor);
+    let resolvedPosition = resolveCameraClearance(player?.surface, frame.anchor,
+      this.position, this.camera.position);
+    const easedEye = this.camera.position.clone().lerp(resolvedPosition,
+      1 - Math.exp(-12 * dt));
+    const easedClear = player?.surface?.camera
+      ? player.surface.camera(frame.anchor, easedEye) : easedEye;
+    if (easedClear.distanceTo(frame.anchor) >= 1.8) resolvedPosition = easedClear;
+    const eyeOffset = resolvedPosition.clone().sub(frame.anchor);
     const clearDistance = resolvedPosition.distanceTo(frame.anchor);
+    if (clearDistance >= 1.8 && this.occlusionDistance !== null) {
+      this.occlusionDistance = Math.max(1.8, this.occlusionDistance);
+    }
     if (this.occlusionDistance === null || clearDistance < this.occlusionDistance) {
       this.occlusionDistance = clearDistance;
     } else {
@@ -188,6 +196,9 @@ export class FollowCamera {
     }
     if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.min(clearDistance, this.occlusionDistance));
     this.camera.position.copy(frame.anchor).add(eyeOffset);
+    // Exceptional enclosed spaces must not fill the view with the inside of a
+    // face/hat. This changes presentation only and recovers as soon as space opens.
+    if (player?.visual) player.visual.visible = this.camera.position.distanceTo(frame.anchor) > 1.15;
     this.camera.lookAt(this.target);
   }
 }

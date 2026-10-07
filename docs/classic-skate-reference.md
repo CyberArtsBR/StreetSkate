@@ -13,3 +13,9 @@ This release uses original StreetSkate implementations:
 Animations are procedural adaptations for TheanchoURi's rig. These repositories do not supply usable original animation clips; this is not an exact reproduction of Tony Hawk animations or physics.
 
 Validation for this release is compilation only. Gameplay testing and tuning are left to the user as requested.
+
+## Recording follow-up
+
+The user's 98-second recording exposed near-body camera occlusion at 92–94 seconds, repeated Ollie labels at the coping, and departure contacts being treated as touchdown. The follow-up uses a lower 58-degree chase view, five lens-clearance probes and a bounded side/elevation search when the normal chase arm is blocked. Emergency near-body positions hide the rider mesh temporarily. Camera clearance never changes player physics.
+
+Return airs reject ascending departure contacts and flat coping support. Vertical contact uses a limiting climb tangent rather than a zero projected board direction. Ground wall contacts retain a short sliding constraint without changing player heading. Ollie scoring requires player-requested impulse and actual airborne separation; ramp energy alone earns no Ollie. Knee tuck varies through the air arc.

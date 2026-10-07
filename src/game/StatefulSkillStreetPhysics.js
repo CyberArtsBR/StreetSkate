@@ -287,6 +287,8 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
   }
 
   takeoff(impulse = 0, transition = null) {
+    // A support retry cannot restart an already active flight or recharge it.
+    if (!this.grounded && this.transitionAir) return false;
     this.pumpEligible = false;
     this.pumpHoldTime = 0;
     this.pumpPreviousNormal = null;
@@ -308,6 +310,7 @@ export class StatefulSkillStreetPhysics extends StableRampReturnSkillStreetPhysi
         rampExitIntentTime: this.rampExitIntentTime,
       });
 
+    this.takeoffOllieRequested = context.requestedImpulse >= 4;
     const result = super.takeoff(context.composedImpulse, transition, context);
     if (context.rampContext) this.airTakeoffFromRamp = true;
 

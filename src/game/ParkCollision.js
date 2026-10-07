@@ -284,11 +284,24 @@ export class ParkCollision {
     return null;
   }
 
-  camera(from, desired) {
+  camera(from, desired, radius = 0.28) {
     const d = desired.clone().sub(from);
     if (d.lengthSq() < 1e-8) return desired;
-    this.ray.set(from, d.clone().normalize()); this.ray.far = d.length();
-    const hit = this.ray.intersectObjects(this.meshes, false)[0];
-    return hit ? from.clone().addScaledVector(d.normalize(), Math.max(0.1, hit.distance - 0.2)) : desired;
+    const length = d.length(), direction = d.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(direction, UP);
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    right.normalize();
+    const up = new THREE.Vector3().crossVectors(right, direction).normalize();
+    let clearance = length;
+    // A camera has volume: center plus near-plane probes protect the lens from
+    // ramp edges and posts that a single ray misses.
+    for (const offset of [new THREE.Vector3(), right.clone().multiplyScalar(radius),
+      right.clone().multiplyScalar(-radius), up.clone().multiplyScalar(radius),
+      up.clone().multiplyScalar(-radius)]) {
+      this.ray.set(from.clone().add(offset), direction); this.ray.far = length;
+      const hit = this.ray.intersectObjects(this.meshes, false)[0];
+      if (hit) clearance = Math.min(clearance, Math.max(0, hit.distance - radius));
+    }
+    return from.clone().addScaledVector(direction, clearance);
   }
 }

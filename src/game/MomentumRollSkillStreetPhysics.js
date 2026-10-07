@@ -162,6 +162,8 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.wallImpactCooldown = 0;
     this.wallImpactSide = 0;
     this.transitionLandingGrace = 0;
+    this.wallSlideNormal = null;
+    this.wallSlideTime = 0;
   }
 
   /**
@@ -237,6 +239,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
   }
 
   stepGround(dt, input = {}, drive = 0) {
+    this.wallSlideTime = Math.max(0, (this.wallSlideTime || 0) - dt);
     this.transitionLandingGrace = Math.max(0, (this.transitionLandingGrace || 0) - dt);
     this.wallImpactTime = Math.max(0, (this.wallImpactTime || 0) - dt);
     this.wallImpactCooldown = Math.max(0, (this.wallImpactCooldown || 0) - dt);
@@ -295,6 +298,12 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     speed = Math.sign(speed) * Math.max(0, Math.abs(speed) - resistance * dt);
     speed = clamp(speed, -17, 17);
     this.velocity.copy(this.forward).multiplyScalar(speed);
+    // Keep the collision's slide vector instead of accelerating into the same
+    // wall again next frame. Steering still belongs entirely to the player.
+    if (this.wallSlideTime > 0 && this.wallSlideNormal) {
+      const into = this.velocity.dot(this.wallSlideNormal);
+      if (into < 0) this.velocity.addScaledVector(this.wallSlideNormal, -into);
+    }
 
     this._boardMoveStart.copy(this.position);
     this.position.addScaledVector(this.velocity, dt);
@@ -310,6 +319,10 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
 
   resolveMotion(before, beforeUp, input = {}) {
     super.resolveMotion(before, beforeUp, input);
+    if (this.grounded && this.wallSlideTime > 0 && this.wallSlideNormal) {
+      const into = this.velocity.dot(this.wallSlideNormal);
+      if (into < 0) this.velocity.addScaledVector(this.wallSlideNormal, -into);
+    }
     if (this.grounded) this.syncTravelDirection();
     if (!this.grounded) this.autoPushActive = false;
   }

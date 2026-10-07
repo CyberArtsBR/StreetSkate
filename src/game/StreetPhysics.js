@@ -69,6 +69,8 @@ export class StreetPhysics {
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
+    this.pendingOllieScore = null;
+    this.takeoffOllieRequested = null;
     this.contactCooldown = 0; this.grindIntentTime = 0;
     this.lastWheelSupport = null;
     this.tricks.reset();
@@ -76,7 +78,16 @@ export class StreetPhysics {
   }
 
   groundDirection() {
-    this.forward.set(-Math.sin(this.heading), 0, -Math.cos(this.heading)).projectOnPlane(this.normal).normalize();
+    this.forward.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
+    const facingInto = this.forward.dot(this.normal);
+    this.forward.projectOnPlane(this.normal);
+    // At a truly vertical face the horizontal nose projects to zero. Use the
+    // limiting climb tangent; preserve yaw and let signed travel decide descent.
+    if (this.forward.lengthSq() < 1e-8) {
+      this.forward.copy(UP).projectOnPlane(this.normal)
+        .multiplyScalar(facingInto > 0 ? -1 : 1);
+    }
+    this.forward.normalize();
   }
 
   airDirection() {
@@ -152,7 +163,9 @@ export class StreetPhysics {
     this.airHeading = this.heading;
     this.stableGroundTime = 0;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
-    if (impulse > 0.1) this.recordTrick('Ollie', 50);
+    // Ramp energy is not an Ollie. Award a requested jump only after separation.
+    this.pendingOllieScore = (this.takeoffOllieRequested ?? (impulse > 0.1))
+      ? { origin: this.position.clone(), normal: this.normal.clone() } : null;
   }
 
   recordTrick(name, points) {
@@ -536,6 +549,14 @@ export class StreetPhysics {
   }
 
   finishStep(dt) {
+    if (this.pendingOllieScore) {
+      const jump = this.pendingOllieScore;
+      if (!this.grounded && !this.bailTime && this.airTime >= 0.10
+        && this.position.clone().sub(jump.origin).dot(jump.normal) >= 0.12) {
+        this.pendingOllieScore = null;
+        this.recordTrick('Ollie', 50);
+      } else if (this.grounded || this.bailTime || this.grind) this.pendingOllieScore = null;
+    }
     for (const [axis, limit] of [['x', 33.2], ['z', 22.1]]) {
       if (Math.abs(this.position[axis]) > limit) {
         this.position[axis] = clamp(this.position[axis], -limit, limit);
