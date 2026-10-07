@@ -5,7 +5,9 @@ import { RailNetwork } from '../src/game/RailNetwork.js';
 import {
   GRIND_CAPTURE_POLICY,
   grindCaptureEligibility,
+  resolveGrindCapture,
   resolveMagneticGrindCapture,
+  resolveStrictGrindCapture,
 } from '../src/game/core/GrindCaptureController.js';
 
 function network() {
@@ -43,6 +45,28 @@ test('canonical grind capture rejects an out-of-range trajectory', () => {
     position: new THREE.Vector3(1.4, 1.02, 1.25),
   }));
   assert.equal(capture, null);
+});
+
+
+test('unified grind capture preserves strict-first precedence', () => {
+  const strict = resolveStrictGrindCapture(context());
+  const unified = resolveGrindCapture(context());
+  assert.ok(strict);
+  assert.ok(unified);
+  assert.equal(unified.captureMode, 'strict');
+  assert.equal(unified.magneticEntry, false);
+});
+
+test('unified grind capture falls back to THPS magnet for fast rising approach', () => {
+  const rising = context({
+    velocity: new THREE.Vector3(0, 2.6, -6.4),
+  });
+  assert.equal(resolveStrictGrindCapture(rising), null,
+    'legacy strict path should reject the rising approach');
+  const unified = resolveGrindCapture(rising);
+  assert.ok(unified, 'magnetic fallback should recover the rising approach');
+  assert.equal(unified.captureMode, 'magnetic');
+  assert.equal(unified.magneticEntry, true);
 });
 
 test('grind capture decision has no heading or yaw authority', () => {
