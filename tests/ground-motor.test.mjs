@@ -8,6 +8,7 @@ import {
   groundSteeringDelta,
   passiveRollingResistance,
   rampReentrySteerScale,
+  resolveGroundMotion,
   resolveGroundPropulsion,
   signedGroundSpeed,
   transitionGravityScale,
@@ -124,4 +125,97 @@ test('reentry steering lock is part of the same canonical motor decision', () =>
 test('rolling resistance stays at the validated low-drag values', () => {
   assert.ok(passiveRollingResistance(6) < 0.2);
   assert.ok(passiveRollingResistance(10) < 0.35);
+});
+
+
+test('ground motion composes steering and propulsion without contact yaw authority', () => {
+  const normal = new THREE.Vector3(0, 1, 0);
+  const speedState = { speed: 8, travelSign: 1 };
+  const dt = 1 / 120;
+  const result = resolveGroundMotion({
+    heading: 0.25,
+    normal,
+    speedState,
+    steer: 0.6,
+    drive: 0,
+    dt,
+  });
+
+  const expectedDelta = groundSteeringDelta({
+    steer: 0.6,
+    speed: 8,
+    dt,
+  });
+  assert.ok(Math.abs(result.heading - (0.25 + expectedDelta)) < 1e-12);
+  assert.ok(Math.abs(result.forward.length() - 1) < 1e-12);
+  assert.ok(Math.abs(result.velocity.length() - Math.abs(result.speed)) < 1e-10);
+  assert.equal('contactNormal' in result, false);
+  assert.equal('headingFromContact' in result, false);
+});
+
+test('ground motion rebuilds a finite tangent on steep transition faces', () => {
+  const normal = new THREE.Vector3(0, 0.05, 0.99875).normalize();
+  const result = resolveGroundMotion({
+    heading: 0,
+    normal,
+    speedState: { speed: 7, travelSign: 1 },
+    steer: 0,
+    drive: 0,
+    dt: 1 / 120,
+  });
+
+  assert.ok(result.forward.toArray().every(Number.isFinite));
+  assert.ok(result.velocity.toArray().every(Number.isFinite));
+  assert.ok(Math.abs(result.forward.dot(normal)) < 1e-9);
+  assert.ok(result.forward.y > 0.9,
+    `near-vertical ramp should produce climb tangent, got ${result.forward.toArray()}`);
+});
+
+test('ground motion preserves fakie sign through neutral coasting', () => {
+  const result = resolveGroundMotion({
+    heading: Math.PI,
+    normal: new THREE.Vector3(0, 1, 0),
+    speedState: { speed: -6, travelSign: -1 },
+    steer: 0,
+    drive: 0,
+    dt: 1 / 120,
+  });
+  assert.ok(result.speed < 0);
+  assert.ok(result.velocity.z < 0,
+    `fakie world travel reversed unexpectedly: ${result.velocity.toArray()}`);
+});
+
+test('ground motion keeps reentry steering lock inside canonical transaction', () => {
+  const locked = resolveGroundMotion({
+    heading: 0.4,
+    normal: new THREE.Vector3(0, 1, 0),
+    speedState: { speed: 8, travelSign: 1 },
+    steer: 1,
+    reentryRemaining: GROUND_MOTOR.rampReentrySteerLock - 0.03,
+    dt: 1 / 120,
+  });
+  assert.ok(Math.abs(locked.heading - 0.4) < 1e-12);
+});
+
+test('ground motion braking is identical to canonical propulsion result', () => {
+  const normal = new THREE.Vector3(0, 1, 0);
+  const speedState = { speed: 7, travelSign: 1 };
+  const dt = 0.1;
+  const motion = resolveGroundMotion({
+    heading: 0,
+    normal,
+    speedState,
+    brake: true,
+    dt,
+  });
+  const propulsion = resolveGroundPropulsion({
+    speed: speedState.speed,
+    travelSign: speedState.travelSign,
+    forwardY: 0,
+    normalY: 1,
+    brake: true,
+    dt,
+  });
+  assert.ok(Math.abs(motion.speed - propulsion.nextSpeed) < 1e-12);
+  assert.equal(motion.propulsion.braking, true);
 });
