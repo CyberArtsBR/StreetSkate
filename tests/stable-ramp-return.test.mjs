@@ -105,9 +105,10 @@ test('small steering noise cannot be mistaken for a 180', () => {
   assert.equal(rampReturnHalfTurns(THREE.MathUtils.degToRad(35)), 0);
 });
 
-test('air spin ignores steering drift when no explicit spin is pressed', () => {
-  assert.equal(transitionAirSpinInput({ steer: 1, spin: 0 }), 0);
-  assert.equal(transitionAirSpinInput({ steer: -1, spin: 0 }), 0);
+test('direct airborne directional input is an explicit rotation command', () => {
+  assert.equal(transitionAirSpinInput({ steer: 1, spin: 0 }), 1);
+  assert.equal(transitionAirSpinInput({ steer: -1, spin: 0 }), -1);
+  assert.equal(transitionAirSpinInput({ steer: 0, spin: 0 }), 0);
 });
 
 test('explicit air spin survives while steering remains independent', () => {
@@ -135,10 +136,36 @@ test('generic AIR from a ramp cannot rotate from residual steering', () => {
   p.grounded = false;
 
   const before = p.position.clone();
-  p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, before);
+  // Smoothed ground steer remains non-zero internally, but no current-frame air
+  // direction is pressed. Only the explicit input object may rotate airborne yaw.
+  p.stepAir(1 / 120, { steer: 0, spin: 0 }, 0, before);
   assert.ok(Math.abs(p.airSpin) < 1e-9, `residual steer created airSpin=${p.airSpin}`);
   assert.ok(Math.abs(p.heading - 0.35) < 1e-9,
-    `generic ramp air changed heading without spin input: ${p.heading}`);
+    `generic ramp air changed heading without explicit air input: ${p.heading}`);
+});
+
+test('generic AIR rotates when the player deliberately holds a direction in air', () => {
+  const p = new StatefulSkillStreetPhysics({
+    collision: flatWorld(),
+    spawn: [0, 0.5, 0],
+    rails: [],
+  });
+  p.position.set(0, 4, 0);
+  p.heading = 0.35;
+  p.airHeading = 0.35;
+  p.airTakeoffHeading = 0.35;
+  p.airTakeoffFromRamp = true;
+  p.airSpin = 0;
+  p.steer = 0;
+  p.velocity.set(0, 2.5, -4);
+  p.transitionAir = null;
+  p.setMovementState(MOVEMENT_STATE.AIR);
+  p.grounded = false;
+
+  const before = p.position.clone();
+  p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, before);
+  assert.ok(Math.abs(p.airSpin) > 0.02, 'explicit directional air input should rotate');
+  assert.ok(Math.abs(p.heading - 0.35) > 0.02, 'explicit directional air input should change heading');
 });
 
 test('full runtime ramp touchdown keeps airborne yaw on a near-vertical transition', () => {
