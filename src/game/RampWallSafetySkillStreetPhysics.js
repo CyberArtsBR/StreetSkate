@@ -3,6 +3,7 @@ import { MomentumRollSkillStreetPhysics } from './MomentumRollSkillStreetPhysics
 import { resolveTransferFlightStep } from './core/TransferFlightResult.js';
 import { resolveAirMotion } from './core/AirController.js';
 import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
+import { interpretAirTurn } from '../input/InputInterpreter.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -104,11 +105,21 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     this.velocity.copy(result.velocity);
   }
 
-  stepAir(dt, input, drive, before) {
+  stepAir(dt, input = {}, drive, before) {
     this.airTime += dt;
+
+    // Air orientation is anchored to takeoff facing every fixed step. Only the
+    // deliberate current-frame command from InputInterpreter may accumulate spin;
+    // residual ground steering never participates in airborne yaw.
+    const frameHeading = this.transitionAir?.frame?.takeoffHeading;
+    const takeoffHeading = Number.isFinite(frameHeading)
+      ? frameHeading
+      : (Number.isFinite(this.airTakeoffHeading) ? this.airTakeoffHeading : this.airHeading);
+    this.airHeading = takeoffHeading;
+
     const turnInput = Number.isFinite(Number(input?.airTurnCommand))
       ? Number(input.airTurnCommand)
-      : clamp(this.steer + clamp(input?.spin || 0, -1, 1), -1.65, 1.65);
+      : interpretAirTurn(input);
     const airContext = {
       airHeading: this.airHeading,
       airSpin: this.airSpin,
