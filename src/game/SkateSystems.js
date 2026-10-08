@@ -20,7 +20,7 @@ export const GRIND_CAPTURE = Object.freeze({
   maxRiseVelocity: 0.45,
   maxAbove: 0.28,
   maxBelow: 0.07,
-  antiStallSpeed: 0.16,
+  antiStallSpeed: 8.5,
   cooldown: 0.28,
 });
 

@@ -295,8 +295,9 @@ export class SkillStreetPhysics extends StreetPhysics {
     const currentTravel = current.tangent.clone().multiplyScalar(this.grind.direction);
     const gravityAlong = GRAVITY.dot(currentTravel);
     const friction = 0.42 + 0.012 * this.grind.speed * this.grind.speed;
-    this.grind.speed = clamp(this.grind.speed + gravityAlong * dt - friction * dt, 0, 16);
-    if (this.grind.speed < 0.07 && this.grind.time > 0.22) { this.exitGrind(false); return; }
+    // Arcade grind assist keeps even slow entries moving through long curves.
+    this.grind.speed = clamp(this.grind.speed + gravityAlong * dt - friction * dt,
+      GRIND_CAPTURE.antiStallSpeed, 18);
 
     this.grind.s += this.grind.direction * this.grind.speed * dt;
     this.grind.contactClearance += (this.grind.contactClearanceTarget - this.grind.contactClearance) * (1 - Math.exp(-18 * dt));

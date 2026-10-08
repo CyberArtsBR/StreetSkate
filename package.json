@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "dev": "node tools/materialize-textures.mjs && vite --host 127.0.0.1",
+    "build": "node tools/materialize-textures.mjs && vite build",
     "validate": "npm test && npm run verify:physics",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/*.test.mjs",

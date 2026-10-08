@@ -20,7 +20,7 @@ export const MOVEMENT_STATE = Object.freeze({
 
 export const PHYSICS = Object.freeze({
   step: 1 / 120, push: 6.8, maxSpeed: 11.5, gravity: 20, brake: 13,
-  minJump: 4.5, maxJump: 7.6, chargeTime: 0.6, coyoteTime: 0.09, jumpBuffer: 0.12,
+  minJump: 5.4, maxJump: 7.6, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
   vertOllieBuffer: 0.9, maxLandingCorrection: 0.22,
 });
 const UP = new THREE.Vector3(0, 1, 0);
@@ -56,7 +56,7 @@ export class StreetPhysics {
     this.grounded = next === MOVEMENT_STATE.GROUND || next === MOVEMENT_STATE.MANUAL;
   }
 
-  reset(position = this.spawn, heading = 0) {
+  reset(position = this.spawn, heading = this.spawnHeading || 0) {
     this.position.copy(position);
     const support = this.surface.ground(this.position, 5, 10);
     if (support) this.position.copy(support.point).addScaledVector(UP, 0.015);

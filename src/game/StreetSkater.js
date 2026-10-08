@@ -121,9 +121,9 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const speed = Math.abs(this.speed);
     const speedRatio = Math.min(speed / this.config.maxSpeed, 1);
     const justTookOff = before.grounded && !grounded && !this.grind && !this.wallRide;
-    if (justTookOff && this.takeoffOllieRequested) p.popTime = 0.22;
+    if (justTookOff && this.takeoffOllieRequested) p.popTime = 0.12;
     else p.popTime = Math.max(0, p.popTime - delta);
-    p.popProgress = p.popTime > 0 ? 1 - p.popTime / 0.22 : 1;
+    p.popProgress = p.popTime > 0 ? 1 - p.popTime / 0.12 : 1;
 
     if (this.justLanded) {
       // A fast return down a transition can have a large world-Y speed while
@@ -146,7 +146,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       && speed < GROUND_MOTOR.autoPushTarget;
     const pushAllowed = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime
       && !braking && this.charge < 0.05;
-    p.pushWeight = THREE.MathUtils.lerp(p.pushWeight, pushDemand ? 1 : 0, 1 - Math.exp(-12 * delta));
+    // Both feet remain planted during automatic propulsion and pumping.
+    p.pushWeight = 0;
     if (!pushAllowed) p.pushWeight = 0;
     if (p.pushWeight > 0.005) {
       // Advance from actual rolling speed; do not restart the cycle whenever
@@ -229,7 +230,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const p = this.presentation;
     if (grabActive) p.grabPose = { name: this.grabState.name };
     p.grabWeight = THREE.MathUtils.lerp(p.grabWeight, grabActive ? 1 : 0,
-      1 - Math.exp(-14 * Math.max(0, delta)));
+      1 - Math.exp(-28 * Math.max(0, delta)));
     if (this.grounded || this.bailTime > 0 || this.flipState) p.grabWeight = 0;
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;

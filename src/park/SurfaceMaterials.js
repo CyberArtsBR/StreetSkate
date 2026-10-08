@@ -84,36 +84,39 @@ function surface(kind) {
   });
 }
 
-export function createSurfaceMaterials() {
-  return { wood: surface('wood'), concrete: surface('concrete'), bowl: surface('bowl') };
+const loader = new THREE.TextureLoader();
+let muralMap;
+const photos = new Map();
+const pending = [];
+function photo(name) {
+  if (photos.has(name)) return photos.get(name);
+  let ready, failed;
+  pending.push(new Promise((resolve, reject) => { ready = resolve; failed = reject; }));
+  const map = loader.load('/assets/park/hd/' + name + '.webp', ready, undefined, failed);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.anisotropy = 8;
+  photos.set(name, map);
+  return map;
 }
-
+export const surfaceTexturesReady = () => Promise.all(pending);
+export function createSurfaceMaterials() {
+  const materials = { wood: surface('wood'), concrete: surface('concrete'), bowl: surface('bowl') };
+  for (const [name, material] of Object.entries(materials)) {
+    material.map.dispose();
+    material.map = photo(name === 'wood' ? 'plywood' : 'concrete');
+    if (name === 'bowl') material.color.set('#dfebe7');
+  }
+  return materials;
+}
 export function createGraffitiMaterial(word, seed = 15) {
-  const art = canvas(2048, 768), c = art.getContext('2d'), rng = random(seed);
-  // Spray clouds, arrows, outlined throw-up lettering and drips form an original
-  // mural. Transparent edges allow the underlying concrete/wood to show through.
-  for (let i = 0; i < 2700; i++) {
-    const x = 120 + rng() * 1780, y = 80 + rng() * 580;
-    c.fillStyle = `rgba(${i % 2 ? '24,175,177' : '241,99,117'},${rng() * 0.15})`;
-    c.beginPath(); c.arc(x, y, 1 + rng() * 9, 0, 7); c.fill();
-  }
-  c.save(); c.translate(100, 90); c.transform(1, -0.06, -0.15, 1, 0, 0);
-  c.strokeStyle = '#edaf36'; c.lineWidth = 26;
-  c.beginPath(); c.moveTo(20, 390); c.lineTo(1700, 470); c.lineTo(1580, 340); c.moveTo(1700, 470); c.lineTo(1490, 520); c.stroke();
-  c.font = '900 390px Impact, Arial Black, sans-serif'; c.textAlign = 'center'; c.lineJoin = 'round';
-  c.strokeStyle = '#f2e7cf'; c.lineWidth = 45; c.strokeText(word, 890, 390, 1640);
-  c.strokeStyle = '#202b37'; c.lineWidth = 28; c.strokeText(word, 890, 390, 1640);
-  const fill = c.createLinearGradient(0, 80, 0, 420);
-  fill.addColorStop(0, '#70e8cb'); fill.addColorStop(0.52, '#29a4ab'); fill.addColorStop(0.54, '#df6082'); fill.addColorStop(1, '#c23569');
-  c.fillStyle = fill; c.fillText(word, 890, 390, 1640);
-  c.strokeStyle = '#f3df80'; c.lineWidth = 4; c.strokeText(word, 890, 390, 1640);
-  for (let i = 0; i < 20; i++) {
-    const x = 200 + rng() * 1350, y = 390 + rng() * 35;
-    c.strokeStyle = i % 2 ? '#c23569' : '#24a5a5'; c.lineWidth = 3 + rng() * 5;
-    c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + 20 + rng() * 90); c.stroke();
-  }
-  c.restore();
-  c.font = 'italic bold 44px sans-serif'; c.fillStyle = '#eadeb9'; c.fillText('SOLAR DOCK // SKATE EVERY DAY', 680, 700);
-  return new THREE.MeshStandardMaterial({ map: texture(art, true, false), transparent: true,
-    depthWrite: false, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2 });
+  muralMap ||= photo('graffiti');
+  const edge = canvas(128), ctx = edge.getContext('2d');
+  const gradient = ctx.createRadialGradient(64,64,42,64,64,82);
+  gradient.addColorStop(0,'white'); gradient.addColorStop(1,'black');
+  ctx.fillStyle=gradient;ctx.fillRect(0,0,128,128);
+  const material = new THREE.MeshStandardMaterial({map:muralMap,alphaMap:texture(edge,false,true),
+    transparent:true,depthWrite:false,roughness:0.88,polygonOffset:true,polygonOffsetFactor:-2});
+  material.name='Solar Dock / mural / '+word;
+  return material;
 }

@@ -69,7 +69,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
     return canonical;
   }
 
-  reset(position = this.spawn, heading = 0) {
+  reset(position = this.spawn, heading = this.spawnHeading || 0) {
     super.reset(position, heading);
     this.landingYawInvariantViolations = 0;
     this.lastLandingYawInvariant = null;

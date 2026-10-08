@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { flipMotion, pushMotion } from './TrickMotion.js';
+import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -180,11 +180,14 @@ export class UnrealRider {
     const manualW = this.w(PRESENTATION_STATES.MANUAL) + this.w(PRESENTATION_STATES.NOSE_MANUAL);
     const pump = this.w(PRESENTATION_STATES.PUMP);
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
-    const tuck = air * (0.14 + 0.2 * C(1 - Math.abs(verticalVelocity) / 7, 0, 1));
-    const compTarget = C(crouch + landingSeverity * 0.85 + grind * 0.22 + manualW * 0.12 + grab * 0.65 + tuck - pump * 0.18, 0, 1);
-    const compression = C(springStep(this.scalar.compression, compTarget, 8, dt), 0, 1);
+    // Half Pipe's compact air silhouette: knees stay tucked through the flight,
+    // instead of standing at takeoff and only bending near the apex.
+    const tuck = air * (vert ? 0.78 : 0.62);
+    const compTarget = C(Math.max(crouch, tuck, grab * 0.98)
+      + landingSeverity * 0.45 + grind * 0.22 + manualW * 0.12 + pump * 0.1, 0, 1);
+    const compression = C(springStep(this.scalar.compression, compTarget, grab > 0 ? 18 : 14, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
-    this.model.position.y -= 0.02 + compression * 0.22;
+    this.model.position.y -= 0.025 + compression * 0.43;
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -197,7 +200,7 @@ export class UnrealRider {
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), 0.045, rootQ);
-      this.rotate(name, V(0, 0, 1), (-0.02 - compression * 0.14 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
+      this.rotate(name, V(0, 0, 1), (-0.02 - compression * 0.38 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
       this.rotate(name, V(1, 0, 0), apex * 0.03 - pump * 0.025, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
@@ -214,6 +217,22 @@ export class UnrealRider {
       this.rotate('spine_03', V(0, 0, 1), (stance < 0 ? -1 : 1) * 0.2, rootQ);
     }
 
+    // Bring the shoulder into the measured arm's reach before solving IK.
+    // Stretching an unreachable arm alone leaves the hand near the knee.
+    this.root.updateWorldMatrix(true, true);
+    let reachDrop = 0;
+    if (grab > 0 && board) for (const side of SIDES) {
+      const target = this.grabTarget(grabState?.name, side, stance, board);
+      const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
+      if (!target || !upper || !lower || !hand) continue;
+      const a = upper.getWorldPosition(V()), b = lower.getWorldPosition(V()), c = hand.getWorldPosition(V());
+      const length = (a.distanceTo(b) + b.distanceTo(c)) * 0.96;
+      const shoulder = this.root.worldToLocal(a), localTarget = this.root.worldToLocal(target.clone());
+      const lateral = Math.hypot(shoulder.x - localTarget.x, shoulder.z - localTarget.z);
+      reachDrop = Math.max(reachDrop, shoulder.y - localTarget.y - Math.sqrt(Math.max(0.005, length * length - lateral * lateral)));
+    }
+    this.model.position.y -= C(reachDrop, 0, 0.28) * grab;
+    this.root.updateWorldMatrix(true, true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
     const deckLocked = Boolean(board && !flipState && !bail && !flatland);
@@ -222,13 +241,6 @@ export class UnrealRider {
       this.ft[side].copy(this.feet[side].point);
       if (deckLocked) this.ft[side].copy(this.root.worldToLocal(this.boardPoint(board,
         this.ft[side].x, this.ft[side].y, this.ft[side].z)));
-    }
-    const push = C(pushWeight, 0, 1) * this.w(PRESENTATION_STATES.PUSH);
-    if (push > 0.001) {
-      const stroke = pushMotion(pushPhase);
-      this.ft[rear].x += (rear === 'l' ? -1 : 1) * stroke.side * push;
-      this.ft[rear].y += stroke.height * push;
-      this.ft[rear].z += stroke.foreAft * push;
     }
     // Ollie/vert tuck lowers the pelvis with the feet on the deck. Only a flip
     // or a named one-foot trick releases them; a generic air pose must not float.
@@ -273,7 +285,7 @@ export class UnrealRider {
       const restPoint = this.feet[side].point;
       const kneePole = V(restPoint.x + 0.35, 0.25, restPoint.z);
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), this.root.localToWorld(kneePole));
-      const releasedFoot = (side === rear && push > 0.01) || (grab > 0.01 && (
+      const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || grabState?.name === 'Airwalk'));
       const footQ = deckLocked && !releasedFoot ? board.root.getWorldQuaternion(Q()) : rootQ.clone();

@@ -11,6 +11,7 @@ export function createSolarDockPark() {
   collision.name = 'Solar Dock / authored collision';
   const rails = [];
   const batches = new Map();
+  const muralMaterial = createGraffitiMaterial('TERMINAL');
   const materials = {
     ...createSurfaceMaterials(),
     graphite: new THREE.MeshStandardMaterial({ color: '#323c40', roughness: 0.72 }),
@@ -74,7 +75,7 @@ export function createSolarDockPark() {
   }
 
   function rail(name, points, { coping = false, transition = null, posts = true } = {}) {
-    const radius = coping ? 0.045 : 0.065;
+    const radius = coping ? 0.045 : 0.095;
     rails.push({ name, points, radius, ...(transition ? { transition } : {}) });
     for (let i = 1; i < points.length; i++) {
       tube(points[i - 1], points[i], radius, coping ? 'steel' : 'turquoise', coping ? null : 'solid', name);
@@ -112,6 +113,17 @@ export function createSolarDockPark() {
       return [0, arcLength / 2.44, width / 2.44, arcLength / 2.44];
     });
     triangles(points, indices, material, 'rideable', uv);
+    // Painted artwork follows the exact ramp profile; it is a visual decal,
+    // never a second contact surface. Keep exposed plywood along both edges.
+    if (width >= 8) {
+      const decal = new THREE.BufferGeometry();
+      const p = samples.flatMap(([z, y]) => [transform([-width * 0.32, y + 0.025, z]), transform([width * 0.32, y + 0.025, z])]);
+      const artUV = uv.map((value, i) => i % 4 === 0 ? 0 : i % 4 === 2 ? 1 : value / 4);
+      decal.setAttribute('position', new THREE.Float32BufferAttribute(p.flat(), 3));
+      decal.setAttribute('uv', new THREE.Float32BufferAttribute(artUV, 2));
+      decal.setIndex(indices); decal.computeVertexNormals();
+      const mesh = new THREE.Mesh(decal, muralMaterial); mesh.userData.castShadow = false; mesh.receiveShadow = true; park.add(mesh);
+    }
     for (const side of [-1, 1]) {
       const vertices = [], faces = [];
       for (let i = 0; i < samples.length - 1; i++) {
@@ -208,8 +220,23 @@ export function createSolarDockPark() {
   rail('Manual pad edge', [[-5.48, 0.63, 30.5], [-5.48, 0.63, 39.5]], { coping: true });
   box(10, 0.45, -29, 3, 0.9, 11, 'bowl', 'rideable');
   rail('Long ledge', [[8.53, 0.93, -34.5], [8.53, 0.93, -23.5]], { coping: true });
-  rail('Street flat rail', [[-10, 0.65, 35], [-10, 0.65, 43]]);
-  rail('North flat rail', [[0, 0.8, -32], [0, 0.8, -42]]);
+  rail('Street flat rail', [[-10, 0.8, 29], [-10, 0.8, 47]]);
+  rail('North flat rail', [[0, 0.85, -28], [0, 0.85, -48]]);
+  // One rail ID and one uninterrupted path: 47 m straight, a 180-degree
+  // return arc, then 47 m straight. Both ends have open, obstacle-free run-ups.
+  const returnRail = [[-48, 0.95, 2], [-48, 0.95, 49]];
+  for (let i = 1; i <= 64; i++) {
+    const a = Math.PI - i / 64 * Math.PI;
+    returnRail.push([-30 + 18 * Math.cos(a), 0.95, 49 + 10 * Math.sin(a)]);
+  }
+  returnRail.push([-12, 0.95, 2]);
+  rail('Solar express continuous return rail', returnRail, { posts: false });
+  for (const x of [-48, -12]) for (let z = 5; z <= 49; z += 5.5)
+    tube([x, 0.04, z], [x, 0.95, z], 0.08, 'graphite', 'solid', 'Solar express continuous return rail');
+  for (let i = 6; i <= 60; i += 6) {
+    const p = returnRail[i + 1];
+    tube([p[0], 0.04, p[2]], p, 0.08, 'graphite', 'solid', 'Solar express continuous return rail');
+  }
   // Stair set with a parallel bank and down rail, outside the main run-up lanes.
   profile(-28, 10, [[-55, 0], [-60, 1.8], [-64.5, 1.8]]);
   for (let i = 0; i < 6; i++) box(-36, (i + 1) * 0.15, -55 - i * 0.75, 6, (i + 1) * 0.3, 0.75, 'bowl', 'rideable');
@@ -226,7 +253,12 @@ export function createSolarDockPark() {
     rollIn.push([52 - t * 42, 11 * (1 - t * t * (3 - 2 * t))]);
   }
   rollIn.push([3, 0]);
-  for (let i = 1; i <= 16; i++) { const t = i / 16; rollIn.push([3 - 8 * t, 3.3 * t * t]); }
+  // Circular kicker ends at 58 degrees, substantially steeper than the old bank.
+  const launchAngle = 58 * Math.PI / 180, launchRadius = 8 / Math.sin(launchAngle);
+  for (let i = 1; i <= 32; i++) {
+    const a = i / 32 * launchAngle;
+    rollIn.push([3 - launchRadius * Math.sin(a), launchRadius * (1 - Math.cos(a))]);
+  }
   profile(32, 18, rollIn);
   const landing = Array.from({ length: 29 }, (_, i) => {
     const t = i / 28;
@@ -268,7 +300,7 @@ export function createSolarDockPark() {
   sign('01 / STREET', 'BANKS / LEDGES / RAILS', [0, 0.025, 48], 12, true);
   sign('02 / ORBIT', 'DEEP POOL / CONTINUOUS COPING', [-28, 0.025, -5], 12, true);
   sign('03 / FLOW', 'TWIN TRANSITIONS / 3.8 M', [-28, 0.025, 45], 12, true);
-  sign('04 / MEGA', '11 M ROLL-IN / 7 M GAP', [32, 11.025, 55], 14, true);
+  sign('04 / MEGA', '58 DEGREE LAUNCH / 7 M GAP', [32, 11.025, 55], 14, true);
   function mural(word, position, width, height, yaw = 0, seed = 15) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), createGraffitiMaterial(word, seed));
     mesh.position.set(...position); mesh.rotation.y = yaw;
@@ -279,6 +311,14 @@ export function createSolarDockPark() {
   mural('SOLAR', [-28, 1.9, 39.31], 17, 3.1);
   mural('AIRTIME', [22.99, 6.5, 47], 9, 3.4, -Math.PI / 2, 39);
   mural('NO LIMITS', [-2, 2.6, -64.51], 23, 3.8, Math.PI, 73);
+  for (const [x, z, width, height, yaw] of [[0,38,15,7,0], [9,-23,13,6,0.35], [-28,28,16,7,0],
+    [-27,-24,17,10,0], [31,-39,17,8,0], [-2,-39,11,7,-0.2], [-26,49,20,7,0], [0,-8,3.8,3.8,0]]) {
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(width, height), muralMaterial);
+    decal.rotation.set(-Math.PI / 2, 0, yaw);
+    // The pool floor is recessed; the pyramid top has its own raised artwork.
+    decal.position.set(x, x === -27 ? -depth + 0.025 : z === -8 ? 1.375 : 0.025, z);
+    decal.userData.castShadow = false; decal.receiveShadow = true; park.add(decal);
+  }
   // Pool mural conforms to the actual curved wall instead of floating in space.
   const muralPoints = [], muralUV = [], muralIndices = [];
   for (let row = 0; row <= 8; row++) for (let col = 0; col <= 24; col++) {
@@ -292,8 +332,12 @@ export function createSolarDockPark() {
   muralGeometry.setAttribute('position', new THREE.Float32BufferAttribute(muralPoints, 3));
   muralGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(muralUV, 2));
   muralGeometry.setIndex(muralIndices); muralGeometry.computeVertexNormals();
-  const poolMural = new THREE.Mesh(muralGeometry, createGraffitiMaterial('ORBIT', 53));
-  poolMural.userData.castShadow = false; poolMural.receiveShadow = true; park.add(poolMural);
+  for (let i = 0; i < 6; i++) {
+    const g = muralGeometry.clone().translate(-cx, 0, -cz).rotateY(i * Math.PI / 3).translate(cx, 0, cz);
+    const poolMural = new THREE.Mesh(g, muralMaterial);
+    poolMural.userData.castShadow = false; poolMural.receiveShadow = true; park.add(poolMural);
+  }
+  muralGeometry.dispose();
   for (let z = -47; z <= 47; z += 8) box(17.2, 0.012, z, 0.12, 0.015, 3, 'paint');
 
   // Distant low-poly desert and solar arrays stay outside the skating boundary.
@@ -308,6 +352,23 @@ export function createSolarDockPark() {
     const panel = new THREE.BoxGeometry(6, 0.16, 3).rotateZ(x < 0 ? -0.18 : 0.18).translate(x, 9, z);
     add(panel, 'graphite');
     box(x, 8.8, z + 1.55, 5.5, 0.15, 0.14, 'amber');
+  }
+  // Industrial spectator shelters and stacked terminal modules sit beyond the
+  // play boundary, adding scale without placing clutter in the approach lanes.
+  for (const x of [-64, 64]) for (const z of [-45, 20]) {
+    box(x, 0.1, z, 10, 0.2, 17, 'concrete');
+    for (const dx of [-4, 4]) for (const dz of [-7, 7]) box(x + dx, 2.6, z + dz, 0.18, 5.2, 0.18, 'steel');
+    box(x, 5.25, z, 11, 0.22, 18, 'graphite');
+    box(x, 5.4, z + 8.85, 11, 0.12, 0.15, 'amber');
+    for (const dz of [-5, 0, 5]) {
+      box(x, 0.55, z + dz, 7, 0.18, 0.65, 'wood');
+      for (const dx of [-2.8, 2.8]) box(x + dx, 0.25, z + dz, 0.16, 0.5, 0.5, 'steel');
+    }
+  }
+  for (const [x,z] of [[-35,-91],[-17,-91],[32,-91]]) {
+    box(x, 2.1, z, 14, 4.2, 6, 'turquoise');
+    for (let offset=-6.7; offset<7; offset+=0.55) box(x+offset,2.1,z+3.02,0.08,4.1,0.08,'steel');
+    box(x,4.3,z,14.3,0.16,6.3,'graphite');
   }
 
   let visualTriangles = 0;
@@ -329,6 +390,8 @@ export function createSolarDockPark() {
   const rideMesh = new THREE.Mesh(rideGeometry, proxyMaterial);
   rideMesh.userData.surface = 'rideable'; collision.add(rideMesh);
   park.updateMatrixWorld(true); collision.updateMatrixWorld(true);
+  visualTriangles = 0;
+  park.traverse(mesh => { if (mesh.isMesh) visualTriangles += (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3; });
 
   return { park, collision, manifest: {
     name: 'SOLAR DOCK', theme: 'Desert skate terminal', visualTriangles,
@@ -340,6 +403,7 @@ export function createSolarDockPark() {
       { id: 'bowl', label: 'Pool', position: [-28, -3.65, -24] },
       { id: 'flow', label: 'Half-pipe', position: [-28, 0.15, 28] },
       { id: 'mega', label: 'Mega', position: [32, 11.15, 55] },
+      { id: 'rail', label: 'Long rail', position: [-48, 0.15, -3], heading: Math.PI },
     ],
     views: {
       overview: { position: [122, 110, 145], target: [0, 0, -8], caption: 'Solar Dock · Desert skate terminal', index: '01' },

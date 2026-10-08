@@ -46,3 +46,7 @@
 @media(max-width:620px){.spot-nav{left:16px;top:208px;gap:2px}.spot-nav button{padding:8px 9px}.toolbar{right:12px}.controls-card{font-size:8px;left:16px;max-width:calc(100% - 72px)}}
 @media(max-height:620px){.spot-nav{top:166px}.spot-nav button{padding:6px 9px}.controls-card{font-size:8px}}
 
+
+.customize-bar{position:absolute;right:95px;bottom:115px;display:flex;gap:10px;align-items:center;background:#152a2ce6;padding:10px 12px;border:1px solid #94b6ab55;border-radius:7px;backdrop-filter:blur(12px)}
+.customize-bar>span{font-size:9px;letter-spacing:2px;color:#d9e5d7}#board-finishes{display:flex;gap:5px}#board-finishes button{width:24px;height:30px;border:2px solid transparent;border-radius:9px;transform:rotate(15deg)}#board-finishes button[aria-pressed=true]{border-color:white;box-shadow:0 0 0 2px #e6a63c}#sound-toggle{color:#e4dfca;background:none;border:0;border-left:1px solid #64847b;padding-left:12px;font-size:9px}#app[data-mode='explore'] .customize-bar{display:none}
+@media(max-width:900px){.customize-bar{right:75px;bottom:165px;padding:7px;gap:6px}#board-finishes button{width:19px;height:25px}.customize-bar>span{display:none}}

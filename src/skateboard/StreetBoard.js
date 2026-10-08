@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
 import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
+import { SKATEBOARD_FINISHES } from './BoardFinishes.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -79,7 +80,46 @@ export class StreetBoard {
     this.model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.root.userData.source = 'CyberArtsBR/Skate skateboard.glb';
     this.root.userData.contactRig = this.contactRig;
+    let finish = 0;
+    try { finish = Number(localStorage.getItem('streetskate.boardFinish')) || 0; } catch {}
+    this.setFinish(finish);
     return this;
+  }
+
+  setFinish(index = 0) {
+    if (!Number.isFinite(index)) index = 0;
+    this.finishIndex = ((Math.trunc(index) % SKATEBOARD_FINISHES.length) + SKATEBOARD_FINISHES.length) % SKATEBOARD_FINISHES.length;
+    const finish = SKATEBOARD_FINISHES[this.finishIndex];
+    if (!this.model) return;
+    this.root.updateWorldMatrix(true, true);
+    const inverse = this.root.matrixWorld.clone().invert();
+    this.model.traverse(mesh => {
+      if (!mesh.isMesh || !/^Board1/i.test(mesh.name)) return;
+      if (!mesh.userData.gradientOwned) {
+        mesh.geometry = mesh.geometry.clone();
+        const own = material => { const m = material.clone(); m.map = null; m.vertexColors = true; m.color.set('#ffffff'); m.roughness = 0.46; return m; };
+        mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
+        mesh.userData.gradientOwned = true;
+      }
+      const transform = new THREE.Matrix4().multiplyMatrices(inverse, mesh.matrixWorld);
+      const normalMatrix = new THREE.Matrix3().getNormalMatrix(transform);
+      const positions = mesh.geometry.attributes.position, normals = mesh.geometry.attributes.normal;
+      const colors = new Float32Array(positions.count * 3), p = new THREE.Vector3(), n = new THREE.Vector3();
+      const bounds = new THREE.Box3();
+      for (let i = 0; i < positions.count; i++) bounds.expandByPoint(p.fromBufferAttribute(positions, i).applyMatrix4(transform));
+      const stops = finish.stops.map(color => new THREE.Color(color));
+      for (let i = 0; i < positions.count; i++) {
+        p.fromBufferAttribute(positions, i).applyMatrix4(transform);
+        n.fromBufferAttribute(normals, i).applyNormalMatrix(normalMatrix);
+        const t = clamp((p.z - bounds.min.z) / Math.max(0.001, bounds.max.z - bounds.min.z), 0, 1);
+        const color = t < 0.5 ? stops[0].clone().lerp(stops[1], t * 2) : stops[1].clone().lerp(stops[2], (t - 0.5) * 2);
+        // Retain dark grip in the center, with a visible gradient perimeter.
+        if (n.y > 0.6 && Math.abs(p.x) < (bounds.max.x - bounds.min.x) * 0.34) color.multiplyScalar(0.18);
+        color.toArray(colors, i * 3);
+      }
+      mesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    });
+    try { localStorage.setItem('streetskate.boardFinish', String(this.finishIndex)); } catch {}
   }
 
   pointWorld(x, y, z, target = new THREE.Vector3()) {

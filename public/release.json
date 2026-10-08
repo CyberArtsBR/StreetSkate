@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-08-solar-dock-materials-return",
+  "version": "2026-10-08-solar-dock-visible-upgrade",
   "park": "solar-dock",
   "parkAsset": "procedural:SolarDockPark",
   "playableAreas": 4,
@@ -11,8 +11,12 @@
   "contactModel": "four-wheel-v1",
   "controllerModel": "phase1-core",
   "cameraModel": "anticipatory-vert-follow-v9",
-  "animationModel": "procedural-blended-trick-phases-v5",
+  "animationModel": "compact-air-reachable-grabs-v6",
   "inputModel": "consumed-trick-queue-v3",
   "motionModel": "heading-plane-contact-v3",
-  "materialModel": "plywood-concrete-graffiti-v1"
+  "materialModel": "generated-concrete-plywood-murals-v2",
+  "grindModel": "continuous-return-rail-8.5mps-v2",
+  "audioModel": "procedural-skate-sfx-v1",
+  "boardFinishes": "halfpipe-eight-gradients-v1",
+  "megaLaunchDegrees": 58
 }

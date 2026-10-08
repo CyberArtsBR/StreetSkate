@@ -10,6 +10,9 @@ import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transi
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { assembleExpandedPark } from './park/ExpandedPark.js';
 import { createSolarDockPark } from './park/SolarDockPark.js';
+import { SkateAudio } from './game/SkateAudio.js';
+import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
+import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -90,6 +93,9 @@ const debugOverlay = createDebugOverlay({
   panel: document.querySelector('#debug-panel'),
 });
 const clock = new THREE.Clock();
+const skateAudio = new SkateAudio();
+window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: true });
+window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
 
@@ -138,6 +144,7 @@ function goToSpot(id) {
   if (!loaded || !spot || !skater) return;
   const score = skater.score;
   skater.spawn.set(...spot.position);
+  skater.spawnHeading = spot.heading || 0;
   skater.reset(skater.spawn, spot.heading || 0);
   skater.score = score;
   setMode('skate');
@@ -152,6 +159,7 @@ function setPaused(value) {
   paused = Boolean(value) && mode === 'skate';
   app.dataset.paused = String(paused);
   if (paused) {
+    skateAudio.silence();
     input.clear();
     if (skater) {
       skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0;
@@ -241,6 +249,8 @@ async function loadGame() {
     } else {
       document.querySelector('#load-progress').textContent = 'Building Solar Dock';
       world = createSolarDockPark();
+      document.querySelector('#load-progress').textContent = 'Loading concrete, plywood and mural artwork';
+      await surfaceTexturesReady();
     }
     ({ park, collision, manifest } = world);
     scene.background.set(daylightColor);
@@ -248,6 +258,11 @@ async function loadGame() {
     scene.fog.density = legacyPark ? 0.005 : 0.0025;
     floor.position.y = legacyPark ? -3.18 : -6;
     floor.material.color.set(legacyPark ? '#31454b' : '#b58e6c');
+    if (!legacyPark) {
+      ambient.intensity = 0.9;
+      renderer.toneMappingExposure = 0.94;
+      scene.environmentIntensity = 0.24;
+    }
     const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
@@ -299,6 +314,19 @@ async function loadGame() {
       link.href = '/'; link.textContent = 'SOLAR DOCK ↗';
     }
     renderer.domElement.tabIndex = 0;
+    const finishes = document.querySelector('#board-finishes');
+    const finishNames = ['Sunset', 'Ocean', 'Aqua', 'Lime', 'Gold', 'Nebula', 'Graphite', 'Pearl'];
+    SKATEBOARD_FINISHES.forEach((finish, i) => {
+      const button = document.createElement('button'); button.style.background = finish.cssGradient;
+      button.title = finishNames[i]; button.setAttribute('aria-label', `Skate ${finishNames[i]}`);
+      button.setAttribute('aria-pressed', String(skater.board.finishIndex === i));
+      button.onclick = () => { skater.board.setFinish(i); finishes.querySelectorAll('button').forEach((b,j) => b.setAttribute('aria-pressed',String(i===j))); button.blur(); };
+      finishes.append(button);
+    });
+    const soundButton = document.querySelector('#sound-toggle');
+    soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
+    soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
+    soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
     sun.target.position.copy(center);
     scene.add(sun.target);
     sun.position.copy(center).add(new THREE.Vector3(-25, 65, 10));
@@ -355,7 +383,7 @@ document.querySelector('#lighting').onclick = (event) => {
   dusk = !dusk;
   sun.intensity = dusk ? 0.65 : 2.8;
   sun.color.set(dusk ? '#86b5ff' : '#fff1d9');
-  ambient.intensity = dusk ? 0.8 : 1.3;
+  ambient.intensity = dusk ? 0.65 : legacyPark ? 1.3 : 0.9;
   scene.background.set(dusk ? '#141f32' : daylightColor);
   scene.fog.color.copy(scene.background);
   event.currentTarget.setAttribute('aria-label', dusk ? 'Switch to afternoon' : 'Switch to blue hour');
@@ -367,6 +395,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 function suspendSkating() {
+  skateAudio.silence();
   input.clear();
   if (loaded && mode === 'skate') setPaused(true);
 }
@@ -420,5 +449,6 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
+  skateAudio.update(skater, loaded && mode === 'skate' && !paused && document.hasFocus());
   renderer.render(scene, camera);
 });
