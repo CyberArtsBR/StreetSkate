@@ -10,6 +10,7 @@ import {
 import {
   THPS_CAMERA,
   cameraDirectionRate,
+  highFollowFraming,
   smoothCameraDirection,
 } from '../src/game/FollowCamera.js';
 
@@ -83,4 +84,13 @@ test('normal carving recenters faster than an abrupt world-travel reversal', () 
   assert.equal(cameraDirectionRate(current, reverse), THPS_CAMERA.reverseDirectionFollowRate);
   assert.equal(cameraDirectionRate(current, quarterTurn), THPS_CAMERA.directionFollowRate);
   assert.ok(THPS_CAMERA.directionFollowRate > THPS_CAMERA.reverseDirectionFollowRate * 4);
+});
+
+test('high follow leaves a long horizontal arm and shows the descending bowl runout', () => {
+  const ground = highFollowFraming({ grounded: true });
+  const returning = highFollowFraming({ grounded: false, transitionReturning: true });
+  assert.ok(returning.distance > ground.distance);
+  assert.ok(returning.lookAhead > ground.lookAhead);
+  assert.ok(Math.atan2(returning.height, returning.distance) * 180 / Math.PI < 30,
+    'return camera must avoid an overhead angle');
 });
