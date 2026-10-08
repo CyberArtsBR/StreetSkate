@@ -162,10 +162,11 @@ test('generic AIR rotates when the player deliberately holds a direction in air'
   p.setMovementState(MOVEMENT_STATE.AIR);
   p.grounded = false;
 
-  const before = p.position.clone();
-  p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, before);
-  assert.ok(Math.abs(p.airSpin) > 0.02, 'explicit directional air input should rotate');
-  assert.ok(Math.abs(p.heading - 0.35) > 0.02, 'explicit directional air input should change heading');
+  p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, p.position.clone());
+  assert.ok(Math.abs(p.airSpin) < 1e-9, 'first directional trick tap should not spin');
+  for (let i = 0; i < 20; i++) p.stepAir(1 / 120, { steer: 1, spin: 0 }, 0, p.position.clone());
+  assert.ok(Math.abs(p.airSpin) > 0.2, 'holding a direction beyond grace should rotate');
+  assert.ok(Math.abs(p.heading - 0.35) > 0.2, 'held air input should change heading');
 });
 
 test('full runtime ramp touchdown keeps airborne yaw on a near-vertical transition', () => {
