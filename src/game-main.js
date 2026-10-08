@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -84,6 +85,10 @@ let loaded = false;
 let paused = false;
 let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
+const debugOverlay = createDebugOverlay({
+  button: document.querySelector('#debug-overlay'),
+  panel: document.querySelector('#debug-panel'),
+});
 const clock = new THREE.Clock();
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
@@ -312,6 +317,11 @@ async function loadGame() {
       // focused animation frame. Returning a copy prevents tests/debug tools
       // from mutating the live input path.
       captureInput: () => ({ ...lastInputState }),
+      toggleDebugOverlay: () => debugOverlay.toggle(),
+      captureAuditTelemetry: () => captureAuditTelemetry({
+        skater, followCamera, camera, input: lastInputState,
+        paused, focused: document.hasFocus(),
+      }),
       transitionDebug,
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
@@ -378,6 +388,9 @@ renderer.setAnimationLoop(() => {
   const elapsed = clock.elapsedTime;
   if (document.hidden) return;
 
+  // Never silently freeze on the last airborne frame when another overlay/window
+  // takes focus. Make the suspension explicit and require a deliberate resume.
+  if (loaded && mode === 'skate' && !document.hasFocus() && !paused) setPaused(true);
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     lastInputState = {
@@ -402,6 +415,10 @@ renderer.setAnimationLoop(() => {
     }
     if (mode === 'explore') controls.update();
   }
+  debugOverlay.update(dt, {
+    skater, followCamera, camera, input: lastInputState,
+    paused, focused: document.hasFocus(),
+  });
   transitionDebug?.update(skater);
   renderer.render(scene, camera);
 });
