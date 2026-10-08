@@ -13,6 +13,7 @@ import { createSolarDockPark } from './park/SolarDockPark.js';
 import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
+import { loadSolarSky } from './park/SolarSky.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -83,6 +84,7 @@ let skater = null;
 let followCamera = null;
 let transitionDebug = null;
 let dusk = false;
+let solarSky = null;
 let mode = 'skate';
 let loaded = false;
 let paused = false;
@@ -98,6 +100,21 @@ window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: tru
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
+
+function applyLighting() {
+  sun.intensity = dusk ? 0.65 : solarSky ? 2.1 : 2.8;
+  sun.color.set(dusk ? '#86b5ff' : solarSky ? '#ffddb8' : '#fff1d9');
+  ambient.intensity = dusk ? 0.4 : solarSky ? 0.65 : legacyPark ? 1.3 : 0.9;
+  if (solarSky) {
+    scene.background = solarSky.background;
+    scene.backgroundIntensity = dusk ? 0.22 : 0.9;
+    scene.environmentIntensity = dusk ? 0.22 : 0.65;
+    scene.fog.color.set(dusk ? '#383e50' : '#c5b7a7');
+  } else {
+    scene.background.set(dusk ? '#141f32' : daylightColor);
+    scene.fog.color.copy(scene.background);
+  }
+}
 
 function setExploreView(name, instant = false) {
   const view = views[name];
@@ -255,14 +272,23 @@ async function loadGame() {
     ({ park, collision, manifest } = world);
     scene.background.set(daylightColor);
     scene.fog.color.set(daylightColor);
-    scene.fog.density = legacyPark ? 0.005 : 0.0025;
+    scene.fog.density = legacyPark ? 0.005 : 0.0014;
     floor.position.y = legacyPark ? -3.18 : -6;
     floor.material.color.set(legacyPark ? '#31454b' : '#b58e6c');
     if (!legacyPark) {
       ambient.intensity = 0.9;
       renderer.toneMappingExposure = 0.94;
       scene.environmentIntensity = 0.24;
+      document.querySelector('#load-progress').textContent = 'Loading 4K HDRI sky and environment lighting';
+      try {
+        solarSky = await loadSolarSky(renderer);
+        scene.environment = solarSky.environment.texture;
+        environment.dispose();
+      } catch (error) {
+        console.warn('HDRI unavailable; keeping fallback lighting.', error);
+      }
     }
+    applyLighting();
     const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
@@ -329,7 +355,7 @@ async function loadGame() {
     soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
     sun.target.position.copy(center);
     scene.add(sun.target);
-    sun.position.copy(center).add(new THREE.Vector3(-25, 65, 10));
+    sun.position.copy(center).add(solarSky ? new THREE.Vector3(-55, 38, 18) : new THREE.Vector3(-25, 65, 10));
     Object.assign(sun.shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, far: 200 });
     sun.shadow.camera.updateProjectionMatrix();
     document.querySelector('#loading').classList.add('done');
@@ -381,11 +407,7 @@ document.querySelector('#wireframe').onclick = (event) => {
 };
 document.querySelector('#lighting').onclick = (event) => {
   dusk = !dusk;
-  sun.intensity = dusk ? 0.65 : 2.8;
-  sun.color.set(dusk ? '#86b5ff' : '#fff1d9');
-  ambient.intensity = dusk ? 0.65 : legacyPark ? 1.3 : 0.9;
-  scene.background.set(dusk ? '#141f32' : daylightColor);
-  scene.fog.color.copy(scene.background);
+  applyLighting();
   event.currentTarget.setAttribute('aria-label', dusk ? 'Switch to afternoon' : 'Switch to blue hour');
 };
 

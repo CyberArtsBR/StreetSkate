@@ -19,7 +19,7 @@ export const MOVEMENT_STATE = Object.freeze({
 });
 
 export const PHYSICS = Object.freeze({
-  step: 1 / 120, push: 6.8, maxSpeed: 11.5, gravity: 20, brake: 13,
+  step: 1 / 120, push: 8.5, maxSpeed: 17, gravity: 20, brake: 16,
   minJump: 5.4, maxJump: 7.6, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
   vertOllieBuffer: 0.9, maxLandingCorrection: 0.22,
 });

@@ -165,12 +165,19 @@ export function createSolarDockPark() {
     }
   }
 
-  // One floor with a real opening for the pool, never a plane over its interior.
+  // Cut the plaza away wherever a wooden flat bottom occupies the same height.
+  // Coplanar concrete used to show through the mega ramp as triangular patches.
   const floor = new THREE.Shape();
   floor.moveTo(-54, -66); floor.lineTo(54, -66); floor.lineTo(54, 82); floor.lineTo(-54, 82); floor.closePath();
   const hole = new THREE.Path();
   hole.absarc(-28, 24, 14, 0, Math.PI * 2, true);
   floor.holes.push(hole);
+  for (const [minX, maxX, minZ, maxZ] of [[-37.5, -18.5, 23, 33], [23, 41, 3, 10]]) {
+    const opening = new THREE.Path();
+    opening.moveTo(minX, -minZ); opening.lineTo(maxX, -minZ);
+    opening.lineTo(maxX, -maxZ); opening.lineTo(minX, -maxZ); opening.closePath();
+    floor.holes.push(opening);
+  }
   add(new THREE.ShapeGeometry(floor, 48).rotateX(-Math.PI / 2), 'concrete', 'rideable');
 
   // Bowl: 3.8 m deep, broad flat bottom, a full round transition and continuous
@@ -198,8 +205,28 @@ export function createSolarDockPark() {
   add(new THREE.RingGeometry(14.12, 14.65, 96).rotateX(-Math.PI / 2).translate(cx, 0.008, cz), 'turquoise');
   add(new THREE.RingGeometry(14.85, 14.9, 96).rotateX(-Math.PI / 2).translate(cx, 0.009, cz), 'paint');
 
-  quarter('Dock halfpipe north', -28, 23, 19, 3.8);
-  quarter('Dock halfpipe south', -28, 33, 19, 3.8, Math.PI);
+  // One continuous wooden half-pipe, including its ten-metre flat bottom.
+  // Shared vertices and arc-length UVs carry both collision and grain through
+  // each transition without a concrete seam or a hidden wall at the join.
+  const halfpipe = [[16.7, 3.8]];
+  for (let i = 20; i >= 0; i--) {
+    const a = i / 20 * Math.PI / 2;
+    halfpipe.push([23 - 3.8 * Math.sin(a), 3.8 * (1 - Math.cos(a))]);
+  }
+  for (let i = 0; i <= 20; i++) {
+    const a = i / 20 * Math.PI / 2;
+    halfpipe.push([33 + 3.8 * Math.sin(a), 3.8 * (1 - Math.cos(a))]);
+  }
+  halfpipe.push([39.3, 3.8]);
+  profile(-28, 19, halfpipe);
+  for (const [name, z] of [['Dock halfpipe north', 19.2], ['Dock halfpipe south', 36.8]]) {
+    rail(`${name} coping`, [[-37.5, 3.825, z], [-18.5, 3.825, z]],
+      { coping: true, transition: transition(name, 'MINI') });
+  }
+  for (const x of [-37.32, -18.68]) for (let i = 1; i < halfpipe.length; i++) {
+    tube([x, halfpipe[i - 1][1] + 0.018, halfpipe[i - 1][0]],
+      [x, halfpipe[i][1] + 0.018, halfpipe[i][0]], 0.025, 'amber');
+  }
   quarter('North terminal vert', -2, -57, 27, 5);
   quarter('East return quarter', 32, -60, 20, 4.5);
 
@@ -311,7 +338,7 @@ export function createSolarDockPark() {
   mural('SOLAR', [-28, 1.9, 39.31], 17, 3.1);
   mural('AIRTIME', [22.99, 6.5, 47], 9, 3.4, -Math.PI / 2, 39);
   mural('NO LIMITS', [-2, 2.6, -64.51], 23, 3.8, Math.PI, 73);
-  for (const [x, z, width, height, yaw] of [[0,38,15,7,0], [9,-23,13,6,0.35], [-28,28,16,7,0],
+  for (const [x, z, width, height, yaw] of [[0,38,15,7,0], [9,-23,13,6,0.35],
     [-27,-24,17,10,0], [31,-39,17,8,0], [-2,-39,11,7,-0.2], [-26,49,20,7,0], [0,-8,3.8,3.8,0]]) {
     const decal = new THREE.Mesh(new THREE.PlaneGeometry(width, height), muralMaterial);
     decal.rotation.set(-Math.PI / 2, 0, yaw);

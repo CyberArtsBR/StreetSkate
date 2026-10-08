@@ -70,5 +70,16 @@
       "plywood.009.b64",
       "plywood.010.b64"
     ]
+  },
+  {
+    "file": "solar-dusk-4k.hdr",
+    "sha256": "dbe5f750e4753f51ef8d178553318ad8550035cac0ce5cfab058e76cf8f021d2",
+    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/qwantani_dusk_2_puresky_4k.hdr",
+    "source": "https://polyhaven.com/a/qwantani_dusk_2_puresky",
+    "license": "CC0-1.0",
+    "authors": [
+      "Greg Zaal",
+      "Jarod Guest"
+    ]
   }
 ]

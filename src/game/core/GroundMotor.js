@@ -5,14 +5,14 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
 
 export const GROUND_MOTOR = Object.freeze({
-  autoPushTarget: 12.5,
+  autoPushTarget: 17,
   autoPushSurfaceY: 0.965,
   autoPushMinAccel: 3.6,
-  autoPushMaxAccel: 10.8,
-  crouchedPushTarget: 14,
+  autoPushMaxAccel: 13.5,
+  crouchedPushTarget: 19,
   crouchedPushAccelScale: 1.12,
   crouchedDragScale: 0.62,
-  softSpeedLimit: 15.2,
+  softSpeedLimit: 21,
   overspeedDrag: 1.25,
   rollingBase: 0.025,
   rollingQuadratic: 0.00115,
@@ -21,10 +21,10 @@ export const GROUND_MOTOR = Object.freeze({
   downhillGravityScale: 1.0,
   steerRateLowSpeed: 2.7,
   steerRateHighSpeed: 1.2,
-  steerFullSpeed: 12,
+  steerFullSpeed: 17,
   turnGainLowSpeed: 1.55,
   turnGainHighSpeed: 1.78,
-  turnGainFullSpeed: 12.5,
+  turnGainFullSpeed: 17,
   manualTurnGain: 1.14,
   rampReentrySteerLock: 0.20,
   rampReentryHardLock: 0.08,
@@ -35,7 +35,7 @@ export const GROUND_MOTOR = Object.freeze({
   sharpTurnRateScale: 1.38,
   steepBrakeReleaseNormalY: 0.65,
   steepBrakeReleaseSpeed: 1.5,
-  absoluteSpeedCap: 17,
+  absoluteSpeedCap: 23,
 });
 
 /** Signed speed follows the canonical deck-relative travel sign, not raw magnitude. */

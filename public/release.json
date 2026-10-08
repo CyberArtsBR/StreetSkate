@@ -1,10 +1,10 @@
 {
-  "version": "2026-10-08-solar-dock-visible-upgrade",
+  "version": "2026-10-08-continuous-ramps-hdri-speed",
   "park": "solar-dock",
   "parkAsset": "procedural:SolarDockPark",
   "playableAreas": 4,
   "rider": "TheanchoURi",
-  "collisionVersion": 7,
+  "collisionVersion": 8,
   "collisionQueries": "bvh-static",
   "rampScaleBaked": 1,
   "vertModel": "local-plane-return-v3",
@@ -18,5 +18,10 @@
   "grindModel": "continuous-return-rail-8.5mps-v2",
   "audioModel": "procedural-skate-sfx-v1",
   "boardFinishes": "halfpipe-eight-gradients-v1",
-  "megaLaunchDegrees": 58
+  "megaLaunchDegrees": 58,
+  "skyModel": "polyhaven-qwantani-dusk-4k-hdr-v1",
+  "groundCruiseMps": 17,
+  "crouchedCruiseMps": 19,
+  "groundSpeedCapMps": 23,
+  "grindSpeedCapMps": 23
 }
