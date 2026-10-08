@@ -38,6 +38,7 @@ export const THPS_CAMERA = Object.freeze({
   classicGrindZoom: 0.94,
   classicTrickZoom: 0.92,
   landingHoldTime: 0.18,
+  returnReframeRate: 18,
 });
 
 function wrapAngle(value) {
@@ -80,6 +81,17 @@ export function cameraDirectionRate(current, target, config = THPS_CAMERA) {
   return from.dot(to) < config.reverseDotThreshold
     ? config.reverseDirectionFollowRate
     : config.directionFollowRate;
+}
+
+/**
+ * A long camera arm is intentional on the bowl return: shorter, taller rigs
+ * become a near top-down shot as the rider crosses the lip. Keep ground and
+ * downhill landing visible while retaining high behind-the-skater framing.
+ */
+export function highFollowFraming({ grounded = false, transitionReturning = false } = {}) {
+  if (transitionReturning) return { distance: 11.6, height: 5.3, lookAhead: 1.4 };
+  if (grounded) return { distance: 9.5, height: 5.4, lookAhead: 0.55 };
+  return { distance: 10.5, height: 5.8, lookAhead: 0.75 };
 }
 
 /** Backward-compatible helper now delegated to canonical CameraState. */
@@ -174,7 +186,7 @@ export class FollowCamera {
       // High Follow anticipates the downhill return as soon as vert air begins.
       // Classic retains its original ramp-side framing. Trick spins steer neither.
       if (returning || this.returnHold > 0) {
-        if (highFollow) this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, 18));
+        if (highFollow) this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, THPS_CAMERA.returnReframeRate));
         else this.direction.copy(this.vertDirection);
       }
       else if (!state.bailing) this.direction.copy(smoothCameraDirection(
@@ -185,10 +197,11 @@ export class FollowCamera {
       const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
-      const distance = highFollow ? (returning ? 9 : state.grounded ? 9.5 : 10)
+      const highFrame = highFollow ? highFollowFraming(state) : null;
+      const distance = highFollow ? highFrame.distance
         : returning ? THPS_CAMERA.classicVertDistance
         : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
-      const height = highFollow ? (returning ? 7 : state.grounded ? 5.4 : 6.2)
+      const height = highFollow ? highFrame.height
         : returning ? THPS_CAMERA.classicVertHeight
         : state.grounded || state.grindActive ? THPS_CAMERA.height : THPS_CAMERA.airHeight;
       const blend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
@@ -227,7 +240,7 @@ export class FollowCamera {
     }
     const viewDirection = this.direction.clone();
     if (classic) viewDirection.applyAxisAngle(UP, this.lookYaw);
-    const lookAheadTarget = classic && !returning ? 0.55 : 0;
+    const lookAheadTarget = highFollow ? highFollowFraming(state).lookAhead : classic && !returning ? 0.55 : 0;
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,

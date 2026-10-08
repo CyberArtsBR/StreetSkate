@@ -26,6 +26,17 @@
 @media(max-width:1000px){.controls-card{left:25px;top:82px;font-size:9px}.session-score{padding-right:12px}}
 @media(max-height:620px){.toolbar{top:24%;gap:3px}.toolbar button{width:34px;height:34px;font-size:20px}.toolbar-label{display:none}.topbar{padding-top:16px}.controls-card{top:65px}.skate-hud{bottom:85px}}
 
+/* Gameplay readability and opt-in read-only diagnostics. */
+#debug-overlay{font:800 12px/1 'DM Sans',sans-serif;letter-spacing:.05em}
+.debug-panel{position:absolute;z-index:12;right:90px;top:77px;width:min(355px,calc(100vw - 130px));max-height:calc(100dvh - 130px);overflow:auto;white-space:pre-wrap;pointer-events:none;color:#effbdc;background:rgba(8,19,22,.93);border:1px solid rgba(217,255,100,.5);padding:15px 17px;border-radius:7px;font:11px/1.52 ui-monospace,SFMono-Regular,Consolas,monospace;box-shadow:0 12px 40px #08131580}
+.debug-panel[hidden]{display:none}
+.pause-overlay{display:none;position:absolute;z-index:11;left:50%;top:17%;transform:translateX(-50%);min-width:270px;text-align:center;pointer-events:none;background:#142125dd;border:1px solid #d9ff647a;border-radius:6px;padding:17px 24px;box-shadow:0 10px 32px #0006}
+.pause-overlay strong{display:block;color:#d9ff64;font:800 26px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.08em}
+.pause-overlay span{display:block;color:#fff;font:700 10px 'DM Sans',Arial,sans-serif;letter-spacing:.11em;margin-top:8px}
+#app[data-mode='skate'][data-paused='true'] .pause-overlay{display:block}
+#app[data-mode='skate'] .controls-card{background:rgba(13,29,31,.72);border:1px solid #bdccc044;color:#eef4e8;border-radius:6px;padding:9px 13px;text-shadow:0 1px 2px #000;backdrop-filter:blur(6px);max-width:min(580px,calc(100vw - 142px));line-height:1.6}
+@media(max-width:620px){.debug-panel{top:72px;right:58px;width:calc(100vw - 84px);font-size:9px}.pause-overlay{top:30%;width:calc(100vw - 60px)}}
+ 
 /* Solar Dock: compact area selection stays clear of the skating HUD. */
 .spot-nav{position:absolute;left:38px;top:218px;display:flex;gap:5px;padding:5px;background:#142b30cc;border:1px solid #7fa3a04d;border-radius:6px;backdrop-filter:blur(10px)}
 .spot-nav[hidden]{display:none}.spot-nav button{border:0;border-radius:3px;padding:9px 12px;background:transparent;color:#e5e9df;font-size:10px}

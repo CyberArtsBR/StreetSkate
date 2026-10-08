@@ -29,7 +29,7 @@ test('flat-ground ollie has no ramp bonus and preserves requested impulse', () =
   assert.equal(context.rampBonus, 0);
   assert.equal(context.composedImpulse, 4.8);
   assert.equal(context.rampContext, false);
-  assert.deepEqual(context.takeoffFacing.toArray(), [0, 0, -1]);
+  assert.ok(context.takeoffFacing.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-12);
   assert.ok(Math.abs(context.takeoffHeading) < 1e-12);
 });
 
@@ -91,7 +91,7 @@ test('authored transition is ramp context even without a sampled boost', () => {
   assert.equal(context.transitionType, 'quarter');
 });
 
-test('takeoff facing/heading/stance are captured independently from travel direction', () => {
+test('canonical heading defines takeoff facing even if projected forward and travel disagree', () => {
   const forward = new THREE.Vector3(-1, 0, 0);
   const travel = new THREE.Vector3(0, 0, 1);
   const context = captureTakeoffContext({
@@ -102,9 +102,8 @@ test('takeoff facing/heading/stance are captured independently from travel direc
     stance: -1,
   });
 
-  assert.ok(context.takeoffFacing.x < -0.999);
-  assert.ok(Math.abs(context.takeoffFacing.z) < 1e-9);
-  assert.ok(Math.abs(context.takeoffHeading - Math.PI / 2) < 1e-9);
+  assert.ok(context.takeoffFacing.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-9);
+  assert.ok(Math.abs(context.takeoffHeading) < 1e-9);
   assert.equal(context.takeoffStance, -1);
 });
 
@@ -123,7 +122,7 @@ test('context records buffered ramp-exit intent without mutating source vectors'
   velocity.set(99, 99, 99);
   forward.set(1, 0, 0);
   assert.notEqual(context.speed, velocity.length());
-  assert.deepEqual(context.takeoffFacing.toArray(), [0, 0, -1]);
+  assert.ok(context.takeoffFacing.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-12);
 });
 
 test('StableRampReturn runtime consumes canonical takeoff orientation/ramp context', () => {
