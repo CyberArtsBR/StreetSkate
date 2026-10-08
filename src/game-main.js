@@ -8,6 +8,7 @@ import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { assembleExpandedPark } from './park/ExpandedPark.js';
+import { createSolarDockPark } from './park/SolarDockPark.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -84,6 +85,8 @@ let paused = false;
 let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
 const clock = new THREE.Clock();
+const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
+const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
 
 function setExploreView(name, instant = false) {
   const view = views[name];
@@ -111,17 +114,33 @@ function setExploreView(name, instant = false) {
 
 function setCameraMode(nextMode) {
   if (!followCamera) return;
-  const classic = nextMode === 'classic';
-  followCamera.setMode(classic ? 'classic' : 'fixed', mode === 'skate' ? skater : null);
+  followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
   const button = document.querySelector('#camera-mode');
-  button.setAttribute('aria-pressed', String(classic));
-  button.setAttribute('aria-label', classic ? 'Switch to fixed camera' : 'Switch to classic camera');
-  document.querySelector('#camera-label').textContent = classic ? 'CLASSIC' : 'FIXED';
-  try { localStorage.setItem('streetskate.cameraMode', followCamera.mode); } catch { /* Storage is optional. */ }
+  button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
+  button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
+  document.querySelector('#camera-label').textContent = followCamera.mode.toUpperCase();
+  // New preference version makes high follow the default even for earlier users.
+  try { localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode); } catch { /* Storage is optional. */ }
 }
 
 function toggleCameraMode() {
-  setCameraMode(followCamera?.mode === 'classic' ? 'fixed' : 'classic');
+  const modes = ['follow', 'classic', 'fixed'];
+  setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
+}
+
+function goToSpot(id) {
+  const spot = manifest?.spots?.find(item => item.id === id);
+  if (!loaded || !spot || !skater) return;
+  const score = skater.score;
+  skater.spawn.set(...spot.position);
+  skater.reset(skater.spawn, spot.heading || 0);
+  skater.score = score;
+  setMode('skate');
+  followCamera.snap(skater);
+  document.querySelectorAll('[data-spot]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.spot === id));
+  });
+  renderer.domElement.focus({ preventScroll: true });
 }
 
 function setPaused(value) {
@@ -201,24 +220,33 @@ function showError(error) {
 
 async function loadGame() {
   try {
-    const loader = new GLTFLoader();
-    const [parkFile, collisionFile, parkManifest, expandedFile] = await Promise.all([
-      loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
-      loader.loadAsync('/assets/park/park-collision.glb'),
-      fetch('/assets/park/park-manifest.json').then(r => {
-        if (!r.ok) throw new Error('Park manifest unavailable');
-        return r.json();
-      }),
-      loader.loadAsync('/assets/park/halfnew.glb?v=fixed-black'),
-    ]);
-    manifest = parkManifest;
-    const expanded = assembleExpandedPark(expandedFile.scene, parkFile.scene, collisionFile.scene, manifest);
-    park = expanded.park;
-    collision = expanded.collision;
+    let world;
+    if (legacyPark) {
+      const loader = new GLTFLoader();
+      const [parkFile, collisionFile, parkManifest, expandedFile] = await Promise.all([
+        loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
+        loader.loadAsync('/assets/park/park-collision.glb'),
+        fetch('/assets/park/park-manifest.json').then(r => {
+          if (!r.ok) throw new Error('Park manifest unavailable');
+          return r.json();
+        }),
+        loader.loadAsync('/assets/park/halfnew.glb?v=fixed-black'),
+      ]);
+      world = { ...assembleExpandedPark(expandedFile.scene, parkFile.scene, collisionFile.scene, parkManifest), manifest: parkManifest };
+    } else {
+      document.querySelector('#load-progress').textContent = 'Building Solar Dock';
+      world = createSolarDockPark();
+    }
+    ({ park, collision, manifest } = world);
+    scene.background.set(daylightColor);
+    scene.fog.color.set(daylightColor);
+    scene.fog.density = legacyPark ? 0.005 : 0.0025;
+    floor.position.y = legacyPark ? -3.18 : -6;
+    floor.material.color.set(legacyPark ? '#31454b' : '#b58e6c');
     const rampTuning = { factor: manifest.transitionScale, baked: true };
     park.traverse(object => {
       if (!object.isMesh) return;
-      object.castShadow = true;
+      object.castShadow = object.userData.castShadow !== false;
       object.receiveShadow = true;
       for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
         if (material.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -231,8 +259,8 @@ async function loadGame() {
       playableRegions: manifest.playableRegions }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
-    let savedCamera = 'fixed';
-    try { savedCamera = localStorage.getItem('streetskate.cameraMode') || 'fixed'; } catch { /* Use fixed by default. */ }
+    let savedCamera = 'follow';
+    try { savedCamera = localStorage.getItem('streetskate.cameraMode.v2') || 'follow'; } catch { /* Use high follow by default. */ }
     setCameraMode(savedCamera);
 
     const debugTransitions = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -242,10 +270,30 @@ async function loadGame() {
     }
 
     document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
-    document.querySelector('.asset-meta > span').textContent = '136 × 92 m · 3 AREAS';
-    const center = new THREE.Vector3(34, 0, 23);
-    views.overview = { position: [155, 108, 165], target: center.toArray(), caption: 'Three connected areas', index: '01' };
-    views.top = { position: [34, 160, 23.01], target: center.toArray(), caption: 'All three skating areas', index: '—' };
+    document.querySelector('.asset-meta > span').textContent = manifest.dimensions || '136 × 92 m · 3 AREAS';
+    const center = legacyPark ? new THREE.Vector3(34, 0, 23) : new THREE.Vector3(0, 0, -8);
+    if (manifest.views) Object.assign(views, manifest.views);
+    else {
+      views.overview = { position: [155, 108, 165], target: center.toArray(), caption: 'Three connected areas', index: '01' };
+      views.top = { position: [34, 160, 23.01], target: center.toArray(), caption: 'All three skating areas', index: '—' };
+    }
+    const spotNav = document.querySelector('#spot-nav');
+    for (const spot of manifest.spots || []) {
+      const button = document.createElement('button');
+      button.textContent = spot.label; button.dataset.spot = spot.id;
+      button.title = `Start at ${spot.label}`;
+      button.setAttribute('aria-pressed', String(spot.id === 'street'));
+      button.onclick = () => goToSpot(spot.id);
+      spotNav.append(button);
+    }
+    spotNav.hidden = !manifest.spots?.length;
+    if (legacyPark) {
+      document.title = 'StreetSkate — Legacy park';
+      document.querySelector('.edition').textContent = 'LEGACY PARK';
+      const link = document.querySelector('.download');
+      link.href = '/'; link.textContent = 'SOLAR DOCK ↗';
+    }
+    renderer.domElement.tabIndex = 0;
     sun.target.position.copy(center);
     scene.add(sun.target);
     sun.position.copy(center).add(new THREE.Vector3(-25, 65, 10));
@@ -256,7 +304,7 @@ async function loadGame() {
     setMode('skate');
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
-      setMode, setExploreView, setPaused, setCameraMode, controlsVersion: 'thug-controls-v2', rampTuning,
+      setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2', rampTuning,
       // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
       // with deterministic replay/debugging. This never repairs or mutates state.
       captureState: () => captureGameplayState(skater),
@@ -298,7 +346,7 @@ document.querySelector('#lighting').onclick = (event) => {
   sun.intensity = dusk ? 0.65 : 2.8;
   sun.color.set(dusk ? '#86b5ff' : '#fff1d9');
   ambient.intensity = dusk ? 0.8 : 1.3;
-  scene.background.set(dusk ? '#141f32' : '#25363d');
+  scene.background.set(dusk ? '#141f32' : daylightColor);
   scene.fog.color.copy(scene.background);
   event.currentTarget.setAttribute('aria-label', dusk ? 'Switch to afternoon' : 'Switch to blue hour');
 };

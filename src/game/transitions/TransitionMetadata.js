@@ -135,8 +135,10 @@ function pathBounds(points) {
 
 function pathCenter(points) {
   const center = new THREE.Vector3();
-  for (const point of points) center.add(point);
-  if (points.length) center.multiplyScalar(1 / points.length);
+  const count = points.length > 2 && points[0].distanceToSquared(points.at(-1)) < EPSILON
+    ? points.length - 1 : points.length;
+  for (let i = 0; i < count; i++) center.add(points[i]);
+  if (count) center.multiplyScalar(1 / count);
   return center;
 }
 
@@ -152,7 +154,7 @@ export function compileTransitionMetadata(
 ) {
   const transitions = [];
   for (const rail of rails) {
-    const authored = authoring[rail?.name];
+    const authored = rail?.transition || authoring[rail?.name];
     if (!authored) continue;
     const lipPath = (rail.points || []).map(asPoint);
     if (lipPath.length < 2) continue;
@@ -179,7 +181,8 @@ export function transitionMetadataCoverage(
   rails = [],
   authoring = PRODUCTION_TRANSITION_AUTHORING,
 ) {
-  const authoredNames = new Set(Object.keys(authoring));
+  const inlineNames = rails.filter(rail => rail.transition).map(rail => rail.name);
+  const authoredNames = new Set(inlineNames.length ? inlineNames : Object.keys(authoring));
   const presentNames = new Set(rails.map(rail => rail?.name).filter(Boolean));
   const expectedPresent = [...authoredNames].filter(name => presentNames.has(name));
   const missingAuthoredRails = [...authoredNames].filter(name => !presentNames.has(name));

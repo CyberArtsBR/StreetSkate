@@ -1,1 +1,17 @@
-{"version":"2026-10-08-thug-behavior-adaptation","park":"halfnew-expanded","parkAsset":"/assets/park/halfnew.glb?v=fixed-black","playableAreas":3,"rider":"TheanchoURi","collisionVersion":6,"collisionQueries":"bvh-static","rampScaleBaked":1.3,"vertModel":"local-plane-return-v3","contactModel":"four-wheel-v1","controllerModel":"phase1-core","cameraModel":"fixed-and-classic-context-v7","animationModel":"procedural-blended-trick-phases-v5","inputModel":"consumed-trick-queue-v3","motionModel":"crouch-carve-directional-spin-v2"}
+{
+  "version": "2026-10-08-solar-dock",
+  "park": "solar-dock",
+  "parkAsset": "procedural:SolarDockPark",
+  "playableAreas": 4,
+  "rider": "TheanchoURi",
+  "collisionVersion": 7,
+  "collisionQueries": "bvh-static",
+  "rampScaleBaked": 1,
+  "vertModel": "local-plane-return-v3",
+  "contactModel": "four-wheel-v1",
+  "controllerModel": "phase1-core",
+  "cameraModel": "high-behind-follow-v8",
+  "animationModel": "procedural-blended-trick-phases-v5",
+  "inputModel": "consumed-trick-queue-v3",
+  "motionModel": "crouch-carve-directional-spin-v2"
+}

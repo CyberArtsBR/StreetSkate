@@ -54,7 +54,7 @@ export function authoredTransitionRails(
   rails = [],
   authoring = PRODUCTION_TRANSITION_AUTHORING,
 ) {
-  return rails.filter(rail => Boolean(authoring[rail?.name]));
+  return rails.filter(rail => Boolean(rail?.transition || authoring[rail?.name]));
 }
 
 /**

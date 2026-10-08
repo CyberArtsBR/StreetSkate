@@ -113,7 +113,7 @@ export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
-    this.mode = 'fixed';
+    this.mode = 'follow';
     this.position = new THREE.Vector3();
     this.target = new THREE.Vector3();
     this.direction = new THREE.Vector3(0, 0, -1);
@@ -135,7 +135,7 @@ export class FollowCamera {
   }
 
   setMode(mode, player = null) {
-    this.mode = mode === 'classic' ? 'classic' : 'fixed';
+    this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
     if (player) this.snap(player);
   }
 
@@ -160,7 +160,8 @@ export class FollowCamera {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
-    const classic = this.mode === 'classic';
+    const classic = this.mode !== 'fixed';
+    const highFollow = this.mode === 'follow';
     const returning = state.transitionReturning;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
@@ -175,12 +176,14 @@ export class FollowCamera {
         cameraDirectionRate(this.direction, state.travelDirection)));
       if (returning && state.doingTrick) this.trickZoomActive = true;
       if (!returning) this.trickZoomActive = false;
-      const zoomTarget = this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
+      const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
-      const distance = returning ? THPS_CAMERA.classicVertDistance
+      const distance = highFollow ? (returning ? 9 : state.grounded ? 9.5 : 10)
+        : returning ? THPS_CAMERA.classicVertDistance
         : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
-      const height = returning ? THPS_CAMERA.classicVertHeight
+      const height = highFollow ? (returning ? 7 : state.grounded ? 5.4 : 6.2)
+        : returning ? THPS_CAMERA.classicVertHeight
         : state.grounded || state.grindActive ? THPS_CAMERA.height : THPS_CAMERA.airHeight;
       const blend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
       this.distance = THREE.MathUtils.lerp(this.distance, distance * this.zoom, blend);
