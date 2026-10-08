@@ -14,6 +14,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
 import { loadSolarSky } from './park/SolarSky.js';
+import { createTrickGuide } from './game/TrickGuide.js';
 import './style.css';
 
 const container = document.querySelector('#viewport');
@@ -100,6 +101,12 @@ window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: tru
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
+let pausedBeforeTrickGuide = false;
+const trickGuide = createTrickGuide({
+  button: document.querySelector('#trick-guide-button'),
+  onOpen: () => { pausedBeforeTrickGuide = paused; setPaused(true); input.enabled = false; input.clear(); },
+  onClose: () => { input.clear(); input.enabled = loaded && mode === 'skate'; setPaused(pausedBeforeTrickGuide || !document.hasFocus()); },
+});
 
 function applyLighting() {
   sun.intensity = dusk ? 0.65 : solarSky ? 2.1 : 2.8;
@@ -448,9 +455,9 @@ renderer.setAnimationLoop(() => {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
     };
-    if (state.pausePressed) setPaused(!paused);
-    if (state.cameraModePressed) toggleCameraMode();
-    if (!paused) {
+    if (state.pausePressed && !trickGuide.open) setPaused(!paused);
+    if (state.cameraModePressed && !trickGuide.open) toggleCameraMode();
+    if (!paused && !trickGuide.open) {
       skater.update(dt, state, elapsed);
       followCamera.update(skater, dt, state);
       if (state.reset) followCamera.snap(skater);
@@ -471,6 +478,6 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
-  skateAudio.update(skater, loaded && mode === 'skate' && !paused && document.hasFocus());
+  skateAudio.update(skater, loaded && mode === 'skate' && !paused && !trickGuide.open && document.hasFocus());
   renderer.render(scene, camera);
 });

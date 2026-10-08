@@ -35,6 +35,14 @@ export const FLIP_TRICKS = Object.freeze({
 export const DOUBLE_FLIP_TRICKS = Object.freeze({
   Kickflip: { name: 'Double Kickflip', points: 250, roll: 2, pitch: 0, yaw: 0, duration: 0.66 },
   Heelflip: { name: 'Double Heelflip', points: 275, roll: -2, pitch: 0, yaw: 0, duration: 0.68 },
+  Impossible: { name: 'Double Impossible', points: 550, roll: 0, pitch: 2, yaw: 0, duration: 0.78 },
+  'Pop Shove-It': { name: '360 Shove-It', points: 350, roll: 0, pitch: 0, yaw: 1, duration: 0.60 },
+  Hardflip: { name: 'Double Hardflip', points: 650, roll: 2, pitch: 0.55, yaw: 0, duration: 0.78 },
+  'Inward Heelflip': { name: 'Double Inward Heelflip', points: 675, roll: -2, pitch: 0.55, yaw: 0, duration: 0.80 },
+  'Varial Kickflip': { name: '360 Flip', points: 500, roll: 1, pitch: 0, yaw: 1, duration: 0.70 },
+  'Varial Heelflip': { name: 'Laser Flip', points: 550, roll: -1, pitch: 0, yaw: 1, duration: 0.72 },
+  'Double Kickflip': { name: 'Triple Kickflip', points: 600, roll: 3, pitch: 0, yaw: 0, duration: 0.86 },
+  'Double Heelflip': { name: 'Triple Heelflip', points: 625, roll: -3, pitch: 0, yaw: 0, duration: 0.88 },
 });
 
 export const GRAB_TRICKS = Object.freeze({
@@ -63,6 +71,30 @@ export const GRIND_TRICKS = Object.freeze({
 
 export const BOARDSLIDE = Object.freeze({ name: 'Boardslide', points: 190 });
 
+export const DOUBLE_GRAB_TRICKS = Object.freeze({
+  Melon: { name: 'Method', points: 350 },
+  Indy: { name: 'Stalefish', points: 350 },
+  Nosegrab: { name: 'Rocket Air', points: 450 },
+  Tailgrab: { name: 'Seatbelt', points: 400 },
+  Japan: { name: 'Mute', points: 325 },
+  Madonna: { name: 'Judo', points: 450 },
+  Benihana: { name: 'Crail', points: 425 },
+  Airwalk: { name: 'Christ Air', points: 600 },
+});
+
+export const DOUBLE_GRIND_TRICKS = Object.freeze({
+  '50-50': { name: 'Lipslide', points: 300 },
+  Boardslide: { name: 'Lipslide', points: 300 },
+  Noseslide: { name: 'Noseblunt', points: 450 },
+  Tailslide: { name: 'Bluntslide', points: 450 },
+  Nosegrind: { name: 'Hurricane', points: 500 },
+  '5-0': { name: 'Salad', points: 375 },
+  Overcrook: { name: 'Noseblunt', points: 450 },
+  Crook: { name: 'Hurricane', points: 500 },
+  Feeble: { name: 'Suski', points: 400 },
+  Smith: { name: 'Salad', points: 375 },
+});
+
 export const FLATLAND_TRICKS = Object.freeze({
   'grind+grind': { name: 'Pogo', points: 200, instability: 0.34 },
   'flip+flip': { name: 'Wrap Around', points: 225, instability: 0.30 },
@@ -82,6 +114,10 @@ export const MANUALS = Object.freeze({
 
 export function flipFor(direction) { return FLIP_TRICKS[direction] || FLIP_TRICKS[DIR.NONE]; }
 export function doubleFlipFor(name) { return DOUBLE_FLIP_TRICKS[name] || null; }
+export function flipUpgradeFor(activeName, baseName) {
+  const second = doubleFlipFor(baseName);
+  return activeName === baseName || activeName === second?.name ? doubleFlipFor(activeName) : null;
+}
 export function grabFor(direction) { return GRAB_TRICKS[direction] || GRAB_TRICKS[DIR.NONE]; }
 export function grindFor(direction, boardslide = false) { return boardslide ? BOARDSLIDE : (GRIND_TRICKS[direction] || GRIND_TRICKS[DIR.NONE]); }
 export function grindPresentation(name) { return grindProfile(name); }

@@ -61,4 +61,8 @@ export const GRAB_POSES = Object.freeze({
   Nosegrab: [0.23, 0, 0], Tailgrab: [-0.23, 0, 0],
   Japan: [-0.18, 0.12, -0.28], Madonna: [0.18, -0.08, 0.12],
   Benihana: [-0.22, 0.1, 0.1], Airwalk: [0.08, 0, 0],
+  Method: [-0.32, 0.18, -0.42], Stalefish: [-0.18, -0.18, -0.20],
+  'Rocket Air': [0.48, 0, 0], Seatbelt: [-0.28, 0.24, 0.16],
+  Mute: [-0.18, 0.12, 0.22], Judo: [0.20, -0.12, -0.16],
+  Crail: [0.26, -0.24, 0.12], 'Christ Air': [0.12, 0, 0.15],
 });

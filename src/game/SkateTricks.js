@@ -1,4 +1,4 @@
-import { directionKey, flipFor, doubleFlipFor, grabFor, grindFor, FLATLAND_TRICKS, MANUALS } from './TrickCatalog.js';
+import { directionKey, flipFor, flipUpgradeFor, grabFor, grindFor, DOUBLE_GRAB_TRICKS, DOUBLE_GRIND_TRICKS, FLATLAND_TRICKS, MANUALS } from './TrickCatalog.js';
 
 const TAP_WINDOW = 0.46;
 const COMBO_WINDOW = 0.38;
@@ -19,6 +19,8 @@ export class SkateTricks {
     this.pendingAirGrab = null;
     this.airTrickQueue = [];
     this.buttonBuffer = [];
+    this.variantTaps = {};
+    this.wasAirborne = false;
     this.combo = [];
     this.comboBase = 0;
     this.comboMultiplier = 0;
@@ -42,6 +44,7 @@ export class SkateTricks {
     this.pendingAirFlip = null;
     this.pendingAirGrab = null;
     this.buttonBuffer.length = 0;
+    this.variantTaps = {};
     this.clearAirQueue();
   }
 
@@ -59,6 +62,12 @@ export class SkateTricks {
     if (context.bailing) { this.cancelCombo(); return {}; }
     const events = {};
     const direction = directionKey(input.steer, input.drive);
+    if (context.grounded && this.wasAirborne) this.variantTaps = {};
+    this.wasAirborne = !context.grounded;
+    const requestedGrab = input.grabPressed && !context.manual && !context.grinding
+      ? this.variantFor('grab', grabFor(direction), DOUBLE_GRAB_TRICKS) : null;
+    const requestedGrind = input.grindPressed && !context.manual && !context.wallRiding
+      ? this.variantFor('grind', grindFor(direction, input.brake || input.vertExit), DOUBLE_GRIND_TRICKS) : null;
 
     for (const tap of input.directionTaps || []) {
       if ((tap === 'up' || tap === 'down') && !context.grinding && context.speed > 0.55) {
@@ -94,7 +103,7 @@ export class SkateTricks {
     }
 
     if (context.grounded && !context.grinding && !context.manual && input.grabPressed) {
-      this.pendingAirGrab = { trick: { ...grabFor(direction) }, expires: this.time + AIR_FLIP_GRACE };
+      this.pendingAirGrab = { trick: { ...requestedGrab }, expires: this.time + AIR_FLIP_GRACE };
     }
     if (!input.grabHeld && !input.grabPressed) this.pendingAirGrab = null;
 
@@ -105,12 +114,12 @@ export class SkateTricks {
 
     if (!context.grounded && !context.grinding && !context.wallRiding) {
       const flip = input.flipPressed ? flipFor(direction) : this.pendingAirFlip?.trick;
-      const grab = input.grabPressed ? grabFor(direction) : input.grabHeld && this.pendingAirGrab?.trick;
+      const grab = requestedGrab || (input.grabHeld && this.pendingAirGrab?.trick);
       this.pendingAirFlip = null;
       this.pendingAirGrab = null;
       if (flip) {
-        const upgrade = input.flipPressed && context.flipState?.name === flip.name
-          && context.flipState.progress < 0.62 && doubleFlipFor(flip.name);
+        const upgrade = input.flipPressed && context.flipState?.progress < 0.62
+          && flipUpgradeFor(context.flipState.name, flip.name);
         if (upgrade) events.flipUpgrade = { ...upgrade };
         else this.queueAirTrick('flip', flip);
       }
@@ -126,14 +135,14 @@ export class SkateTricks {
           break;
         }
       }
-      if (input.grindPressed) events.grind = { ...grindFor(direction, input.brake || input.vertExit) };
+      if (requestedGrind) events.grind = { ...requestedGrind };
     }
     if (context.grinding || context.wallRiding) {
       this.pendingAirFlip = null;
       this.pendingAirGrab = null;
       if (context.grinding && input.grindPressed) {
-        const next = grindFor(direction, input.brake || input.vertExit);
-        if (next.name !== context.grindName) events.grindChange = { ...next };
+        const next = requestedGrind;
+        if (next && next.name !== context.grindName) events.grindChange = { ...next };
       }
     }
 
@@ -157,6 +166,16 @@ export class SkateTricks {
   }
 
   clearAirQueue() { this.airTrickQueue.length = 0; }
+
+  variantFor(kind, base, variants) {
+    const previous = this.variantTaps[kind];
+    if (previous?.name === base.name && this.time - previous.time <= COMBO_WINDOW && variants[base.name]) {
+      delete this.variantTaps[kind];
+      return variants[base.name];
+    }
+    this.variantTaps[kind] = { name: base.name, time: this.time };
+    return base;
+  }
 
   queueAirTrick(kind, trick) {
     if (this.airTrickQueue.length >= MAX_QUEUED_AIR_TRICKS) return;

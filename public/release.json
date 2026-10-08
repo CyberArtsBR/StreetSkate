@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-08-continuous-ramps-hdri-speed",
+  "version": "2026-10-08-expanded-trick-book",
   "park": "solar-dock",
   "parkAsset": "procedural:SolarDockPark",
   "playableAreas": 4,
@@ -23,5 +23,7 @@
   "groundCruiseMps": 17,
   "crouchedCruiseMps": 19,
   "groundSpeedCapMps": 23,
-  "grindSpeedCapMps": 23
+  "grindSpeedCapMps": 23,
+  "trickModel": "22-new-double-tap-variants-v1",
+  "trickCount": 61
 }

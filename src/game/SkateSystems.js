@@ -41,6 +41,12 @@ export const GRIND_PROFILES = Object.freeze({
   Feeble: PROFILE('Feeble', 'rearTruck', 0.052, 1.30, 47, { pitch: -0.07, yaw: -0.10, roll: 0.12 }, { minAlignment: 0.28 }),
   Crook: PROFILE('Crook', 'frontTruck', 0.054, 1.34, 50, { pitch: 0.09, yaw: 0.10, roll: 0.085 }, { minAlignment: 0.28 }),
   Overcrook: PROFILE('Overcrook', 'frontTruck', 0.054, 1.38, 52, { pitch: 0.10, yaw: -0.10, roll: -0.085 }, { minAlignment: 0.28 }),
+  Lipslide: PROFILE('Lipslide', 'deckCenter', 0.024, 1.25, 46, { yaw: -Math.PI / 2, roll: -0.045 }, { minAlignment: 0.12, maxAlignment: 0.85 }),
+  Noseblunt: PROFILE('Noseblunt', 'noseDeck', 0.030, 1.48, 60, { pitch: -0.62, yaw: Math.PI / 2, roll: 0.06, visualLift: 0.22 }, { minAlignment: 0.16, maxAlignment: 0.85 }),
+  Bluntslide: PROFILE('Bluntslide', 'tailDeck', 0.030, 1.48, 60, { pitch: 0.62, yaw: -Math.PI / 2, roll: -0.06, visualLift: 0.22 }, { minAlignment: 0.16, maxAlignment: 0.85 }),
+  Hurricane: PROFILE('Hurricane', 'rearTruck', 0.055, 1.48, 62, { pitch: -0.16, yaw: Math.PI - 0.30, roll: 0.12 }, { minAlignment: 0.25 }),
+  Salad: PROFILE('Salad', 'rearTruck', 0.056, 1.36, 52, { pitch: -0.20, yaw: -0.32, roll: 0.10 }, { minAlignment: 0.25 }),
+  Suski: PROFILE('Suski', 'rearTruck', 0.056, 1.38, 54, { pitch: -0.22, yaw: 0.32, roll: -0.10 }, { minAlignment: 0.25 }),
 });
 
 export function grindProfile(name = '50-50') {

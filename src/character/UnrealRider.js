@@ -161,6 +161,14 @@ export class UnrealRider {
       case 'Japan': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, -0.04) : null;
       case 'Madonna': return side === front ? this.boardPoint(board, sign * 0.08, 0.05, -0.43) : null;
       case 'Benihana': return side === rear ? this.boardPoint(board, sign * 0.08, 0.05, 0.35) : null;
+      case 'Method': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, 0.08) : null;
+      case 'Stalefish': return side === rear ? this.boardPoint(board, -sign * 0.14, 0.04, 0.16) : null;
+      case 'Rocket Air': return this.boardPoint(board, sign * 0.09, 0.05, -0.41);
+      case 'Seatbelt': return side === front ? this.boardPoint(board, 0.08 * sign, 0.05, 0.4) : null;
+      case 'Mute': return side === front ? this.boardPoint(board, sign * 0.14, 0.04, -0.04) : null;
+      case 'Judo': return side === front ? this.boardPoint(board, 0, 0.05, -0.4) : null;
+      case 'Crail': return side === rear ? this.boardPoint(board, 0, 0.05, -0.4) : null;
+      case 'Christ Air': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, 0) : null;
       default: return null;
     }
   }
@@ -270,6 +278,13 @@ export class UnrealRider {
     if (grabState?.name === 'Japan') { this.ft[rear].y += 0.2 * grab; this.ft[rear].x += (rear === 'l' ? -1 : 1) * 0.12 * grab; }
     if (grabState?.name === 'Madonna') { this.ft[rear].y += 0.22 * grab; this.ft[rear].z += 0.2 * grab; }
     if (grabState?.name === 'Benihana') { this.ft[front].y += 0.32 * grab; this.ft[front].z -= 0.28 * grab; }
+    if (grabState?.name === 'Judo') { this.ft[rear].y += 0.22 * grab; this.ft[rear].x += (rear === 'l' ? -1 : 1) * 0.36 * grab; this.ft[rear].z -= 0.18 * grab; }
+    if (grabState?.name === 'Rocket Air') { this.ft[rear].z -= 0.18 * grab; this.ft[front].z -= 0.08 * grab; }
+    if (grabState?.name === 'Christ Air') {
+      this.ft.l.y += 0.24 * grab; this.ft.r.y += 0.24 * grab;
+      this.ft.l.x -= 0.32 * grab; this.ft.r.x += 0.32 * grab;
+      this.ft.l.z -= 0.20 * grab; this.ft.r.z += 0.20 * grab;
+    }
     if (grabState?.name === 'Airwalk') {
       this.ft.l.y += 0.28 * grab; this.ft.r.y += 0.28 * grab;
       this.ft.l.x -= 0.2 * grab; this.ft.r.x += 0.2 * grab;
@@ -286,8 +301,8 @@ export class UnrealRider {
       const kneePole = V(restPoint.x + 0.35, 0.25, restPoint.z);
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), this.root.localToWorld(kneePole));
       const releasedFoot = (grab > 0.01 && (
-        (['Japan', 'Madonna'].includes(grabState?.name) && side === rear)
-        || (grabState?.name === 'Benihana' && side === front) || grabState?.name === 'Airwalk'));
+        (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
+        || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
       const footQ = deckLocked && !releasedFoot ? board.root.getWorldQuaternion(Q()) : rootQ.clone();
       setWorldQ(foot, footQ.multiply(this.feet[side].q));
     }
@@ -309,6 +324,7 @@ export class UnrealRider {
       if (grabState?.name === 'Madonna' && side === rear) target.addScaledVector(V(-0.04, 0.34, sign * 0.26), grab);
       if (grabState?.name === 'Japan' && side === rear) target.addScaledVector(V(-0.03, 0.18, sign * 0.14), grab);
       if (grabState?.name === 'Airwalk') target.addScaledVector(V(0, 0.18, sign * 0.2), grab);
+      if (grabState?.name === 'Christ Air' && side === rear) target.addScaledVector(V(0, 0.30, sign * 0.38), grab);
       const handstand = flatland === 'Handstand' && board;
       const reach = handstand ? this.boardPoint(board, sign * 0.14, 0.04, 0) : grabTarget;
       const world = this.root.localToWorld(target.clone());
