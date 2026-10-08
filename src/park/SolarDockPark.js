@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createSurfaceMaterials, createGraffitiMaterial } from './SurfaceMaterials.js';
 
 // Metres, Y up. Every riding surface is also its collision surface; paint,
 // lighting and scenery are deliberately excluded from the collision model.
@@ -11,8 +12,7 @@ export function createSolarDockPark() {
   const rails = [];
   const batches = new Map();
   const materials = {
-    concrete: new THREE.MeshStandardMaterial({ color: '#cfbda0', roughness: 0.87 }),
-    bowl: new THREE.MeshStandardMaterial({ color: '#e4d9be', roughness: 0.7 }),
+    ...createSurfaceMaterials(),
     graphite: new THREE.MeshStandardMaterial({ color: '#323c40', roughness: 0.72 }),
     amber: new THREE.MeshStandardMaterial({ color: '#edab38', roughness: 0.56 }),
     turquoise: new THREE.MeshStandardMaterial({ color: '#247c80', metalness: 0.48, roughness: 0.35 }),
@@ -24,11 +24,23 @@ export function createSolarDockPark() {
 
   function add(geometry, material, surface = null, railId = null) {
     // All batches use the same attributes, regardless of the primitive source.
+    const authoredUV = geometry.userData.authoredUV;
     if (geometry.index) { const original = geometry; geometry = geometry.toNonIndexed(); original.dispose(); }
     for (const name of Object.keys(geometry.attributes)) {
-      if (name !== 'position' && name !== 'normal') geometry.deleteAttribute(name);
+      if (name !== 'position' && name !== 'normal' && name !== 'uv') geometry.deleteAttribute(name);
     }
     if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    if (!authoredUV) {
+      const positions = geometry.attributes.position, normals = geometry.attributes.normal;
+      const uv = new Float32Array(positions.count * 2);
+      const scale = material === 'wood' ? 2.44 : 3.6;
+      for (let i = 0; i < positions.count; i++) {
+        const nx = Math.abs(normals.getX(i)), ny = Math.abs(normals.getY(i)), nz = Math.abs(normals.getZ(i));
+        uv[i * 2] = (nx > ny && nx > nz ? positions.getZ(i) : positions.getX(i)) / scale;
+        uv[i * 2 + 1] = (ny >= nx && ny >= nz ? positions.getZ(i) : positions.getY(i)) / scale;
+      }
+      geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    }
     if (!batches.has(material)) batches.set(material, []);
     batches.get(material).push(geometry);
     if (surface) {
@@ -43,11 +55,12 @@ export function createSolarDockPark() {
     add(new THREE.BoxGeometry(w, h, d).translate(x, y, z), material, surface);
   }
 
-  function triangles(points, indices, material, surface = 'rideable') {
+  function triangles(points, indices, material, surface = 'rideable', uv = null) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
+    if (uv) { geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geometry.userData.authoredUV = true; }
     add(geometry, material, surface);
   }
 
@@ -81,7 +94,7 @@ export function createSolarDockPark() {
 
   // Extruded continuous profile. Upper faces always point up; side/back faces
   // are separate so smooth shading never rounds a hard collision edge.
-  function profile(x, width, samples, material = 'graphite', yaw = 0, originZ = 0) {
+  function profile(x, width, samples, material = 'wood', yaw = 0, originZ = 0) {
     const transform = ([px, py, pz]) => [
       x + px * Math.cos(yaw) + pz * Math.sin(yaw), py,
       originZ - px * Math.sin(yaw) + pz * Math.cos(yaw),
@@ -93,7 +106,12 @@ export function createSolarDockPark() {
       const a = i * 2, b = a + 2;
       indices.push(...(descendingZ ? [a, a + 1, b, a + 1, b + 1, b] : [a, b, a + 1, a + 1, b, b + 1]));
     }
-    triangles(points, indices, material);
+    let arcLength = 0;
+    const uv = samples.flatMap(([z, y], i) => {
+      if (i) arcLength += Math.hypot(z - samples[i - 1][0], y - samples[i - 1][1]);
+      return [0, arcLength / 2.44, width / 2.44, arcLength / 2.44];
+    });
+    triangles(points, indices, material, 'rideable', uv);
     for (const side of [-1, 1]) {
       const vertices = [], faces = [];
       for (let i = 0; i < samples.length - 1; i++) {
@@ -124,7 +142,7 @@ export function createSolarDockPark() {
     });
     // The deck belongs to the same profile: no hidden back wall at the coping.
     samples.push([-radius - 2.5, radius]);
-    const transform = profile(x, width, samples, 'graphite', yaw, z);
+    const transform = profile(x, width, samples, 'wood', yaw, z);
     rail(`${name} coping`, [-width / 2, width / 2].map(px => transform([px, radius + 0.025, -radius])),
       { coping: true, transition: transition(name, radius >= 4 ? 'VERT' : 'MINI') });
     for (const side of [-1, 1]) {
@@ -251,6 +269,31 @@ export function createSolarDockPark() {
   sign('02 / ORBIT', 'DEEP POOL / CONTINUOUS COPING', [-28, 0.025, -5], 12, true);
   sign('03 / FLOW', 'TWIN TRANSITIONS / 3.8 M', [-28, 0.025, 45], 12, true);
   sign('04 / MEGA', '11 M ROLL-IN / 7 M GAP', [32, 11.025, 55], 14, true);
+  function mural(word, position, width, height, yaw = 0, seed = 15) {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), createGraffitiMaterial(word, seed));
+    mesh.position.set(...position); mesh.rotation.y = yaw;
+    mesh.receiveShadow = true; mesh.userData.castShadow = false;
+    park.add(mesh);
+  }
+  mural('FLOW', [-28, 1.9, 16.69], 17, 3.1, Math.PI);
+  mural('SOLAR', [-28, 1.9, 39.31], 17, 3.1);
+  mural('AIRTIME', [22.99, 6.5, 47], 9, 3.4, -Math.PI / 2, 39);
+  mural('NO LIMITS', [-2, 2.6, -64.51], 23, 3.8, Math.PI, 73);
+  // Pool mural conforms to the actual curved wall instead of floating in space.
+  const muralPoints = [], muralUV = [], muralIndices = [];
+  for (let row = 0; row <= 8; row++) for (let col = 0; col <= 24; col++) {
+    const angle = 0.3 + row / 8 * 0.9, theta = -Math.PI / 2 - 0.55 + col / 24 * 1.1;
+    const r = bottomRadius + depth * Math.sin(angle) - 0.014 * Math.sin(angle);
+    muralPoints.push(cx + r * Math.cos(theta), -depth * Math.cos(angle) + 0.014 * Math.cos(angle), cz + r * Math.sin(theta));
+    muralUV.push(col / 24, row / 8);
+    if (row < 8 && col < 24) { const a = row * 25 + col; muralIndices.push(a, a + 1, a + 25, a + 1, a + 26, a + 25); }
+  }
+  const muralGeometry = new THREE.BufferGeometry();
+  muralGeometry.setAttribute('position', new THREE.Float32BufferAttribute(muralPoints, 3));
+  muralGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(muralUV, 2));
+  muralGeometry.setIndex(muralIndices); muralGeometry.computeVertexNormals();
+  const poolMural = new THREE.Mesh(muralGeometry, createGraffitiMaterial('ORBIT', 53));
+  poolMural.userData.castShadow = false; poolMural.receiveShadow = true; park.add(poolMural);
   for (let z = -47; z <= 47; z += 8) box(17.2, 0.012, z, 0.12, 0.015, 3, 'paint');
 
   // Distant low-poly desert and solar arrays stay outside the skating boundary.

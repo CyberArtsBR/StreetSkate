@@ -6,6 +6,7 @@ import { SkateTricks } from './SkateTricks.js';
 import { directionKey, grindFor } from './TrickCatalog.js';
 import { constrainToPark } from './ParkBoundaries.js';
 import { flipTurns } from '../character/TrickMotion.js';
+import { groundForwardFromHeading } from './core/GroundMotor.js';
 
 export const MOVEMENT_STATE = Object.freeze({
   GROUND: 'GROUND',
@@ -82,16 +83,7 @@ export class StreetPhysics {
   }
 
   groundDirection() {
-    this.forward.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
-    const facingInto = this.forward.dot(this.normal);
-    this.forward.projectOnPlane(this.normal);
-    // At a truly vertical face the horizontal nose projects to zero. Use the
-    // limiting climb tangent; preserve yaw and let signed travel decide descent.
-    if (this.forward.lengthSq() < 1e-8) {
-      this.forward.copy(UP).projectOnPlane(this.normal)
-        .multiplyScalar(facingInto > 0 ? -1 : 1);
-    }
-    this.forward.normalize();
+    this.forward.copy(groundForwardFromHeading({ heading: this.heading, normal: this.normal }));
   }
 
   airDirection() {

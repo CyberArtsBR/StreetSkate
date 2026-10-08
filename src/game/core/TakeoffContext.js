@@ -60,8 +60,10 @@ export function captureTakeoffContext({
     ? Math.max(0, Number(rampLaunchMemory) || 0)
     : 0;
   const rampBonus = Math.max(currentRampBonus, rememberedRampBonus);
-  const takeoffFacing = horizontal(forward, travelDirection);
-  const takeoffHeading = headingFromFacing(takeoffFacing, heading);
+  // A surface-projected forward vector approaches vertical at the coping.
+  // Flattening that vector magnifies tiny facet errors into a sideways yaw.
+  const takeoffHeading = Number.isFinite(heading) ? heading : headingFromFacing(forward);
+  const takeoffFacing = new THREE.Vector3(-Math.sin(takeoffHeading), 0, -Math.cos(takeoffHeading));
   const takeoffStance = Number(stance) || 1;
   const rampContext = Boolean(transition)
     || rampBonus > 0

@@ -165,12 +165,18 @@ export class FollowCamera {
     const returning = state.transitionReturning;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
-      if (returning && !this.wasReturning) this.vertDirection.copy(this.direction);
+      if (returning && !this.wasReturning) {
+        this.vertDirection.copy(highFollow && state.returnDirection ? state.returnDirection : this.direction);
+        if (highFollow) { this.lookYaw = 0; this.lookTilt = 0; this.lookHold = 0; }
+      }
       if (returning) this.returnHold = THPS_CAMERA.landingHoldTime;
       else this.returnHold = Math.max(0, this.returnHold - dt);
-      // Travel, not the spinning deck, steers the classic rig. Keep the coping
-      // side through return airs and briefly after landing to avoid a 180 snap.
-      if (returning || this.returnHold > 0) this.direction.copy(this.vertDirection);
+      // High Follow anticipates the downhill return as soon as vert air begins.
+      // Classic retains its original ramp-side framing. Trick spins steer neither.
+      if (returning || this.returnHold > 0) {
+        if (highFollow) this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, 18));
+        else this.direction.copy(this.vertDirection);
+      }
       else if (!state.bailing) this.direction.copy(smoothCameraDirection(
         this.direction, state.travelDirection, dt,
         cameraDirectionRate(this.direction, state.travelDirection)));

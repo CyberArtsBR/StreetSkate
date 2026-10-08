@@ -65,6 +65,7 @@ export function captureCameraState(player, {
     movementState: player?.movementState ?? null,
     transitionActive: Boolean(player?.transitionAir),
     transitionReturning: Boolean(player?.transitionAir && !player.transitionAir.transferring),
+    returnDirection: horizontalUnit(player?.transitionAir?.frame?.rampInward),
     grindActive: Boolean(player?.grind),
     manualActive: Boolean(player?.manual),
     doingTrick: Boolean(player?.flipState || player?.grabState),

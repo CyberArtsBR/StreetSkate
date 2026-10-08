@@ -235,26 +235,26 @@ export function resolveGroundPropulsion({
 
 
 /**
- * Rebuild the board tangent from player-authored horizontal heading and the
- * current support normal. This matches StreetPhysics.groundDirection(), including
- * the limiting tangent used on near-vertical faces, but performs no runtime mutation.
+ * Rebuild the board tangent within the heading's vertical plane. Shared by the
+ * ground motor, runtime forward and wheel probes, including near-vertical faces.
  */
 export function groundForwardFromHeading({
   heading = 0,
   normal = null,
+  out = new THREE.Vector3(),
 } = {}) {
-  const supportNormal = normal?.clone?.() || new THREE.Vector3(0, 1, 0);
-  const forward = new THREE.Vector3(
+  const supportNormal = normal || UP;
+  const forward = out.set(
     -Math.sin(Number(heading) || 0),
     0,
     -Math.cos(Number(heading) || 0),
   );
+  // Intersect the heading's vertical plane with the support plane. Orthogonal
+  // projection instead introduces lateral travel on near-vertical bowl facets.
   const facingInto = forward.dot(supportNormal);
-  forward.projectOnPlane(supportNormal);
-  if (forward.lengthSq() < 1e-8) {
-    forward.copy(UP).projectOnPlane(supportNormal)
-      .multiplyScalar(facingInto > 0 ? -1 : 1);
-  }
+  const ny = Math.max(0.001, Math.abs(supportNormal.y));
+  forward.multiplyScalar(ny);
+  forward.y = -facingInto;
   if (forward.lengthSq() < 1e-8) return new THREE.Vector3(0, 0, -1);
   return forward.normalize();
 }

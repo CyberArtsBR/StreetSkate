@@ -40,9 +40,23 @@ No imported textures or newly downloaded assets are needed for the park.
 
 High Follow is the default: 9.5 metres behind, 5.4 metres above the rider anchor
 on the ground, with extra elevation in the air. It tracks travel rather than
-trick rotation, holds the ramp side during vert return, and retains occlusion
+trick rotation, moves behind the downhill direction at vert takeoff, and retains occlusion
 clearance. C / R3 cycles High Follow → Classic → Fixed. Preferences use the
 new `streetskate.cameraMode.v2` key to retire the earlier fixed-view default.
+
+## Material and return-air update
+
+Original canvas-generated concrete and plywood materials include grain, seams,
+screws, aggregate and bump relief. Ramp UVs measure distance along the surface
+so plywood stays proportional through a transition. Transparent graffiti appears
+on ramp walls, the mega structure and a conforming patch on the bowl wall.
+Materials are created once and share the existing render batches.
+
+Takeoff orientation uses authored heading instead of flattening a projected ramp
+tangent. Ground motion and wheel contact intersect the heading's vertical plane
+with the support plane, preventing steep triangle normals from introducing a
+lateral heading. High Follow turns toward the transition's inward return axis
+at takeoff with exponential rate 18/s; Classic and Fixed retain their modes.
 
 ## Release scope
 

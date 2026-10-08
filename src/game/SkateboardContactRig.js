@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { groundForwardFromHeading } from './core/GroundMotor.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -109,9 +110,7 @@ export class SkateboardContactRig {
   }
 
   basis(heading, normal, target = this._basis) {
-    target.forward.set(-Math.sin(heading), 0, -Math.cos(heading)).projectOnPlane(normal);
-    if (target.forward.lengthSq() < 1e-8) target.forward.set(0, 0, -1).projectOnPlane(normal);
-    target.forward.normalize();
+    groundForwardFromHeading({ heading, normal, out: target.forward });
     target.back.copy(target.forward).negate();
     target.right.crossVectors(target.forward, normal);
     if (target.right.lengthSq() < 1e-8) target.right.set(1, 0, 0);
@@ -261,9 +260,7 @@ export class SkateboardContactRig {
     correction = clamp(correction, -correctionDown, correctionUp);
     state.position.copy(position).addScaledVector(axis, correction);
 
-    basis.forward.set(-Math.sin(heading), 0, -Math.cos(heading));
-    const horizontalForward = this._scratchB.copy(basis.forward).normalize();
-    const surfaceForward = this._scratchC.copy(horizontalForward).projectOnPlane(state.normal).normalize();
+    const surfaceForward = groundForwardFromHeading({ heading, normal: state.normal, out: this._scratchC });
     const surfaceRight = this._scratchD.crossVectors(surfaceForward, state.normal).normalize();
     state.pitch = Math.atan2(surfaceForward.y, Math.hypot(surfaceForward.x, surfaceForward.z));
     state.roll = Math.atan2(surfaceRight.y, Math.hypot(surfaceRight.x, surfaceRight.z));
