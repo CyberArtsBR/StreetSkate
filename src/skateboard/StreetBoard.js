@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
-import { flipMotion, GRAB_POSES } from '../character/TrickMotion.js';
+import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -11,6 +11,8 @@ export class StreetBoard {
     this.root = new THREE.Group();
     this.root.name = 'street-board';
     this._rotation = new THREE.Euler();
+    this._poseQuaternion = new THREE.Quaternion();
+    this.poseReady = false;
     this.contactRig = { ...PRODUCTION_BOARD_CONTACT_RIG };
   }
 
@@ -85,9 +87,13 @@ export class StreetBoard {
     return this.root.localToWorld(target);
   }
 
-  update({ airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
+  resetPresentation() {
+    this.poseReady = false;
+  }
+
+  update({ presentation = null, airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grind = null, grindBalance = 0, wallRide = null, bail = false, bailProgress = 0,
-    stance = 1, flatland = null, time = 0 }) {
+    stance = 1, flatland = null, time = 0, dt = 1 / 60 }) {
     const grindPose = grind?.profile?.presentation;
     this.root.position.set(0,
       this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);
@@ -97,10 +103,12 @@ export class StreetBoard {
     let z = grabPose[2] * grabWeight;
 
     if (flipState) {
-      const p = flipMotion(flipState.progress).rotation;
-      x += p * Math.PI * 2 * (flipState.pitch || 0);
-      y += p * Math.PI * 2 * (flipState.yaw || 0);
-      z += p * Math.PI * 2 * (flipState.roll || 0);
+      const turns = flipTurns(flipState);
+      x += turns.pitch * Math.PI * 2;
+      y += turns.yaw * Math.PI * 2;
+      z += turns.roll * Math.PI * 2;
+    } else if (airborne && !grabState && !bail) {
+      x += popMotion(presentation?.popProgress ?? 1);
     }
     if (manual === 'manual') x -= 0.16 + clamp(manualBalance, -1, 1) * 0.035;
     if (manual === 'noseManual') x += 0.16 - clamp(manualBalance, -1, 1) * 0.035;
@@ -139,6 +147,11 @@ export class StreetBoard {
     }
 
     this._rotation.set(x, y, z);
-    this.root.rotation.copy(this._rotation);
+    this._poseQuaternion.setFromEuler(this._rotation);
+    // Flips follow their complete rotation trajectory exactly. Ordinary pose
+    // changes crossfade so manuals/grinds don't snap to a different deck angle.
+    if (flipState || bail || !this.poseReady) this.root.quaternion.copy(this._poseQuaternion);
+    else this.root.quaternion.slerp(this._poseQuaternion, 1 - Math.exp(-22 * Math.max(0, dt)));
+    this.poseReady = true;
   }
 }

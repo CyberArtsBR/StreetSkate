@@ -220,6 +220,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
       speedState,
       steer: this.steer,
       manual: Boolean(this.manual),
+      crouched: Boolean(input.ollieHeld),
       reentryRemaining: this.rampReentrySteerLock,
       drive,
       brake: input.brake,

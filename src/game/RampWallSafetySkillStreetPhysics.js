@@ -106,6 +106,10 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
   }
 
   stepAir(dt, input = {}, drive, before) {
+    if (this.airTime <= 0) {
+      this.airTurnHoldTime = 0;
+      this.airTurnDirection = 0;
+    }
     this.airTime += dt;
 
     // Air orientation is anchored to takeoff facing every fixed step. Only the
@@ -124,6 +128,9 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       airHeading: this.airHeading,
       airSpin: this.airSpin,
       turnInput,
+      directSpinInput: input.spin,
+      turnHoldTime: this.airTurnHoldTime || 0,
+      previousTurnDirection: this.airTurnDirection || 0,
       velocityY: this.velocity.y,
       gravity: PHYSICS.gravity,
       dt,
@@ -132,6 +139,8 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       ? this.coreController.resolveAirMotion(airContext)
       : resolveAirMotion(airContext);
     this.airSpin = air.airSpin;
+    this.airTurnHoldTime = air.turnHoldTime;
+    this.airTurnDirection = air.turnDirection;
     this.heading = air.heading;
     this.airDirection();
     this.velocity.y = air.velocityY;

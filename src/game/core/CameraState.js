@@ -67,5 +67,7 @@ export function captureCameraState(player, {
     transitionReturning: Boolean(player?.transitionAir && !player.transitionAir.transferring),
     grindActive: Boolean(player?.grind),
     manualActive: Boolean(player?.manual),
+    doingTrick: Boolean(player?.flipState || player?.grabState),
+    bailing: Boolean(player?.bailTime > 0),
   });
 }

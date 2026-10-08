@@ -31,6 +31,12 @@ export const FLIP_TRICKS = Object.freeze({
   [DIR.DOWN_RIGHT]: { name: 'Varial Heelflip', points: 275, roll: -1, pitch: 0, yaw: 0.5, duration: 0.56 },
 });
 
+// Double taps extend the matching flip; a different direction queues a new trick.
+export const DOUBLE_FLIP_TRICKS = Object.freeze({
+  Kickflip: { name: 'Double Kickflip', points: 250, roll: 2, pitch: 0, yaw: 0, duration: 0.66 },
+  Heelflip: { name: 'Double Heelflip', points: 275, roll: -2, pitch: 0, yaw: 0, duration: 0.68 },
+});
+
 export const GRAB_TRICKS = Object.freeze({
   [DIR.NONE]:       { name: 'Indy', points: 100 },
   [DIR.LEFT]:       { name: 'Melon', points: 150 },
@@ -75,6 +81,7 @@ export const MANUALS = Object.freeze({
 });
 
 export function flipFor(direction) { return FLIP_TRICKS[direction] || FLIP_TRICKS[DIR.NONE]; }
+export function doubleFlipFor(name) { return DOUBLE_FLIP_TRICKS[name] || null; }
 export function grabFor(direction) { return GRAB_TRICKS[direction] || GRAB_TRICKS[DIR.NONE]; }
 export function grindFor(direction, boardslide = false) { return boardslide ? BOARDSLIDE : (GRIND_TRICKS[direction] || GRIND_TRICKS[DIR.NONE]); }
 export function grindPresentation(name) { return grindProfile(name); }

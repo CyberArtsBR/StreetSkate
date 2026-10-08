@@ -30,6 +30,14 @@ export const THPS_CAMERA = Object.freeze({
   reverseDotThreshold: -0.18,
   positionFollowRate: 9.5,
   targetFollowRate: 12.0,
+  verticalFollowRate: 14,
+  vertVerticalFollowRate: 24,
+  maximumFollowLag: 1.4,
+  classicVertDistance: 3.6,
+  classicVertHeight: 4.4,
+  classicGrindZoom: 0.94,
+  classicTrickZoom: 0.92,
+  landingHoldTime: 0.18,
 });
 
 function wrapAngle(value) {
@@ -81,8 +89,8 @@ export function resolveTravelFollowDirection(player, previousDirection = null, i
 
 /**
  * Deterministic fixed camera frame. Speed, stance, jump state and vert state do
- * not change the distance or pitch; only the smoothed world travel direction can
- * rotate it. The first argument can be a gameplay object or CameraState because
+ * not change the distance or pitch unless the caller supplies a different frame
+ * configuration. The first argument can be gameplay or CameraState because
  * this frame only consumes its copied `position`.
  */
 export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
@@ -105,6 +113,7 @@ export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
+    this.mode = 'fixed';
     this.position = new THREE.Vector3();
     this.target = new THREE.Vector3();
     this.direction = new THREE.Vector3(0, 0, -1);
@@ -114,46 +123,123 @@ export class FollowCamera {
     this.distance = THPS_CAMERA.distance;
     this.height = THPS_CAMERA.height;
     this.occlusionDistance = null;
+    this.occlusionActive = false;
     this.clearanceCache = { fixedAxis: true };
     this.initialized = false;
+    this.lookYaw = 0;
+    this.lookTilt = 0;
+    this.lookHold = 0;
+    this.trickZoomActive = false;
+    this.zoom = 1;
+    this.lookAhead = 0;
+  }
+
+  setMode(mode, player = null) {
+    this.mode = mode === 'classic' ? 'classic' : 'fixed';
+    if (player) this.snap(player);
   }
 
   snap(player) {
-    this.clearanceCache = { fixedAxis: true };
+    this.clearanceCache = { fixedAxis: this.mode === 'fixed' };
     this.initialized = false;
     this.wasReturning = false;
     this.returnHold = 0;
     this.distance = THPS_CAMERA.distance;
     this.height = THPS_CAMERA.height;
     this.occlusionDistance = null;
+    this.occlusionActive = false;
+    this.lookYaw = 0; this.lookTilt = 0; this.lookHold = 0;
+    this.trickZoomActive = false; this.zoom = 1;
+    this.lookAhead = 0;
     this.update(player, 1, {});
   }
 
   update(player, dt, input = {}) {
-    // Follow translation from a fixed world angle, including after a reset.
-    void input;
-
+    dt = THREE.MathUtils.clamp(Number(dt) || 0, 0, 0.1);
     const state = captureCameraState(player, {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
-    // World orientation is fixed. Only the tracked position translates the rig.
-    // Neither ground steering, fakie, jumps nor spins may turn it behind the nose.
-    this.direction.set(0, 0, -1);
+    const classic = this.mode === 'classic';
+    const returning = state.transitionReturning;
+    if (classic) {
+      if (!this.initialized) this.direction.copy(state.travelDirection);
+      if (returning && !this.wasReturning) this.vertDirection.copy(this.direction);
+      if (returning) this.returnHold = THPS_CAMERA.landingHoldTime;
+      else this.returnHold = Math.max(0, this.returnHold - dt);
+      // Travel, not the spinning deck, steers the classic rig. Keep the coping
+      // side through return airs and briefly after landing to avoid a 180 snap.
+      if (returning || this.returnHold > 0) this.direction.copy(this.vertDirection);
+      else if (!state.bailing) this.direction.copy(smoothCameraDirection(
+        this.direction, state.travelDirection, dt,
+        cameraDirectionRate(this.direction, state.travelDirection)));
+      if (returning && state.doingTrick) this.trickZoomActive = true;
+      if (!returning) this.trickZoomActive = false;
+      const zoomTarget = this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
+        : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
+      this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
+      const distance = returning ? THPS_CAMERA.classicVertDistance
+        : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
+      const height = returning ? THPS_CAMERA.classicVertHeight
+        : state.grounded || state.grindActive ? THPS_CAMERA.height : THPS_CAMERA.airHeight;
+      const blend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
+      this.distance = THREE.MathUtils.lerp(this.distance, distance * this.zoom, blend);
+      this.height = THREE.MathUtils.lerp(this.height, height, blend);
+      if (input.cameraActive && !returning) {
+        this.lookYaw -= (input.mouseDX || 0) * 0.004 + (input.cameraX || 0) * dt * 2.1;
+        this.lookTilt = THREE.MathUtils.clamp(this.lookTilt
+          + (input.mouseDY || 0) * 0.003 + (input.cameraY || 0) * dt, -0.45, 0.65);
+        this.lookHold = 1.2;
+      } else {
+        this.lookHold = returning ? 0 : Math.max(0, this.lookHold - dt);
+        if (!this.lookHold) {
+          this.lookYaw = wrapAngle(this.lookYaw) * Math.exp(-4 * dt);
+          this.lookTilt *= Math.exp(-4 * dt);
+        }
+      }
+    } else {
+      this.direction.set(0, 0, -1);
+      this.distance = THPS_CAMERA.distance;
+      this.height = THPS_CAMERA.height;
+    }
+    this.wasReturning = returning;
     if (!this.initialized) this.followCenter = state.position.clone();
-    else this.followCenter.lerp(state.position,
-      1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt));
-    const frame = fixedChaseFrame({ position: this.followCenter }, this.direction,
-      { ...THPS_CAMERA, lookAhead: 0 });
+    else {
+      const horizontal = 1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt);
+      const vertical = 1 - Math.exp(-(returning
+        ? THPS_CAMERA.vertVerticalFollowRate : THPS_CAMERA.verticalFollowRate) * dt);
+      this.followCenter.x = THREE.MathUtils.lerp(this.followCenter.x, state.position.x, horizontal);
+      this.followCenter.z = THREE.MathUtils.lerp(this.followCenter.z, state.position.z, horizontal);
+      this.followCenter.y = THREE.MathUtils.lerp(this.followCenter.y, state.position.y, vertical);
+      const lag = this.followCenter.clone().sub(state.position);
+      if (lag.length() > THPS_CAMERA.maximumFollowLag) {
+        this.followCenter.copy(state.position).add(lag.setLength(THPS_CAMERA.maximumFollowLag));
+      }
+    }
+    const viewDirection = this.direction.clone();
+    if (classic) viewDirection.applyAxisAngle(UP, this.lookYaw);
+    const lookAheadTarget = classic && !returning ? 0.55 : 0;
+    this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
+      this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
+    const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
+      { ...THPS_CAMERA, distance: this.distance,
+        height: this.height + (classic ? this.lookTilt * 3 : 0),
+        lookAhead: this.lookAhead });
     this.position.copy(frame.desired);
     this.target.copy(frame.target);
     this.initialized = true;
 
-    // Occlusion stays a presentation-only query against the collision surface.
-    let resolvedPosition = resolveCameraClearance(player?.surface, frame.anchor,
+    // Frame with the smoothed tripod, but protect the actual rider: tracking lag
+    // must not disguise a camera inside the face when an obstacle shortens the arm.
+    const riderAnchor = state.position.clone().addScaledVector(UP, THPS_CAMERA.anchorHeight);
+    let resolvedPosition = resolveCameraClearance(player?.surface, riderAnchor,
       this.position, this.camera.position, this.clearanceCache);
-    const eyeOffset = resolvedPosition.clone().sub(frame.anchor);
-    const clearDistance = resolvedPosition.distanceTo(frame.anchor);
+    const eyeOffset = resolvedPosition.clone().sub(riderAnchor);
+    const clearDistance = resolvedPosition.distanceTo(riderAnchor);
+    const clipped = resolvedPosition.distanceToSquared(this.position) > 0.0001;
+    // Normal follow lag changes actual-anchor distance without an obstruction.
+    // Do not interpret that as a zoom: Fixed must keep its exact world framing.
+    if (!clipped && !this.occlusionActive) this.occlusionDistance = clearDistance;
     if (clearDistance >= 1.8 && this.occlusionDistance !== null) {
       this.occlusionDistance = Math.max(1.8, this.occlusionDistance);
     }
@@ -164,10 +250,11 @@ export class FollowCamera {
         1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
     }
     if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.min(clearDistance, this.occlusionDistance));
-    this.camera.position.copy(frame.anchor).add(eyeOffset);
+    this.occlusionActive = clipped || Math.abs(clearDistance - this.occlusionDistance) > 0.02;
+    this.camera.position.copy(riderAnchor).add(eyeOffset);
     // Exceptional enclosed spaces must not fill the view with the inside of a
     // face/hat. This changes presentation only and recovers as soon as space opens.
-    if (player?.visual) player.visual.visible = this.camera.position.distanceTo(frame.anchor) > 1.15;
+    if (player?.visual) player.visual.visible = this.camera.position.distanceTo(riderAnchor) > 1.15;
     this.camera.lookAt(this.target);
   }
 }

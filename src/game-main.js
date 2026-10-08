@@ -109,6 +109,21 @@ function setExploreView(name, instant = false) {
   }
 }
 
+function setCameraMode(nextMode) {
+  if (!followCamera) return;
+  const classic = nextMode === 'classic';
+  followCamera.setMode(classic ? 'classic' : 'fixed', mode === 'skate' ? skater : null);
+  const button = document.querySelector('#camera-mode');
+  button.setAttribute('aria-pressed', String(classic));
+  button.setAttribute('aria-label', classic ? 'Switch to fixed camera' : 'Switch to classic camera');
+  document.querySelector('#camera-label').textContent = classic ? 'CLASSIC' : 'FIXED';
+  try { localStorage.setItem('streetskate.cameraMode', followCamera.mode); } catch { /* Storage is optional. */ }
+}
+
+function toggleCameraMode() {
+  setCameraMode(followCamera?.mode === 'classic' ? 'fixed' : 'classic');
+}
+
 function setPaused(value) {
   paused = Boolean(value) && mode === 'skate';
   app.dataset.paused = String(paused);
@@ -118,9 +133,7 @@ function setPaused(value) {
       skater.charge = 0; skater.jumpBuffer = 0; skater.accumulator = 0;
       skater.pumpReleaseQueued = false; skater.pumpHoldTime = 0;
       skater.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
-      skater.tricks.pendingAirFlip = null; skater.tricks.pendingAirGrab = null;
-      skater.tricks.pendingManual = null; skater.tricks.lastDirectionTap = null;
-      skater.tricks.buttonBuffer.length = 0;
+      skater.tricks.clearPendingInput();
     }
   }
   updateHud();
@@ -141,6 +154,7 @@ function setMode(nextMode) {
   skater.pumpHoldTime = 0;
   skater.accumulator = 0;
   skater.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
+  skater.tricks.clearPendingInput();
   skater.visual.visible = true;
   document.querySelector('#mode-toggle').classList.toggle('active', skating);
   document.querySelector('#mode-toggle').setAttribute('aria-pressed', String(skating));
@@ -217,7 +231,9 @@ async function loadGame() {
       playableRegions: manifest.playableRegions }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
-    followCamera.snap(skater);
+    let savedCamera = 'fixed';
+    try { savedCamera = localStorage.getItem('streetskate.cameraMode') || 'fixed'; } catch { /* Use fixed by default. */ }
+    setCameraMode(savedCamera);
 
     const debugTransitions = new URLSearchParams(window.location.search).get('debug') === '1';
     if (debugTransitions) {
@@ -240,7 +256,7 @@ async function loadGame() {
     setMode('skate');
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
-      setMode, setExploreView, setPaused, controlsVersion: 'thug-controls-v1', rampTuning,
+      setMode, setExploreView, setPaused, setCameraMode, controlsVersion: 'thug-controls-v2', rampTuning,
       // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
       // with deterministic replay/debugging. This never repairs or mutates state.
       captureState: () => captureGameplayState(skater),
@@ -268,6 +284,7 @@ document.querySelector('#topview').onclick = () => {
   setExploreView('top');
 };
 document.querySelector('#mode-toggle').onclick = () => setMode(mode === 'skate' ? 'explore' : 'skate');
+document.querySelector('#camera-mode').onclick = toggleCameraMode;
 document.querySelector('#wireframe').onclick = (event) => {
   const enabled = event.currentTarget.getAttribute('aria-pressed') !== 'true';
   event.currentTarget.setAttribute('aria-pressed', String(enabled));
@@ -320,6 +337,7 @@ renderer.setAnimationLoop(() => {
       directionTaps: [...(state.directionTaps || [])],
     };
     if (state.pausePressed) setPaused(!paused);
+    if (state.cameraModePressed) toggleCameraMode();
     if (!paused) {
       skater.update(dt, state, elapsed);
       followCamera.update(skater, dt, state);

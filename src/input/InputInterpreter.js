@@ -12,7 +12,9 @@ export const OLLIE_COMMAND = Object.freeze({
 export function interpretAirTurn(input = {}) {
   const steer = Number(input.steer) || 0;
   const spin = Number(input.spin) || 0;
-  return Math.max(-1, Math.min(1, steer + spin));
+  // Shoulder rotation owns the turn while held. A directional trick input must
+  // not cancel it or double the spin speed.
+  return Math.max(-1, Math.min(1, Math.abs(spin) > 0.1 ? spin : steer));
 }
 
 /** Held forward is approach/trick input. Only a new post-apex tap requests exit. */

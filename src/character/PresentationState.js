@@ -1,3 +1,5 @@
+import { FLIP_TIMING } from './TrickMotion.js';
+
 export const PRESENTATION_STATES = Object.freeze({
   IDLE: 'IDLE', PUSH: 'PUSH', COAST: 'COAST', BRAKE: 'BRAKE', CROUCH: 'CROUCH', PUMP: 'PUMP',
   OLLIE_POP: 'OLLIE_POP', AIR: 'AIR', VERT_AIR: 'VERT_AIR', LAND: 'LAND', MANUAL: 'MANUAL',
@@ -9,10 +11,10 @@ export const FLIP_PHASES = Object.freeze({ POP: 'POP', FLICK: 'FLICK', ROTATION:
 export function flipPhaseFor(flipState) {
   if (!flipState) return null;
   const p = Math.max(0, Math.min(1, Number(flipState.progress) || 0));
-  if (p < 0.14) return FLIP_PHASES.POP;
-  if (p < 0.34) return FLIP_PHASES.FLICK;
-  if (p < 0.72) return FLIP_PHASES.ROTATION;
-  if (p < 0.94) return FLIP_PHASES.CATCH;
+  if (p < FLIP_TIMING.pop) return FLIP_PHASES.POP;
+  if (p < FLIP_TIMING.flick) return FLIP_PHASES.FLICK;
+  if (p < FLIP_TIMING.rotationEnd) return FLIP_PHASES.ROTATION;
+  if (p < FLIP_TIMING.catchEnd) return FLIP_PHASES.CATCH;
   return FLIP_PHASES.LAND;
 }
 

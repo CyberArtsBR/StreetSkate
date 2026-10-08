@@ -5,6 +5,7 @@ import { RailNetwork } from './RailNetwork.js';
 import { SkateTricks } from './SkateTricks.js';
 import { directionKey, grindFor } from './TrickCatalog.js';
 import { constrainToPark } from './ParkBoundaries.js';
+import { flipTurns } from '../character/TrickMotion.js';
 
 export const MOVEMENT_STATE = Object.freeze({
   GROUND: 'GROUND',
@@ -142,6 +143,26 @@ export class StreetPhysics {
     this.charge = 0;
   }
 
+  // Rail and wall departures bypass takeoff(). Capture their own airborne basis
+  // so a previous ramp's heading/spin cannot leak into the next flight.
+  captureAirDeparture() {
+    this.airHeading = this.heading;
+    this.airTakeoffHeading = this.heading;
+    this.airSpin = 0;
+    this.airTime = 0;
+    this.airTurnHoldTime = 0;
+    this.airTurnDirection = 0;
+    this.airTakeoffFacing ||= new THREE.Vector3();
+    this.airTakeoffFacing.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
+    this.airTakeoffStance = this.stance;
+    this.airTakeoffFromRamp = false;
+    this.pendingOllieScore = null;
+    this.stableGroundTime = 0;
+    this.jumpBuffer = 0;
+    this.coyote = 0;
+    this.airDirection();
+  }
+
   takeoff(impulse = 0, transition = null) {
     const onSurface = this.grounded;
     this.manual = null;
@@ -172,9 +193,10 @@ export class StreetPhysics {
   }
 
   recordTrick(name, points) {
-    this.tricks.record(name, points);
+    const entry = this.tricks.record(name, points, { stance: this.stance });
     this.feedback = this.tricks.comboText();
     this.feedbackTime = 2.2;
+    return entry;
   }
 
   settleCombo() {
@@ -191,7 +213,7 @@ export class StreetPhysics {
       this.feedback = this.stance < 0 ? 'Switch Stance' : 'Regular Stance';
       this.feedbackTime = 1;
     }
-    if (events.manual && this.grounded && !this.grind && !this.bailTime) {
+    if (events.manual && events.manual !== this.manual && this.grounded && !this.grind && !this.bailTime) {
       this.manual = events.manual;
       this.flatland = null;
       this.setMovementState(MOVEMENT_STATE.MANUAL);
@@ -199,29 +221,31 @@ export class StreetPhysics {
       this.recordTrick(info?.name || 'Manual', info?.points || 100);
       this.stableGroundTime = 0;
     }
-    if (events.flatland && this.manual) {
+    if (events.flatland && events.flatland.name !== this.flatland && this.manual) {
       this.flatland = events.flatland.name;
       this.recordTrick(events.flatland.name, events.flatland.points);
     }
-    if (events.flip && !this.grounded && !this.grind && !this.wallRide) {
-      if (this.flipState && this.flipState.name === 'Kickflip' && this.flipState.progress < 0.62) {
-        this.flipState.name = 'Double Kickflip';
-        this.flipState.roll = 2;
-        this.flipState.duration = 0.66;
-        this.recordTrick('Double Kickflip', 250);
-      } else if (!this.flipState) {
-        this.flipState = { ...events.flip, progress: 0 };
-        this.recordTrick(events.flip.name, events.flip.points);
-      }
+    if (events.flipUpgrade && this.flipState && !this.grounded && !this.grind && !this.wallRide) {
+      const rotationFrom = flipTurns(this.flipState);
+      const rotationStartProgress = this.flipState.progress;
+      Object.assign(this.flipState, events.flipUpgrade, { rotationFrom, rotationStartProgress });
+      this.tricks.upgrade(this.flipState.scoreEntry, events.flipUpgrade.name, events.flipUpgrade.points);
+      this.feedback = this.tricks.comboText();
+      this.feedbackTime = 2.2;
     }
-    if (events.grab && !this.grounded && !this.grind && !this.wallRide) {
-      this.grabState = { ...events.grab };
-      this.recordTrick(events.grab.name, events.grab.points);
+    if (events.flip && !this.flipState && !this.grounded && !this.grind && !this.wallRide) {
+      this.grabState = null;
+      this.flipState = { ...events.flip, progress: 0 };
+      this.flipState.scoreEntry = this.recordTrick(events.flip.name, events.flip.points);
+    }
+    if (events.grab && !this.flipState && !this.grounded && !this.grind && !this.wallRide) {
+      this.grabState = { ...events.grab, heldTime: 0 };
+      this.grabState.scoreEntry = this.recordTrick(events.grab.name, events.grab.points);
     }
     if (events.grind && !this.grounded && !this.grind) {
       this.pendingGrindTrick = events.grind; this.grindIntentTime = 0.18;
     }
-    if (events.grindChange && this.grind) {
+    if (events.grindChange && this.grind && events.grindChange.name !== this.grind.trick.name) {
       this.grind.trick = events.grindChange;
       this.recordTrick(events.grindChange.name, events.grindChange.points);
     }
@@ -235,6 +259,8 @@ export class StreetPhysics {
       grounded: this.grounded, grinding: this.movementState === MOVEMENT_STATE.GRIND,
       manual: this.movementState === MOVEMENT_STATE.MANUAL ? this.manual : null,
       speed: Math.abs(this.speed), airborne: !this.grounded, bailing: this.bailTime > 0,
+      wallRiding: Boolean(this.wallRide), flipState: this.flipState, grabState: this.grabState,
+      grindName: this.grind?.trick?.name, flatland: this.flatland,
     };
     this.handleEvents(this.tricks.resolve(input, context));
     if (input.grindHeld && !this.grind && !this.bailTime) {
@@ -268,10 +294,12 @@ export class StreetPhysics {
       firstStep = false;
       this.accumulator = Math.max(0, this.accumulator - PHYSICS.step);
     }
+    if (this.grounded || this.grind || this.wallRide || this.bailTime) this.tricks.clearAirQueue();
     this.speed = this.grind ? this.grind.speed : this.grounded ? this.velocity.dot(this.forward) : Math.hypot(this.velocity.x, this.velocity.z);
   }
 
   step(dt, input) {
+    if (this.grounded || this.grind || this.wallRide) this.tricks.clearAirQueue();
     const drive = clamp(input.drive || 0, -1, 1);
     const steer = clamp(input.steer || 0, -1, 1);
     this.steer += (steer - this.steer) * (1 - Math.exp(-12 * dt));
@@ -281,6 +309,12 @@ export class StreetPhysics {
       this.bailTime -= dt;
       if (this.bailTime <= 0) { const score = this.score; this.reset(); this.score = score; }
       return;
+    }
+
+    if (this.grabState && input.grabHeld && !this.grounded && !this.flipState && !this.grind && !this.wallRide) {
+      this.grabState.heldTime += dt;
+      const rate = Math.max(45, this.grabState.points * 0.35);
+      this.tricks.addDuration(rate * dt, this.grabState.scoreEntry);
     }
 
     if (input.ollieHeld) this.charge = Math.min(1, this.charge + dt / PHYSICS.chargeTime);
@@ -441,6 +475,8 @@ export class StreetPhysics {
     this.grind = { ...capture, trick, speed: Math.max(2.8, capture.speed) };
     this.setMovementState(MOVEMENT_STATE.GRIND);
     this.manual = null; this.flatland = null; this.transitionAir = null; this.wallRide = null;
+    this.grabState = null;
+    this.tricks.clearAirQueue();
     this.position.copy(sample.point);
     const travel = sample.tangent.multiplyScalar(this.grind.direction);
     this.velocity.copy(travel).multiplyScalar(this.grind.speed);
@@ -483,7 +519,7 @@ export class StreetPhysics {
     this.transitionAir = null;
     this.airHeading = headingFrom(travel, this.heading);
     this.heading = this.airHeading;
-    this.airSpin = 0;
+    this.captureAirDeparture();
     if (pop) {
       const impulse = THREE.MathUtils.lerp(PHYSICS.minJump * 0.72, PHYSICS.maxJump * 0.82, Math.max(this.charge, 0.15));
       this.velocity.y += impulse;
@@ -518,6 +554,7 @@ export class StreetPhysics {
       this.contactCooldown = 0.3;
       this.airHeading = headingFrom(this.velocity, this.heading);
       this.heading = this.airHeading;
+      this.captureAirDeparture();
       this.recordTrick('Wallie', 300);
       return;
     }
@@ -534,6 +571,7 @@ export class StreetPhysics {
       this.wallRide = null;
       this.setMovementState(MOVEMENT_STATE.AIR);
       this.contactCooldown = 0.3;
+      this.captureAirDeparture();
       return;
     }
     const before = this.position.clone();
@@ -558,6 +596,7 @@ export class StreetPhysics {
     this.setMovementState(MOVEMENT_STATE.AIR);
     this.airHeading = headingFrom(this.velocity, this.heading);
     this.heading = this.airHeading;
+    this.captureAirDeparture();
     this.recordTrick('Wall Plant', 300);
   }
 

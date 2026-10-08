@@ -6,6 +6,8 @@ import { ensureBalanceHud } from './BalanceHud.js';
 import { captureGameplayState } from './core/GameplayStateSnapshot.js';
 import { flipPhaseFor, physicsMovementState, resolvePresentationState } from '../character/PresentationState.js';
 import { yawStableSurfaceBasis } from './core/PresentationOrientation.js';
+import { landingMotion } from '../character/TrickMotion.js';
+import { GROUND_MOTOR, groundControlIntent } from './core/GroundMotor.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -25,12 +27,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._wallPoseQ = new THREE.Quaternion();
     this._wallPoseAxisX = new THREE.Vector3(1, 0, 0);
     this._wallPoseAxisZ = new THREE.Vector3(0, 0, 1);
+    this._beforeVelocity = new THREE.Vector3();
     this.debugEnabled = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
     this.debugElement = null;
     if (this.debugEnabled && typeof document !== 'undefined') this.initDebugViewer();
     this.presentation = {
       state: 'IDLE', previousState: 'IDLE', stateTime: 0, physicsState: 'IDLE',
-      pushClock: 0, pushPhase: 0, pushWeight: 0, popTime: 0, landingTime: 0,
+      pushClock: 0, pushPhase: 0, pushWeight: 0, popTime: 0, popProgress: 1, landingTime: 0, landingDuration: 0.3,
       landingSeverity: 0, flipPhase: null, activeTrick: '', pumpState: 'OFF', vertState: 'OFF',
       grabWeight: 0, grabPose: null,
     };
@@ -97,33 +100,59 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     return this;
   }
 
+  reset(position, heading) {
+    super.reset(position, heading);
+    // The base constructor also calls reset, before presentation is allocated.
+    if (!this.presentation) return;
+    Object.assign(this.presentation, {
+      state: 'IDLE', previousState: 'IDLE', stateTime: 0, physicsState: 'IDLE',
+      pushClock: 0, pushPhase: 0, pushWeight: 0, popTime: 0, popProgress: 1,
+      landingTime: 0, landingSeverity: 0, grabWeight: 0, grabPose: null,
+      flipPhase: null, activeTrick: '', pumpState: 'OFF', vertState: 'OFF',
+    });
+    this.rider?.resetPresentation();
+    this.board?.resetPresentation();
+    this.presentationNormal.copy(this.bodyUp());
+  }
+
   updatePresentation(delta, input, before) {
     const p = this.presentation;
     const grounded = this.grounded;
     const speed = Math.abs(this.speed);
     const speedRatio = Math.min(speed / this.config.maxSpeed, 1);
     const justTookOff = before.grounded && !grounded && !this.grind && !this.wallRide;
-    if (justTookOff) p.popTime = 0.18;
+    if (justTookOff && this.takeoffOllieRequested) p.popTime = 0.22;
     else p.popTime = Math.max(0, p.popTime - delta);
+    p.popProgress = p.popTime > 0 ? 1 - p.popTime / 0.22 : 1;
 
     if (this.justLanded) {
-      const downward = Math.max(0, -before.velocityY);
+      // A fast return down a transition can have a large world-Y speed while
+      // touching the ramp gently. Compress for impact into the surface instead.
+      const impact = Math.max(0, -before.velocity.dot(this.normal));
       const airFactor = clamp(before.airTime / 1.35, 0, 1);
-      const slopeFactor = clamp(1 - this.normal.y, 0, 0.75);
-      p.landingSeverity = clamp(downward / 11 + airFactor * 0.35 + slopeFactor * 0.2, 0.12, 1);
-      p.landingTime = 0.28;
+      p.landingSeverity = clamp(impact / 10 + airFactor * 0.12, 0.1, 1);
+      p.landingDuration = 0.24 + p.landingSeverity * 0.12;
+      p.landingTime = p.landingDuration;
     } else p.landingTime = Math.max(0, p.landingTime - delta);
 
-    const braking = grounded && speed > 0.35 && (Boolean(input.brake) || (!this.manual && (input.drive || 0) < -0.12));
-    const pushDemand = grounded && !this.manual && !this.grind && !this.wallRide && !braking
-      && (this.autoPushActive || (input.drive || 0) > 0.16)
-      && this.normal.y > 0.96 && this.charge < 0.05
-      && speed < this.config.maxSpeed * 0.985;
-    if (pushDemand) {
-      const frequency = 1.1 + speedRatio * 0.65;
-      p.pushClock += delta * frequency;
+    const controlIntent = groundControlIntent({
+      speed: this.speed, steer: this.steer, drive: input.drive || 0,
+      brake: Boolean(input.brake), manual: Boolean(this.manual), normalY: this.normal.y,
+    });
+    const braking = grounded && speed > 0.35 && controlIntent.braking;
+    const pushDemand = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime && !braking
+      && controlIntent.pushingAllowed && this.autoPushActive
+      && this.normal.y >= GROUND_MOTOR.autoPushSurfaceY && this.charge < 0.05
+      && speed < GROUND_MOTOR.autoPushTarget;
+    const pushAllowed = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime
+      && !braking && this.charge < 0.05;
+    p.pushWeight = THREE.MathUtils.lerp(p.pushWeight, pushDemand ? 1 : 0, 1 - Math.exp(-12 * delta));
+    if (!pushAllowed) p.pushWeight = 0;
+    if (p.pushWeight > 0.005) {
+      // Advance from actual rolling speed; do not restart the cycle whenever
+      // automatic propulsion crosses its cruise threshold.
+      p.pushClock += delta * clamp(0.8 + speed / 13, 0.8, 1.8);
       p.pushPhase = p.pushClock % 1;
-      p.pushWeight = p.pushPhase < 0.78 ? Math.sin((p.pushPhase / 0.78) * Math.PI) : 0;
     } else {
       p.pushPhase = 0;
       p.pushWeight = 0;
@@ -177,7 +206,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   }
 
   update(delta, input, elapsed) {
-    const before = { grounded: this.grounded, velocityY: this.velocity.y, airTime: this.airTime };
+    const before = { grounded: this.grounded, velocity: this._beforeVelocity.copy(this.velocity), airTime: this.airTime };
     this.advance(delta, input);
     const present = this.updatePresentation(delta, input, before);
 
@@ -196,12 +225,12 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       this._basis.makeBasis(this._rightVisual, this._presentationUp, this._backVisual),
     );
 
-    const grabActive = Boolean(this.grabState && input.grabHeld);
+    const grabActive = Boolean(this.grabState && input.grabHeld && !this.flipState);
     const p = this.presentation;
     if (grabActive) p.grabPose = { name: this.grabState.name };
     p.grabWeight = THREE.MathUtils.lerp(p.grabWeight, grabActive ? 1 : 0,
       1 - Math.exp(-14 * Math.max(0, delta)));
-    if (this.grounded || this.bailTime > 0) p.grabWeight = 0;
+    if (this.grounded || this.bailTime > 0 || this.flipState) p.grabWeight = 0;
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;
@@ -236,7 +265,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       steer: this.steer,
       pushWeight: this.presentation.pushWeight,
       pushPhase: this.presentation.pushPhase,
-      landingSeverity: this.presentation.landingSeverity * clamp(this.presentation.landingTime / 0.28, 0, 1),
+      landingSeverity: p.landingSeverity * landingMotion(1 - p.landingTime / p.landingDuration),
       pumpState: this.presentation.pumpState,
     });
     this.applyWallImpactPose(this.wallImpactPoseWeight());

@@ -9,6 +9,11 @@ export const GROUND_MOTOR = Object.freeze({
   autoPushSurfaceY: 0.965,
   autoPushMinAccel: 3.6,
   autoPushMaxAccel: 10.8,
+  crouchedPushTarget: 14,
+  crouchedPushAccelScale: 1.12,
+  crouchedDragScale: 0.62,
+  softSpeedLimit: 15.2,
+  overspeedDrag: 1.25,
   rollingBase: 0.025,
   rollingQuadratic: 0.00115,
   transitionSurfaceY: 0.992,
@@ -25,6 +30,11 @@ export const GROUND_MOTOR = Object.freeze({
   rampReentryHardLock: 0.08,
   maxPhysicalSteer: 1.8,
   brakeDriveThreshold: -0.12,
+  sharpTurnInputThreshold: 0.25,
+  sharpTurnMinSpeed: 1.3,
+  sharpTurnRateScale: 1.38,
+  steepBrakeReleaseNormalY: 0.65,
+  steepBrakeReleaseSpeed: 1.5,
   absoluteSpeedCap: 17,
 });
 
@@ -69,6 +79,7 @@ export function groundSteeringDelta({
   steer = 0,
   speed = 0,
   manual = false,
+  sharpTurn = false,
   reentryRemaining = 0,
   dt = 0,
   config = GROUND_MOTOR,
@@ -87,13 +98,17 @@ export function groundSteeringDelta({
     config.steerRateHighSpeed,
     Math.abs(Number(speed) || 0) / config.steerFullSpeed,
   );
-  return -physicalSteer * rate * Math.max(0, Number(dt) || 0);
+  return -physicalSteer * rate * (sharpTurn ? config.sharpTurnRateScale : 1)
+    * Math.max(0, Number(dt) || 0);
 }
 
 /** Skate wheels should coast; neutral input must preserve useful park speed. */
-export function passiveRollingResistance(speed, config = GROUND_MOTOR) {
+export function passiveRollingResistance(speed, config = GROUND_MOTOR, crouched = false) {
   const magnitude = Math.abs(Number(speed) || 0);
-  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude;
+  const dragScale = crouched ? config.crouchedDragScale : 1;
+  const excess = Math.max(0, magnitude - config.softSpeedLimit);
+  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude * dragScale
+    + config.overspeedDrag * excess * excess;
 }
 
 /** Neutral auto-push is only a flat-ground speed source. */
@@ -102,14 +117,40 @@ export function automaticPushAcceleration({
   normalY = 1,
   braking = false,
   manual = false,
+  crouched = false,
   config = GROUND_MOTOR,
 } = {}) {
   if (braking || manual || normalY < config.autoPushSurfaceY) return 0;
   const magnitude = Math.abs(Number(speed) || 0);
-  if (magnitude >= config.autoPushTarget) return 0;
-  const deficit = clamp((config.autoPushTarget - magnitude) / config.autoPushTarget, 0, 1);
-  return config.autoPushMinAccel
-    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit;
+  const target = crouched ? config.crouchedPushTarget : config.autoPushTarget;
+  if (magnitude >= target) return 0;
+  const deficit = clamp((target - magnitude) / target, 0, 1);
+  return (config.autoPushMinAccel
+    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit)
+    * (crouched ? config.crouchedPushAccelScale : 1);
+}
+
+/** Down + turn is an intentional carve; Shift remains an explicit brake. */
+export function groundControlIntent({
+  speed = 0,
+  steer = 0,
+  drive = 0,
+  brake = false,
+  manual = false,
+  normalY = 1,
+  config = GROUND_MOTOR,
+} = {}) {
+  const down = drive < config.brakeDriveThreshold;
+  const sharpTurn = !manual && !brake && down && speed >= config.sharpTurnMinSpeed
+    && Math.abs(steer) >= config.sharpTurnInputThreshold;
+  const steepAndSlow = Math.abs(speed) < config.steepBrakeReleaseSpeed
+    && normalY < config.steepBrakeReleaseNormalY;
+  return {
+    sharpTurn,
+    // On a steep wall, a near-stopped board must be allowed to roll back down.
+    braking: Boolean(brake || (!steepAndSlow && !manual && down && !sharpTurn)),
+    pushingAllowed: !down,
+  };
 }
 
 /** Preserve downhill gravity while softening uphill transition energy loss. */
@@ -138,6 +179,8 @@ export function resolveGroundPropulsion({
   drive = 0,
   brake = false,
   manual = false,
+  crouched = false,
+  steer = 0,
   dt = 0,
   gravity = 20,
   brakeDecel = 13,
@@ -155,23 +198,26 @@ export function resolveGroundPropulsion({
   });
   nextSpeed += (-gravity * forwardY) * gravityScale * step;
 
-  const braking = Boolean(brake || (!manual && drive < config.brakeDriveThreshold));
+  const { braking, pushingAllowed } = groundControlIntent({
+    speed: nextSpeed, steer, drive, brake, manual, normalY, config,
+  });
   const pushAccel = automaticPushAcceleration({
     speed: nextSpeed,
     normalY,
-    braking,
+    braking: braking || !pushingAllowed,
     manual,
+    crouched,
     config,
   });
   if (pushAccel > 0) {
     const nextMagnitude = Math.min(
-      config.autoPushTarget,
+      crouched ? config.crouchedPushTarget : config.autoPushTarget,
       Math.abs(nextSpeed) + pushAccel * step,
     );
     nextSpeed = directionSign * nextMagnitude;
   }
 
-  const resistance = passiveRollingResistance(nextSpeed, config)
+  const resistance = passiveRollingResistance(nextSpeed, config, crouched)
     + (braking ? brakeDecel : 0);
   nextSpeed = Math.sign(nextSpeed)
     * Math.max(0, Math.abs(nextSpeed) - resistance * step);
@@ -225,6 +271,7 @@ export function resolveGroundMotion({
   speedState = null,
   steer = 0,
   manual = false,
+  crouched = false,
   reentryRemaining = 0,
   drive = 0,
   brake = false,
@@ -235,10 +282,14 @@ export function resolveGroundMotion({
 } = {}) {
   const sourceSpeed = Number(speedState?.speed) || 0;
   const travelSign = Number(speedState?.travelSign) < 0 ? -1 : 1;
+  const intent = groundControlIntent({
+    speed: sourceSpeed, steer, drive, brake, manual, normalY: normal?.y ?? 1, config,
+  });
   const headingDelta = groundSteeringDelta({
     steer,
     speed: sourceSpeed,
     manual,
+    sharpTurn: intent.sharpTurn,
     reentryRemaining,
     dt,
     config,
@@ -256,6 +307,8 @@ export function resolveGroundMotion({
     drive,
     brake,
     manual,
+    crouched,
+    steer,
     dt,
     gravity,
     brakeDecel,

@@ -222,6 +222,7 @@ export class BoardContactSkillStreetPhysics extends SkillStreetPhysics {
       this.contactCooldown = 0.3;
       this.airHeading = headingFrom(this.velocity, this.heading);
       this.heading = this.airHeading;
+      this.captureAirDeparture();
       this.recordTrick('Wallie', 300);
       return;
     }
@@ -238,6 +239,7 @@ export class BoardContactSkillStreetPhysics extends SkillStreetPhysics {
       this.wallRide = null;
       this.setMovementState(MOVEMENT_STATE.AIR);
       this.contactCooldown = 0.3;
+      this.captureAirDeparture();
       return;
     }
     const before = this.position.clone();

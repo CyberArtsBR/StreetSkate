@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { StreetPhysics, PHYSICS } from './StreetPhysics.js';
+import { StreetPhysics, PHYSICS, MOVEMENT_STATE } from './StreetPhysics.js';
 import { constrainToPark } from './ParkBoundaries.js';
 import {
   GRIND_CAPTURE,
@@ -241,16 +241,23 @@ export class SkillStreetPhysics extends StreetPhysics {
   }
 
   enterGrind(trick) {
-    if (this.coreController) return this.coreController.enterGrind(this, trick);
-
-    const capture = resolveGrindCapture({
-      position: this.position,
-      forward: this.forward,
-      velocity: this.velocity,
-      railNetwork: this.railNetwork,
-      trick,
-    });
-    return applyGrindEntry(this, capture, trick);
+    let captured;
+    if (this.coreController) captured = this.coreController.enterGrind(this, trick);
+    else {
+      const capture = resolveGrindCapture({
+        position: this.position,
+        forward: this.forward,
+        velocity: this.velocity,
+        railNetwork: this.railNetwork,
+        trick,
+      });
+      captured = applyGrindEntry(this, capture, trick);
+    }
+    if (captured) {
+      this.grabState = null;
+      this.tricks.clearAirQueue();
+    }
+    return captured;
   }
 
   updateGrindBalance(dt, input) {
@@ -331,11 +338,11 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.contactCooldown = GRIND_CAPTURE.cooldown;
     this.grindIntentTime = 0;
     this.pendingGrindTrick = null;
-    this.grounded = false;
+    this.setMovementState(MOVEMENT_STATE.AIR);
     this.transitionAir = null;
     this.airHeading = headingFrom(travel, this.heading);
     this.heading = this.airHeading;
-    this.airSpin = 0;
+    this.captureAirDeparture();
     if (pop) {
       const impulse = THREE.MathUtils.lerp(PHYSICS.minJump * 0.72, PHYSICS.maxJump * 0.82, Math.max(this.charge, 0.15));
       this.velocity.y += impulse;
