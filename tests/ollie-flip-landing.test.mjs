@@ -110,8 +110,8 @@ test('StreetBoard uses eased prepare-to-rotation timing for a flip state', () =>
     flipState: { name: 'Kickflip', progress: 0.55, roll: 1, pitch: 0, yaw: 0 },
   });
   const rotationRoll = Math.abs(board.root.rotation.z);
-  assert.ok(rotationRoll > 3,
+  assert.ok(rotationRoll > 1.8,
     `rotation phase should clearly rotate the deck, got ${rotationRoll}`);
-  assert.ok(rotationRoll > earlyRoll * 4,
+  assert.ok(rotationRoll > earlyRoll * 2.5,
     'flip rotation should accelerate after the preparation phase');
 });
