@@ -10,6 +10,7 @@ export class SkateInput {
     this.released = new Set();
     this.enabled = false;
     this.padPrevious = {};
+    this.padIdentity = null;
     this.analogTaps = new DirectionTapDetector({ activation: 0.65, neutral: 0.30 });
     this.mouseDX = 0;
     this.mouseDY = 0;
@@ -19,7 +20,7 @@ export class SkateInput {
       if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName) || e.target?.isContentEditable) return;
       if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
       if (e.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR'].includes(e.code)) e.preventDefault();
-      if (!e.repeat) this.pressed.add(e.code);
+      if (!e.repeat && !this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     };
     this._up = e => {
@@ -62,6 +63,11 @@ export class SkateInput {
 
   read() {
     const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
+    // A reconnect (or switching pads) inherits the physical held state,
+    // rather than fabricating a button-down edge on its first frame.
+    const identity = pad ? String(pad.index) + ':' + String(pad.id) : null;
+    const padChanged = identity !== this.padIdentity;
+    this.padIdentity = identity;
     const axis = v => Math.abs(v || 0) < 0.16 ? 0 : Math.sign(v) * (Math.abs(v) - 0.16) / 0.84;
     const held = (...codes) => codes.some(code => this.keys.has(code));
     const just = (...codes) => codes.some(code => this.pressed.has(code));
@@ -82,6 +88,7 @@ export class SkateInput {
       dpadLeft: !!pad?.buttons[14]?.pressed,
       dpadRight: !!pad?.buttons[15]?.pressed,
     };
+    if (padChanged) this.padPrevious = { ...buttons };
     const edge = key => buttons[key] && !this.padPrevious[key];
     const release = key => !buttons[key] && this.padPrevious[key] && !!pad;
 

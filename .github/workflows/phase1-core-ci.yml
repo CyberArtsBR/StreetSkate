@@ -1,108 +1,76 @@
 name: Phase 1 Core CI
-
 on:
   push:
-    branches:
-      - refactor/core-skate-controller-v1
+    branches: [main, refactor/core-skate-controller-v1]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
-
 concurrency:
-  # Push and PR runs for the same head branch share one group. New commits cancel
-  # stale browser jobs so the gate always represents the latest Phase 1 head.
-  group: phase1-core-${{ github.head_ref || github.ref_name }}
+  group: core-ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-
 jobs:
-  validate-core:
+  core-regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
-
-      - name: Unit and replay tests
+      - name: Unit and deterministic regressions (no weakened assertions)
         run: npm test
-
-      - name: Board / vert / pump verification
+      - name: Board / vert / pump verification even on unit failure
+        if: always()
         run: npm run verify:physics
-
-      - name: Production bundle
-        run: npx vite build
-
-  browser-smoke:
-    needs: validate-core
+  production-browser:
+    # Independent of core tests: failing physics still fails the PR, but cannot hide browser failures.
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-
+    timeout-minutes: 22
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install project dependencies
+      - name: Install locked dependencies
         run: npm ci
-
-      - name: Install browser harness
+      - name: Build actual production bundle
+        run: npm run build
+      - name: Validate emitted release files
+        run: node tools/agent10-verify-dist.mjs
+      - name: Install isolated browser tooling
         run: |
-          npm install --no-save @playwright/test@1.56.1
+          npm install --no-save --package-lock=false @playwright/test@1.56.1
           npx playwright install --with-deps chromium
-
-      - name: Build browser target
-        run: npx vite build
-
-      - name: Start local production preview
+      - name: Start production preview
         run: |
-          nohup npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/streetskate-preview.log 2>&1 &
-          ready=0
+          nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/agent10-preview.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then
-              ready=1
-              break
-            fi
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
             sleep 1
           done
-          if [ "$ready" != "1" ]; then
-            cat /tmp/streetskate-preview.log
-            exit 1
-          fi
-
-      - name: Browser gameplay smoke
+          cat /tmp/agent10-preview.log
+          exit 1
+      - name: Browser production QA and telemetry
         env:
           STREETSKATE_URL: http://127.0.0.1:4173
-          STREETSKATE_SCREENSHOT: artifacts/phase1-browser-smoke.png
-        run: |
-          mkdir -p artifacts
-          node tools/browser-smoke.mjs
-
-      - name: Preview log
+          AGENT10_ARTIFACT_DIR: artifacts/agent10
+        run: node tools/agent10-browser-qa.mjs
+      - name: Preserve preview logs
         if: always()
-        run: cat /tmp/streetskate-preview.log || true
-
-      - name: Upload browser smoke artifact
+        run: |
+          mkdir -p artifacts/agent10
+          cp /tmp/agent10-preview.log artifacts/agent10/preview.log || true
+      - name: Upload screenshots and telemetry
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase1-browser-smoke
-          path: artifacts/
-          if-no-files-found: ignore
+          name: agent10-production-browser-${{ github.run_id }}
+          path: artifacts/agent10/
+          if-no-files-found: warn
+          retention-days: 14

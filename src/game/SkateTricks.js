@@ -184,8 +184,18 @@ export class SkateTricks {
 
   record(name, points = 0, { stance = 1 } = {}) {
     if (!name) return;
+    const normalizedStance = stance < 0 ? -1 : 1;
+    const previous = this.combo.at(-1);
+    // The same trick cannot be awarded twice from overlapping input/state edges.
+    // Legitimate repeats after their animation/contact window still score with
+    // the existing diminishing-repeat formula.
+    if (previous?.name === name && previous.stance === normalizedStance
+      && this.time - previous.recordedAt < 0.14) return previous;
     if (!this.combo.length) this.comboStartedAt = this.time;
-    const entry = { name, basePoints: Math.max(0, points), stance: stance < 0 ? -1 : 1, durationPoints: 0 };
+    const entry = {
+      name, basePoints: Math.max(0, Number.isFinite(points) ? points : 0),
+      stance: normalizedStance, durationPoints: 0, recordedAt: this.time,
+    };
     this.combo.push(entry);
     this.recalculateCombo();
     this.comboMultiplier += 1;

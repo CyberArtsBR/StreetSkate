@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
+import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -18,11 +19,15 @@ const SEMANTIC = Object.freeze({
 function finiteQ(q) {
   return Number.isFinite(q.x) && Number.isFinite(q.y) && Number.isFinite(q.z) && Number.isFinite(q.w);
 }
+function finiteV(v) {
+  return v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+}
 
 function setWorldQ(bone, quaternion) {
-  if (!bone?.parent || !finiteQ(quaternion)) return;
-  bone.quaternion.copy(bone.parent.getWorldQuaternion(Q()).invert().multiply(quaternion));
-  if (!finiteQ(bone.quaternion)) bone.quaternion.identity();
+  if (!bone?.parent || !finiteQ(quaternion) || quaternion.lengthSq() < 1e-12) return;
+  const local = bone.parent.getWorldQuaternion(Q()).invert().multiply(quaternion).normalize();
+  if (!finiteQ(local)) return;
+  bone.quaternion.copy(local);
   bone.updateWorldMatrix(false, true);
 }
 
@@ -38,17 +43,22 @@ function aim(bone, child, target) {
 }
 
 function limb(upper, lower, end, target, pole) {
-  if (!upper || !lower || !end) return;
+  if (!upper || !lower || !end || !finiteV(target) || !finiteV(pole)) return;
   const origin = upper.getWorldPosition(V());
   const joint = lower.getWorldPosition(V());
   const tip = end.getWorldPosition(V());
   const a = origin.distanceTo(joint), b = joint.distanceTo(tip);
   const axis = target.clone().sub(origin);
   if (a < 1e-5 || b < 1e-5 || axis.lengthSq() < 1e-9) return;
-  const distance = C(axis.length(), Math.abs(a - b) + 0.001, a + b - 0.001);
+  const epsilon = Math.min(0.001, a * 0.01, b * 0.01);
+  const minReach = Math.abs(a - b) + epsilon, maxReach = a + b - epsilon;
+  if (maxReach <= minReach) return;
+  const distance = C(axis.length(), minReach, maxReach);
   axis.normalize();
   const along = (a * a + distance * distance - b * b) / (2 * distance);
   const side = pole.clone().sub(origin).projectOnPlane(axis);
+  // Prefer the current knee plane over flipping between world axes.
+  if (side.lengthSq() < 1e-8) side.copy(joint).sub(origin).projectOnPlane(axis);
   if (side.lengthSq() < 1e-8) side.set(0, 0, 1).projectOnPlane(axis);
   if (side.lengthSq() < 1e-8) side.set(1, 0, 0).projectOnPlane(axis);
   side.normalize();
@@ -79,7 +89,12 @@ export class UnrealRider {
   async load() {
     this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
     const box = new THREE.Box3().setFromObject(this.model);
-    this.model.scale.setScalar(1.82 / box.getSize(V()).y);
+    const height = box.getSize(V()).y;
+    if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
+      this.dispose();
+      throw new Error('Rider GLB has invalid or empty visual bounds');
+    }
+    this.model.scale.setScalar(1.82 / height);
     this.model.rotation.y = Math.PI / 2;
     this.model.position.y = -box.min.y * this.model.scale.x;
     this.basePos = this.model.position.clone();
@@ -93,10 +108,10 @@ export class UnrealRider {
       }
       if (object.isBone) this.rest.set(object, object.quaternion.clone());
     });
-    this.bones = Object.fromEntries([...this.rest.keys()].map(bone => [bone.name, bone]));
+    this.bones = resolveHumanoidBones([...this.rest.keys()]);
     const missing = Object.entries(SEMANTIC).filter(([, name]) => !this.bones[name]).map(([key]) => key);
     this.rigAudit = {
-      boneCount: this.rest.size, missing,
+      boneCount: this.rest.size, missing, ik: humanoidIKAudit(this.bones),
       semanticNames: Object.fromEntries(Object.entries(SEMANTIC).map(([key, name]) => [key, this.bones[name]?.name || null])),
     };
     if (missing.length) console.warn('[StreetSkate] rider rig missing:', missing.join(', '));
@@ -123,7 +138,13 @@ export class UnrealRider {
         this.feet[side] = { point:footLocal, q:foot.getWorldQuaternion(Q()) };
         this.soleOffsets[side]=C(footLocal.y-floorY,0.035,0.22);
       }
-      if(knee)this.kneePoles[side]=this.root.worldToLocal(knee.getWorldPosition(V()));
+      const thigh = this.bones['thigh_' + side];
+      if (knee && thigh) {
+        // The pole tracks its HIP instead of remaining fixed during crouches.
+        const kneeLocal = this.root.worldToLocal(knee.getWorldPosition(V()));
+        const hipLocal = this.root.worldToLocal(thigh.getWorldPosition(V()));
+        this.kneePoles[side] = kneeLocal.sub(hipLocal);
+      }
       const hand = this.bones['hand_' + side];
       if (hand) this.hands[side] = { q: hand.getWorldQuaternion(Q()) };
     }
@@ -331,10 +352,10 @@ export class UnrealRider {
     for (const side of SIDES) {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];
       if (!upper || !lower || !foot || !this.feet[side]) continue;
-      const restPoint = this.feet[side].point;
-      const kneePole=this.kneePoles[side]?.clone()
-        || V(restPoint.x + (side==='l'?-0.35:0.35),0.25,restPoint.z);
-      limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), this.root.localToWorld(kneePole));
+      const poleDirection = this.kneePoles[side]?.lengthSq() > 1e-8
+        ? this.kneePoles[side] : V(0, -0.4, 0.25);
+      const kneePole = upper.getWorldPosition(V()).add(poleDirection.clone().applyQuaternion(rootQ));
+      limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
@@ -350,7 +371,6 @@ export class UnrealRider {
       const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
       const target = this.at[side].copy(shoulder)
         .add(V(0.14 + compression * 0.02, -0.31 + air * 0.08 + sign * balance * 0.04, sign * (0.14 + air * 0.08)));
-      target.y += Math.sin(time * 3.5 + sign * 0.4) * 0.01 * speedRatio;
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
@@ -375,4 +395,34 @@ export class UnrealRider {
     for (const [bone, quaternion] of this.rest) if (!finiteQ(bone.quaternion)) bone.quaternion.copy(quaternion);
     this.root.updateWorldMatrix(true, true);
   }
+  /** Release resources owned by this GLB instance after a successful hot-swap
+   * or rejected import. Board, scene lighting, renderer and other riders are
+   * never owned here. Repeated calls are safe.
+   */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const geometries = new Set(), materials = new Set();
+    const textures = new Set(), skeletons = new Set();
+    this.model?.traverse(object => {
+      if (object.isSkinnedMesh && object.skeleton) skeletons.add(object.skeleton);
+      if (object.geometry) geometries.add(object.geometry);
+      for (const material of (Array.isArray(object.material) ? object.material : [object.material])) {
+        if (!material) continue;
+        materials.add(material);
+        for (const value of Object.values(material)) {
+          if (value?.isTexture) textures.add(value);
+        }
+        for (const uniform of Object.values(material.uniforms || {})) {
+          if (uniform?.value?.isTexture) textures.add(uniform.value);
+        }
+      }
+    });
+    this.root.removeFromParent();
+    for (const skeleton of skeletons) skeleton.dispose?.();
+    for (const geometry of geometries) geometry.dispose?.();
+    for (const material of materials) material.dispose?.();
+    for (const texture of textures) texture.dispose?.();
+  }
+
 }

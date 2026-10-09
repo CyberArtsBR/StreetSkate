@@ -130,6 +130,29 @@ export class RailNetwork {
     const t = clamp((s - rail.cumulative[segment]) / length, 0, 1);
     const center = a.clone().lerp(b, t);
     center.y = railSurfaceHeight(center.y, rail.radius, clearance);
-    return { point: center, tangent: b.clone().sub(a).normalize(), s, radius: rail.radius, clearance };
+    // Keep the contact point on the authored polyline while blending travel
+    // direction across adjacent segments. This prevents visible snaps/velocity
+    // changes at curved-rail vertices without moving the rider off the rail.
+    let tangent = b.clone().sub(a).normalize();
+    const span = Math.min(0.16, length * 0.45);
+    const previous = segment > 0 ? rail.points[segment - 1]
+      : (rail.closed ? rail.points.at(-2) : null);
+    const next = segment + 2 < rail.points.length ? rail.points[segment + 2]
+      : (rail.closed ? rail.points[1] : null);
+    if (previous && s - rail.cumulative[segment] < span) {
+      const incoming = a.clone().sub(previous).normalize();
+      if (incoming.dot(tangent) > -0.98) {
+        const fraction = clamp((s - rail.cumulative[segment]) / span, 0, 1);
+        tangent = incoming.lerp(tangent, 0.5 + 0.5 * fraction).normalize();
+      }
+    }
+    if (next && rail.cumulative[segment + 1] - s < span) {
+      const outgoing = next.clone().sub(b).normalize();
+      if (outgoing.dot(tangent) > -0.98) {
+        const fraction = clamp((rail.cumulative[segment + 1] - s) / span, 0, 1);
+        tangent.lerp(outgoing, 0.5 * (1 - fraction)).normalize();
+      }
+    }
+    return { point: center, tangent, s, radius: rail.radius, clearance };
   }
 }
