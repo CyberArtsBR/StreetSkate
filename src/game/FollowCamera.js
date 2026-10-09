@@ -21,6 +21,10 @@ export const THPS_CAMERA = Object.freeze({
   contextFollowRate: 5,
   returnHoldTime: 0.35,
   occlusionReleaseRate: 4,
+  highSpeedFollowGain: 0.48,
+  highSpeedFollowCap: 9,
+  speedLookAheadGain: 0.065,
+  speedLookAheadCap: 0.85,
 
   // Classic skate cameras do not instantly orbit behind the rider every time a
   // quarter pipe reverses world travel. Normal carving recenters deliberately;
@@ -88,10 +92,16 @@ export function cameraDirectionRate(current, target, config = THPS_CAMERA) {
  * become a near top-down shot as the rider crosses the lip. Keep ground and
  * downhill landing visible while retaining high behind-the-skater framing.
  */
-export function highFollowFraming({ grounded = false, transitionReturning = false } = {}) {
+export function highFollowFraming({
+  grounded = false, transitionReturning = false, wallRideActive = false,
+  horizontalSpeed = 0,
+} = {}) {
   if (transitionReturning) return { distance: 11.6, height: 5.3, lookAhead: 1.4 };
-  if (grounded) return { distance: 9.5, height: 5.4, lookAhead: 0.55 };
-  return { distance: 10.5, height: 5.8, lookAhead: 0.75 };
+  const lead = Math.min(THPS_CAMERA.speedLookAheadCap,
+    Math.max(0, horizontalSpeed) * THPS_CAMERA.speedLookAheadGain);
+  if (wallRideActive) return { distance: 10.5, height: 6.1, lookAhead: 0.8 + lead };
+  if (grounded) return { distance: 9.5, height: 5.4, lookAhead: 0.55 + lead };
+  return { distance: 10.5, height: 5.8, lookAhead: 0.75 + lead };
 }
 
 /** Backward-compatible helper now delegated to canonical CameraState. */
@@ -236,7 +246,13 @@ export class FollowCamera {
     this.wasReturning = returning;
     if (!this.initialized) this.followCenter = state.position.clone();
     else {
-      const horizontal = 1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt);
+      // Fast cruises need a faster tripod, not an ever-growing lag behind a
+      // 20+ m/s skater. Exponential damping remains stable across frame rates.
+      const followRate = THPS_CAMERA.positionFollowRate + Math.min(
+        THPS_CAMERA.highSpeedFollowCap,
+        state.horizontalSpeed * THPS_CAMERA.highSpeedFollowGain,
+      );
+      const horizontal = 1 - Math.exp(-followRate * dt);
       const vertical = 1 - Math.exp(-(returning
         ? THPS_CAMERA.vertVerticalFollowRate : THPS_CAMERA.verticalFollowRate) * dt);
       this.followCenter.x = THREE.MathUtils.lerp(this.followCenter.x, state.position.x, horizontal);
@@ -260,48 +276,34 @@ export class FollowCamera {
     this.target.copy(frame.target);
     this.initialized = true;
 
-    // Frame with the smoothed tripod, but protect the actual rider: tracking lag
-    // must not disguise a camera inside the face when an obstacle shortens the arm.
+    // The tripod is intentionally smoothed, but all clearance rays originate
+    // at the real rider, so follow lag never conceals a camera/character overlap.
     const riderAnchor = state.position.clone().addScaledVector(UP, THPS_CAMERA.anchorHeight);
-    // A clear view may rise or shorten, but High Follow never orbits sideways
-    // to get around the coping during landing.
+    const minArm = state.wallRideActive ? 3.3 : 2.35;
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
-    let resolvedPosition = resolveCameraClearance(player?.surface, riderAnchor,
-      this.position, this.camera.position, this.clearanceCache);
-    // Coping/wall occlusion previously collapsed the chase arm to the rider's
-    // face (effectively first person). Try a raised rear chase camera; never
-    // allow the active camera to enter the avatar's silhouette.
-    const minArm=player?.wallRide?3.3:2.35;
-    if(resolvedPosition.distanceTo(riderAnchor)<minArm){
-      const desiredArm=this.position.clone().sub(riderAnchor);
-      if(desiredArm.lengthSq()<1e-8)desiredArm.set(0,3,5);
-      desiredArm.setLength(Math.max(minArm+1,desiredArm.length()));
-      desiredArm.y+=player?.wallRide?3.0:2.0;
-      const raisedEye=riderAnchor.clone().add(desiredArm);
-      const tested=resolveCameraClearance(player?.surface,riderAnchor,raisedEye,
-        null,{fixedAxis:true});
-      resolvedPosition=tested.distanceTo(riderAnchor)>=minArm?tested:raisedEye;
-    }
+    this.clearanceCache.minimumDistance = minArm;
+    const resolvedPosition = resolveCameraClearance(
+      player?.surface, riderAnchor, this.position, this.camera.position, this.clearanceCache,
+    );
     const eyeOffset = resolvedPosition.clone().sub(riderAnchor);
-    const clearDistance = resolvedPosition.distanceTo(riderAnchor);
+    const clearDistance = eyeOffset.length();
     const clipped = resolvedPosition.distanceToSquared(this.position) > 0.0001;
-    // Normal follow lag changes actual-anchor distance without an obstruction.
-    // Do not interpret that as a zoom: Fixed must keep its exact world framing.
-    if (!clipped && !this.occlusionActive) this.occlusionDistance = clearDistance;
-    if (clearDistance >= 1.8 && this.occlusionDistance !== null) {
-      this.occlusionDistance = Math.max(1.8, this.occlusionDistance);
-    }
+
+    // Occlusion gets out of the way immediately and releases smoothly. Never
+    // expand the collision-verified eye vector beyond the resolved distance:
+    // that would put the camera back inside the very wall that shortened it.
     if (this.occlusionDistance === null || clearDistance < this.occlusionDistance) {
       this.occlusionDistance = clearDistance;
     } else {
       this.occlusionDistance = THREE.MathUtils.lerp(this.occlusionDistance, clearDistance,
         1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
     }
-    this.occlusionDistance=Math.max(minArm,this.occlusionDistance);
-    if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.max(minArm,Math.min(clearDistance, this.occlusionDistance)));
-    this.occlusionActive = clipped || Math.abs(clearDistance - this.occlusionDistance) > 0.02;
+    const safeDistance = Math.min(clearDistance, this.occlusionDistance);
+    if (clearDistance > 1e-8) eyeOffset.multiplyScalar(safeDistance / clearDistance);
+    this.occlusionActive = clipped || safeDistance < clearDistance - 0.02;
     this.camera.position.copy(riderAnchor).add(eyeOffset);
-    // No first-person or rider-hiding fallback in any playable camera mode.
+    // Even when geometry offers no minimum-clearance solution, never hide the
+    // model or choose an untested point through a solid surface.
     if (player?.visual) player.visual.visible = true;
     this.camera.lookAt(this.target);
   }
