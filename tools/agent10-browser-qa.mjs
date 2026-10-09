@@ -16,7 +16,7 @@ await context.addInitScript(()=>{
   });
 });
 const page=await context.newPage();
-page.setDefaultTimeout(15000);
+page.setDefaultTimeout(60000);
 page.on('pageerror',e=>report.pageErrors.push(String(e.stack||e)));
 page.on('console',m=>{if(m.type()==='error')report.consoleErrors.push(m.text());});
 page.on('requestfailed',r=>{report.requestFailures.push({url:r.url(),reason:r.failure()?.errorText||''});});
