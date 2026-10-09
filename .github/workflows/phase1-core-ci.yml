@@ -1,7 +1,7 @@
 name: Phase 1 Core CI
 on:
   push:
-    branches: [main, refactor/core-skate-controller-v1, audit-fix/10-qa-security-ci]
+    branches: [main, refactor/core-skate-controller-v1]
   pull_request:
     branches: [main]
   workflow_dispatch:
