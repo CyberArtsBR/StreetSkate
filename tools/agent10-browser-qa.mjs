@@ -38,6 +38,11 @@ async function chooseLoadout(){
  await page.locator('.loadout-character').first().click();
  await page.locator('.loadout-deck').nth(2).click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
+ await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
+ const cta=await page.locator('[data-action="confirmLoadout"]').boundingBox();
+ const lastLocation=await page.locator('.loadout-location').last().boundingBox();
+ assert.ok(cta && lastLocation && cta.y >= lastLocation.y + lastLocation.height - 2,
+   'START SESSION must not overlap location cards, including on short viewports');
  await page.locator('[data-action="confirmLoadout"]').click();
  await page.locator('body[data-screen="playing"]').waitFor({timeout:60000});
  assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0,

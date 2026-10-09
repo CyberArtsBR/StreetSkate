@@ -250,3 +250,21 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
  background:url('/media/title-screen.png') center/cover no-repeat;
  filter:blur(25px) brightness(.58) saturate(1.2);
 }
+
+
+/* Regression: short desktop viewports must scroll, never stack location cards over START SESSION. */
+.loadout-screen .shell-content{overflow-x:hidden;overflow-y:auto;scrollbar-gutter:stable}
+.loadout-screen .loadout-shell{
+  min-height:100%;height:max-content;justify-content:flex-start;
+  gap:clamp(8px,.85cqw,16px)
+}
+.loadout-screen .loadout-section{flex:0 0 auto;min-height:max-content}
+.loadout-screen .loadout-shell footer{
+  position:relative;z-index:2;flex:0 0 auto;margin-top:auto
+}
+.loadout-screen .loadout-location:disabled{pointer-events:none}
+@media(max-height:700px){
+  .loadout-screen .shell-content{max-height:calc(100dvh - 12px)}
+  .loadout-screen .loadout-shell{height:max-content;min-height:100%;padding-bottom:20px}
+  .loadout-screen .loadout-shell footer{margin-top:12px}
+}
