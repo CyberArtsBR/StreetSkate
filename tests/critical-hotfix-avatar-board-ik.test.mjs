@@ -34,6 +34,7 @@ test('painted GLB deck is always opaque and depth-writing after choosing a finis
 
 test('180 shove-it retains board graphic yaw but not inverted foot contacts', () => {
   const board = new StreetBoard('/test-board.glb');
+  board.deckHeight = 0.13;
   board.root.position.set(0, 0.13, 0);
   const before = plantedFootWorldPoint(board, -0.15, 0.07, 0.35);
   board.update({flipState:{name:'Pop Shove-it',yaw:0.5,pitch:0,roll:0,progress:1}});
