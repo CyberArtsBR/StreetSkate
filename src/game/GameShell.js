@@ -75,6 +75,7 @@ export class GameShell {
     // tutorial or overwrite the player's new screen after Back/Escape.
     if(this.phase==='select'&&phase!=='select'){
       this.loadoutGeneration++;
+      if(this.selectBusy)this.actions.cancelLoadout?.();
       this.selectBusy=false;
     }
     this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();

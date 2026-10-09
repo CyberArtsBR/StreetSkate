@@ -91,6 +91,7 @@ let mode = 'skate';
 let loaded = false;
 let paused = false;
 let lastInputState = {};
+let loadoutRequest = 0;
 const input = new SkateInput(renderer.domElement);
 const debugOverlay = new URLSearchParams(location.search).get('debug') === '1' ? createDebugOverlay({
   button: document.querySelector('#debug-overlay'),
@@ -115,11 +116,19 @@ const gameShell = new GameShell({
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
   masterVolume: value => skateAudio.setMasterVolume(value),
+  cancelLoadout: () => {
+    loadoutRequest++;
+    skater?.cancelRiderSwap?.();
+  },
   loadout: async ({hero,board,location}) => {
     if (!loaded || !skater) throw new Error('Park is still loading.');
     if (location?.id !== 'rooftop') throw new Error('This location is not playable yet.');
-    await skater.setRiderModel(hero.url);
-    skater.board.setFinish(board.finishIndex);
+    const request = ++loadoutRequest;
+    const target = skater;
+    await target.setRiderModel(hero.url);
+    // Never let a superseded model load apply an old deck finish.
+    if (request !== loadoutRequest || target !== skater) return false;
+    target.board.setFinish(board.finishIndex);
     return true;
   },
 });
