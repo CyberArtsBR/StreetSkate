@@ -114,8 +114,17 @@ const gameShell = new GameShell({
   score: () => skater?.score || 0,
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
+  masterVolume: value => skateAudio.setMasterVolume(value),
+  loadout: async ({hero,board,location}) => {
+    if (!loaded || !skater) throw new Error('Park is still loading.');
+    if (location?.id !== 'rooftop') throw new Error('This location is not playable yet.');
+    await skater.setRiderModel(hero.url);
+    skater.board.setFinish(board.finishIndex);
+    return true;
+  },
 });
 gameShell.sound = skateAudio.enabled;
+skateAudio.setMasterVolume(gameShell.music.masterVolume);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
 function applyLighting() {

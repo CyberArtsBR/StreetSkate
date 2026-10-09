@@ -107,6 +107,42 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     return this;
   }
 
+  /** Hot-swap a rigged GLB without resetting physics, collision, or the skateboard. */
+  async setRiderModel(url) {
+    if (!url || typeof url !== 'string') throw new Error('Choose a character GLB.');
+    if (this.rider?.url === url) return this.rider;
+    const candidate = await new UnrealRider(url).load();
+    const required = ['pelvis','head','upperarm_l','upperarm_r','thigh_l','thigh_r','foot_l','foot_r'];
+    const missing = required.filter(name => !candidate.bones[name]);
+    if (missing.length) {
+      candidate.model?.traverse(o=>{
+        if(o.isMesh)o.geometry?.dispose();
+      });
+      throw new Error('GLB requires a rigged humanoid avatar; missing bones: '+missing.join(', '));
+    }
+    candidate.deckHeight = this.board.deckHeight;
+    const previous = this.rider;
+    this.visual.add(candidate.root);
+    this.rider = candidate;
+    previous?.root?.removeFromParent();
+    this.flashMaterials = [];
+    this.visual.traverse(mesh => {
+      if(!mesh.isMesh)return;
+      for(const material of Array.isArray(mesh.material)?mesh.material:[mesh.material])
+        if(material && !this.flashMaterials.some(item=>item.material===material))
+          this.flashMaterials.push({material,opacity:material.opacity,transparent:material.transparent,depthWrite:material.depthWrite});
+    });
+    this.resetPresentationAfterSwap();
+    return this.rider;
+  }
+
+  resetPresentationAfterSwap() {
+    this.rider?.resetPresentation();
+    this.board?.resetPresentation();
+    if(this.presentation) this.presentation.stateTime=0;
+    this.update(0,{},0);
+  }
+
   reset(position, heading) {
     super.reset(position, heading);
     // The base constructor also calls reset, before presentation is allocated.
