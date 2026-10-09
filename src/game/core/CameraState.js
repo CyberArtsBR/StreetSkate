@@ -20,18 +20,18 @@ function horizontalUnit(source, fallback = null) {
  * side -> deck forward adjusted for fakie -> world -Z fallback.
  */
 export function resolveCameraTravelDirection(player, previousDirection = null, initialized = true) {
-  // Landing contacts can leave canonical travel pointing uphill for a frame.
-  // Follow actual, meaningful downhill movement after re-entry instead.
-  if (player?.grounded && Math.abs(player?.normal?.y || 0) > 0.25) {
-    const groundVelocity = player.velocity?.clone?.().setY(0);
-    if (groundVelocity?.lengthSq() > 0.64) return groundVelocity.normalize();
-  }
   const persistent = horizontalUnit(player?.travelDirection);
+  const velocity = horizontalUnit(player?.velocity);
+  const speedSquared = (player?.velocity?.x || 0) ** 2 + (player?.velocity?.z || 0) ** 2;
+  // A single touchdown frame may still carry the uphill/coping travel vector.
+  // Do not let arbitrary ground contact or a trick's rebuilt velocity override
+  // canonical travel during ordinary skating or fakie 180s.
+  if (player?.justLanded && player?.grounded && (player?.normal?.y || 0) > 0.25
+    && speedSquared > 0.64 && velocity && (!persistent || persistent.dot(velocity) < 0.35)) {
+    return velocity;
+  }
   if (persistent) return persistent;
-
-  const velocity = player?.velocity?.clone?.() || new THREE.Vector3();
-  velocity.y = 0;
-  if (velocity.lengthSq() > 0.16) return velocity.normalize();
+  if (velocity && speedSquared > 0.16) return velocity;
 
   if (initialized) {
     const previous = horizontalUnit(previousDirection);
@@ -72,6 +72,10 @@ export function captureCameraState(player, {
     transitionActive: Boolean(player?.transitionAir),
     transitionReturning: Boolean(player?.transitionAir && !player.transitionAir.transferring),
     returnDirection: horizontalUnit(player?.transitionAir?.frame?.rampInward),
+    wallRideActive: Boolean(player?.wallRide),
+    justLanded: Boolean(player?.justLanded),
+    horizontalSpeed: Math.hypot(player?.velocity?.x || 0, player?.velocity?.z || 0),
+    verticalSpeed: Number(player?.velocity?.y) || 0,
     grindActive: Boolean(player?.grind),
     manualActive: Boolean(player?.manual),
     doingTrick: Boolean(player?.flipState || player?.grabState),
