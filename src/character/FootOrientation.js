@@ -11,6 +11,17 @@ const UP = new THREE.Vector3(0, 1, 0);
  * During a flip, grab release or bail, the feet follow rider orientation
  * until the board is safely caught.
  */
+/**
+ * The mesh can keep the completed shove-it yaw for continuity, but riders
+ * must plant on the deck in their original stance frame. Undo ONLY the held
+ * trick yaw for the foot contact points; the deck's bank/pitch still applies.
+ */
+export function plantedFootWorldPoint(board, x, y, z, output = new THREE.Vector3()) {
+  const heldYaw = Number.isFinite(board?._yawHold) ? board._yawHold : 0;
+  const cos = Math.cos(heldYaw), sin = Math.sin(heldYaw);
+  return board.pointWorld(cos * x - sin * z, y, sin * x + cos * z, output);
+}
+
 export function footWorldOrientation(riderRoot, board, restFootQuaternion, plantOnBoard = true) {
   const riderWorld = riderRoot.getWorldQuaternion(new THREE.Quaternion());
   if (!plantOnBoard || !board?.root) return riderWorld.multiply(restFootQuaternion);
