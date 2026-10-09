@@ -1,5 +1,6 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
+import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
 import { characterPortrait } from './CharacterPortraits.js';
 
@@ -11,13 +12,13 @@ const CAMERA_LABELS=['Follow','Classic','Fixed'];
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
-    this.selection=0;this.previousPad={};this.navRepeat=0;this.tutorialSeen=false;this.page=0;
+    this.selection=0;this.previousPad={};this.padFocused=false;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
-    this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
+    this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ ← → / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
     this.timer=document.createElement('div');this.timer.id='run-timer';document.querySelector('#app').append(this.timer);
     this.song=document.createElement('div');this.song.id='now-playing';document.body.append(this.song);
@@ -28,19 +29,25 @@ export class GameShell {
     this.avatarInput.addEventListener('change',async()=>{
       const file=this.avatarInput.files?.[0];this.avatarInput.value='';
       if(!file)return;
-      if(file.size>35*1024*1024 || file.size<100 || !/\.glb$/i.test(file.name)) {
+      if(file.size>35*1024*1024 || file.size<20 || !/\.glb$/i.test(file.name)) {
         this.selectError='Choose a rigged .GLB file smaller than 35 MB.';this.render();return;
       }
-      const magic=new Uint8Array(await file.slice(0,4).arrayBuffer());
-      if(String.fromCharCode(...magic)!=='glTF'){this.selectError='Invalid GLB header.';this.render();return;}
+      // GLB 2.0 starts with a 12-byte header followed by a JSON chunk.
+      // Reject malformed uploads before passing their object URL to the loader.
+      let header;
+      try { header=await file.slice(0,20).arrayBuffer(); }
+      catch { this.selectError='Unable to read the GLB file.';this.render();return; }
+      if(!isValidGlbHeader(header,file.size)) {
+        this.selectError='Invalid GLB 2.0 header or JSON chunk.';this.render();return;
+      }
       const next=URL.createObjectURL(file);
       if(this.avatarUrl)URL.revokeObjectURL(this.avatarUrl);
       this.avatarUrl=next;
       this.heroes=this.heroes.filter(h=>h.id!=='custom');
       this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
-      this.heroIndex=this.heroes.length-1;this.heroConfirmed=true;
+      this.heroIndex=this.heroes.length-1;this.heroConfirmed=false;
       this.focusHint={action:'hero',index:this.heroIndex};
-      this.selectError='Avatar ready · continue to verify the skeleton.';
+      this.selectError='Avatar ready · select this rider with A / Enter / Click before continuing.';
       this.render();
     });
     window.addEventListener('keydown',e=>this.key(e),true);
@@ -51,7 +58,13 @@ export class GameShell {
   setReady(){this.ready=true;this.render();}
   setScreen(phase){this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();}
   menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
-  focusSelection(){const buttons=this.menuButtons();this.selection=(this.selection+buttons.length)%Math.max(1,buttons.length);buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));buttons[this.selection]?.focus({preventScroll:true});}
+  focusSelection(){
+    const buttons=this.menuButtons();
+    if(!buttons.length){this.selection=0;return;}
+    this.selection=(this.selection+buttons.length)%buttons.length;
+    buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));
+    buttons[this.selection]?.focus({preventScroll:true});
+  }
   // Spatial controller navigation: left/right stays on the same visual row,
   // up/down targets the closest item in the row immediately above/below.
   moveSelection(axis, sign) {
@@ -77,6 +90,11 @@ export class GameShell {
       if(candidate<score){best=i;score=candidate;}
     }
     if(best>=0){this.selection=best;this.focusSelection();}
+    // DOM-free/flex-list fallback for zero-sized nodes and non-grid menus.
+    else if(this.phase!=='select'&&axis==='y'&&buttons.length>1){
+      this.selection=(this.selection+sign+buttons.length)%buttons.length;
+      this.focusSelection();
+    }
   }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
   render(){
@@ -86,7 +104,7 @@ export class GameShell {
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -240,40 +258,48 @@ export class GameShell {
       if(event.code==='Escape')this.back();
       else if(['ArrowLeft','KeyA'].includes(event.code)&&this.open)this.choose('previous');
       else if(['ArrowRight','KeyD'].includes(event.code)&&this.open)this.choose('next');
-      else if(this.phase==='select'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){
+      else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){
         const axis=['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(event.code)?'x':'y';
         this.moveSelection(axis,['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1);
       }
-      else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){this.selection+=['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1;this.focusSelection();}
       else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
   }
   updateTimer(){this.timer.textContent=this.practice?'PRACTICE · ∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;this.timer.classList.toggle('time-low',!this.practice&&this.remaining<=15);}
   update(dt){
     this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
-    if(!document.hasFocus())return;
+    const focused=document.hasFocus();
     const pad=[...(navigator.getGamepads?.()||[])].find(p=>p?.connected);
     const b=i=>!!pad?.buttons[i]?.pressed;
-    const keys={a:b(0),back:b(1),select:b(8),start:b(9),up:b(12)||(pad?.axes[1]||0)<-.6,down:b(13)||(pad?.axes[1]||0)>.6,left:b(14)||b(4),right:b(15)||b(5)};
+    const stickX=pad?.axes?.[0]||0,stickY=pad?.axes?.[1]||0;
+    const keys={a:b(0),back:b(1),select:b(8),start:b(9),
+      shoulderLeft:b(4),shoulderRight:b(5),
+      up:b(12)||stickY<-.65,down:b(13)||stickY>.65,
+      left:b(14)||stickX<-.65,right:b(15)||stickX>.65};
+    // Read the physical state even when unfocused so regaining focus cannot
+    // synthesize a stale edge from a button held while the tab was inactive.
+    if(!focused){this.padFocused=false;this.previousPad=keys;this.navRepeat=.22;return;}
+    if(!this.padFocused){this.previousPad=keys;this.padFocused=true;}
     const edge=k=>keys[k]&&!this.previousPad[k];
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();
     if(!this.active){
-      if(this.phase==='select'){
-        const direction=keys.left?'left':keys.right?'right':keys.up?'up':keys.down?'down':null;
+      const direction=keys.left?'left':keys.right?'right':keys.up?'up':keys.down?'down':null;
+      if(this.open){
+        if(edge('back'))this.back();
+        else if(edge('shoulderLeft')||edge('left'))this.choose('previous');
+        else if(edge('shoulderRight')||edge('right'))this.choose('next');
+        else if(edge('a'))this.menuButtons()[this.selection]?.click();
+      } else {
         if(direction&&(!this.navRepeat||edge(direction))){
           this.moveSelection(direction==='left'||direction==='right'?'x':'y',
             direction==='left'||direction==='up'?-1:1);
-          this.navRepeat=.19;
+          this.navRepeat=.22;
         }
-      } else if((keys.up||keys.down)&&(!this.navRepeat||edge('up')||edge('down'))){
-        this.selection+=keys.up?-1:1;this.focusSelection();this.navRepeat=.22;
+        if(edge('back'))this.back();
+        else if(edge('a'))this.menuButtons()[this.selection]?.click();
+        else if(edge('start')&&this.phase==='pause')this.resume();
       }
-      if(edge('back'))this.back();
-      else if(this.open&&edge('left'))this.choose('previous');
-      else if(this.open&&edge('right'))this.choose('next');
-      else if(edge('a'))this.menuButtons()[this.selection]?.click();
-      else if(edge('start')&&this.phase==='pause')this.resume();
     }
     this.previousPad=keys;
     if(this.active&&!this.practice&&document.hasFocus()){

@@ -6,10 +6,12 @@ export class SkateAudio {
     this.previous = null;
     this.baseGain = 0.34;
     this.masterVolume = 0.5;
+    this.lastImpactTime = -Infinity;
+    this.disposed = false;
   }
 
   async unlock() {
-    if (!this.enabled) return;
+    if (!this.enabled || this.disposed) return;
     const Audio = window.AudioContext || window.webkitAudioContext;
     if (!Audio) return;
     if (!this.context) {
@@ -33,11 +35,15 @@ export class SkateAudio {
   }
 
   impact(strength = 0.5, metal = false) {
-    if (!this.context || !this.enabled) return;
-    const c = this.context, now = c.currentTime, source = c.createBufferSource();
+    if (!this.context || !this.enabled || this.disposed || this.context.state !== 'running') return;
+    const c = this.context, now = c.currentTime;
+    // Multiple landing, grind and bail transitions may arrive in one physics tick.
+    if (now - this.lastImpactTime < 0.075) return;
+    this.lastImpactTime = now;
+    const source = c.createBufferSource();
     const filter = c.createBiquadFilter(), gain = c.createGain();
     source.buffer = this.buffer; filter.type = 'bandpass'; filter.frequency.value = metal ? 2800 : 620;
-    gain.gain.setValueAtTime(Math.max(0.001, strength), now);
+    gain.gain.setValueAtTime(Math.max(0.001, Math.min(1, strength)), now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + (metal ? 0.15 : 0.09));
     source.connect(filter); filter.connect(gain); gain.connect(this.master); source.start(); source.stop(now + 0.18);
     source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
@@ -56,7 +62,7 @@ export class SkateAudio {
       this.grind.filter.frequency.setTargetAtTime(1400 + speed * 80, now, 0.07);
       this.wind.gain.gain.setTargetAtTime(audible && !state.grounded && !state.grind ? level * 0.045 : 0, now, 0.1);
       if (audible && this.previous) {
-        if (!state.grounded && this.previous.grounded && !state.grind) this.impact(0.48);
+        if (!state.grounded && this.previous.grounded && !state.grind) this.impact(0.18);
         if (state.grounded && !this.previous.grounded) this.impact(0.35 + Math.min(0.45, (player.presentation?.landingSeverity || 0) * 0.45));
         if (state.grind && !this.previous.grind) this.impact(0.52, true);
         if (state.bail && !this.previous.bail) this.impact(0.72);
@@ -78,9 +84,29 @@ export class SkateAudio {
   }
 
   toggle() {
+    if (this.disposed) return this.enabled;
     this.enabled = !this.enabled;
     try { localStorage.setItem('streetskate.sound', this.enabled ? 'on' : 'off'); } catch {}
     if (!this.enabled) this.silence(); else this.unlock();
     return this.enabled;
+  }
+
+  async dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.enabled = false;
+    this.silence();
+    for (const layer of [this.roll, this.grind, this.wind]) {
+      if (!layer) continue;
+      try { layer.source.stop(); } catch {}
+      layer.source.disconnect();
+      layer.filter.disconnect();
+      layer.gain.disconnect();
+    }
+    this.master?.disconnect();
+    const context = this.context;
+    this.context = null;
+    this.previous = null;
+    if (context?.state !== 'closed') await context?.close?.().catch(() => {});
   }
 }
