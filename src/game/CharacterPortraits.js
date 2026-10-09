@@ -53,7 +53,7 @@ async function renderPortrait(url) {
         preserveDrawingBuffer: true,
       });
       renderer.setPixelRatio(1);
-      renderer.setSize(220, 270);
+      renderer.setSize(320, 340);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
     }
@@ -74,9 +74,10 @@ async function renderPortrait(url) {
     const center = scaledBounds.getCenter(new THREE.Vector3());
     model.position.sub(center);
     model.rotation.y = Math.PI / 5;
-    const camera = new THREE.PerspectiveCamera(37, 220 / 270, 0.05, 40);
-    camera.position.set(0, 0.15, 4.0);
-    camera.lookAt(0, 0.05, 0);
+    // Frame face, ears, headwear and shoulders at thumbnail scale.
+    const camera = new THREE.PerspectiveCamera(39, 320 / 340, 0.05, 40);
+    camera.position.set(0, 0.38, 2.65);
+    camera.lookAt(0, 0.38, 0);
     renderer.setClearColor(0, 0);
     renderer.clear();
     renderer.render(scene, camera);

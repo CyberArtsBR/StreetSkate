@@ -3,7 +3,13 @@ import { FLIP_TRICKS, DOUBLE_FLIP_TRICKS, GRAB_TRICKS, DOUBLE_GRAB_TRICKS,
 
 const DIRECTIONS={none:'Neutral',left:'A / Left',right:'D / Right',up:'W / Up',down:'S / Down',
   upLeft:'W+A / Up-left',upRight:'W+D / Up-right',downLeft:'S+A / Down-left',downRight:'S+D / Down-right'};
-const table=(head,rows)=>`<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+export function xboxIcons(value) {
+  return String(value).replace(/\b(LB|RB|LT|RT|A|B|X|Y|View|Select|Start|Menu|D-pad)\b/g, token => {
+    const cls=/^[ABXY]$/.test(token)?'xbox-'+token.toLowerCase():'xbox-mod';
+    return '<span class="xbox-input '+cls+'" aria-label="Xbox '+token+'">'+token+'</span>';
+  });
+}
+const table=(head,rows)=>`<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td>${head[i]?.startsWith('Xbox')?xboxIcons(v):v}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 export function tutorialPages() {
   return [
     {title:'Welcome to the rooftop',subtitle:'90 seconds. Build a line. Land your combos.',html:table(['Action','Keyboard','Xbox'],[

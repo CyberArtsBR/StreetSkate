@@ -234,3 +234,10 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 @media(max-width:900px){.loadout-screen .rider-portrait{height:clamp(85px,10cqw,135px)}}
 @media(max-width:650px){.loadout-screen .rider-portrait{height:17vh}.tutorial-frame footer span{display:none}}
 @media(prefers-reduced-motion:reduce){#run-timer.time-low{animation:none}}
+
+
+.xbox-input{display:inline-grid;place-items:center;vertical-align:middle;min-width:1.5em;height:1.5em;padding:0 .18em;
+ margin:0 .08em;border-radius:99px;background:#3c4c52;color:white;box-shadow:inset 0 -2px 3px #0007;font-weight:900;line-height:1}
+.xbox-input.xbox-a{background:#148d34}.xbox-input.xbox-b{background:#d3273f}
+.xbox-input.xbox-x{background:#196ad8}.xbox-input.xbox-y{background:#c8a51c;color:#141414}
+.xbox-input.xbox-mod{border-radius:5px;font-size:.9em;padding:0 .45em}
