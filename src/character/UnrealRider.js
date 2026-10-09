@@ -372,8 +372,11 @@ export class UnrealRider {
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
-      const footQ = deckLocked && !releasedFoot ? board.root.getWorldQuaternion(Q()) : rootQ.clone();
-      setWorldQ(foot, footQ.multiply(this.feet[side].q));
+      // The board may have spun 180 degrees while the skater stayed facing
+      // forward. Preserve the skater's ankle yaw and only align deck tilt.
+      setWorldQ(foot, footWorldOrientation(
+        this.root, board, this.feet[side].q, deckLocked && !releasedFoot,
+      ));
     }
 
     this.root.updateWorldMatrix(true, true);
