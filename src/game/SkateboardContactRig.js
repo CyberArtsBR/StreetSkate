@@ -107,6 +107,8 @@ export class SkateboardContactRig {
     this.state.frontSupported = 0;
     this.state.rearSupported = 0;
     this.state.maxWheelGap = 0;
+    this.state.noseClear = true;
+    this.state.tailClear = true;
   }
 
   basis(heading, normal, target = this._basis) {
@@ -257,7 +259,11 @@ export class SkateboardContactRig {
     const axis = correctionAxis || state.normal;
     const axisDotNormal = Math.max(0.08, Math.abs(axis.dot(state.normal)));
     correction = (correction + this.skin) / axisDotNormal;
-    correction = clamp(correction, -correctionDown, correctionUp);
+    // One isolated wheel must not lever the entire board up/down a full
+    // snap distance. Preserve the contact for lip-release decisions.
+    const downLimit = count === 1 ? Math.min(correctionDown, 0.045) : correctionDown;
+    const upLimit = count === 1 ? Math.min(correctionUp, 0.035) : correctionUp;
+    correction = clamp(correction, -downLimit, upLimit);
     state.position.copy(position).addScaledVector(axis, correction);
 
     const surfaceForward = groundForwardFromHeading({ heading, normal: state.normal, out: this._scratchC });
