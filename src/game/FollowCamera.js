@@ -147,8 +147,8 @@ export class FollowCamera {
   }
 
   setMode(mode, player = null) {
-    this.mode = ['follow', 'classic', 'fixed', 'firstperson'].includes(mode) ? mode : 'follow';
-    this.camera.fov = this.mode === 'firstperson' ? 78 : 58;
+    this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
+    this.camera.fov = 58;
     this.camera.updateProjectionMatrix();
     if (player) this.snap(player);
   }
@@ -175,8 +175,7 @@ export class FollowCamera {
       initialized: this.initialized,
     });
     const classic = this.mode !== 'fixed';
-    const firstPerson = this.mode === 'firstperson';
-    const highFollow = this.mode === 'follow' || firstPerson;
+    const highFollow = this.mode === 'follow';
     const returning = state.transitionReturning;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
@@ -235,16 +234,6 @@ export class FollowCamera {
       this.height = THPS_CAMERA.height;
     }
     this.wasReturning = returning;
-    if (firstPerson) {
-      const look = this.direction.clone().applyAxisAngle(UP, this.lookYaw);
-      const eye = state.position.clone().addScaledVector(UP, 1.18 - (player.charge || 0) * 0.3);
-      this.camera.position.copy(eye);
-      this.target.copy(eye).addScaledVector(look, 12).addScaledVector(UP, -0.35 - this.lookTilt * 6);
-      this.camera.lookAt(this.target);
-      if (player?.visual) player.visual.visible = false;
-      this.initialized = true;
-      return;
-    }
     if (!this.initialized) this.followCenter = state.position.clone();
     else {
       const horizontal = 1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt);
@@ -279,6 +268,20 @@ export class FollowCamera {
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     let resolvedPosition = resolveCameraClearance(player?.surface, riderAnchor,
       this.position, this.camera.position, this.clearanceCache);
+    // Coping/wall occlusion previously collapsed the chase arm to the rider's
+    // face (effectively first person). Try a raised rear chase camera; never
+    // allow the active camera to enter the avatar's silhouette.
+    const minArm=player?.wallRide?3.3:2.35;
+    if(resolvedPosition.distanceTo(riderAnchor)<minArm){
+      const desiredArm=this.position.clone().sub(riderAnchor);
+      if(desiredArm.lengthSq()<1e-8)desiredArm.set(0,3,5);
+      desiredArm.setLength(Math.max(minArm+1,desiredArm.length()));
+      desiredArm.y+=player?.wallRide?3.0:2.0;
+      const raisedEye=riderAnchor.clone().add(desiredArm);
+      const tested=resolveCameraClearance(player?.surface,riderAnchor,raisedEye,
+        null,{fixedAxis:true});
+      resolvedPosition=tested.distanceTo(riderAnchor)>=minArm?tested:raisedEye;
+    }
     const eyeOffset = resolvedPosition.clone().sub(riderAnchor);
     const clearDistance = resolvedPosition.distanceTo(riderAnchor);
     const clipped = resolvedPosition.distanceToSquared(this.position) > 0.0001;
@@ -294,12 +297,12 @@ export class FollowCamera {
       this.occlusionDistance = THREE.MathUtils.lerp(this.occlusionDistance, clearDistance,
         1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
     }
-    if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.min(clearDistance, this.occlusionDistance));
+    this.occlusionDistance=Math.max(minArm,this.occlusionDistance);
+    if (eyeOffset.lengthSq() > 1e-8) eyeOffset.setLength(Math.max(minArm,Math.min(clearDistance, this.occlusionDistance)));
     this.occlusionActive = clipped || Math.abs(clearDistance - this.occlusionDistance) > 0.02;
     this.camera.position.copy(riderAnchor).add(eyeOffset);
-    // Exceptional enclosed spaces must not fill the view with the inside of a
-    // face/hat. This changes presentation only and recovers as soon as space opens.
-    if (player?.visual) player.visual.visible = this.camera.position.distanceTo(riderAnchor) > 1.15;
+    // No first-person or rider-hiding fallback in any playable camera mode.
+    if (player?.visual) player.visual.visible = true;
     this.camera.lookAt(this.target);
   }
 }

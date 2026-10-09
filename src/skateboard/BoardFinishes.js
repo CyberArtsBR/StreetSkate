@@ -9,17 +9,16 @@ function finish(color, stops) {
   });
 }
 
-// Shared between the board's lit paint and the selector swatches. Keep the
-// existing base color/IDs so saved selections continue to resolve unchanged.
+// Eight distinct gradient deck paints shared by 3D board and Build Your Line.
 export const SKATEBOARD_FINISHES = Object.freeze([
-  finish(0xc91f37, [0x5e123b, 0xde2946, 0xffad56]),
-  finish(0x1d6cff, [0x27196a, 0x246fff, 0x55e6e6]),
-  finish(0x16d9e8, [0x086e83, 0x21d9de, 0xb3ffdc]),
-  finish(0x64d93a, [0x155f47, 0x71de36, 0xe9f66e]),
-  finish(0xf3c744, [0xc86b18, 0xf7c847, 0xffedb4]),
-  finish(0x8c4dff, [0x36186e, 0x9652ff, 0xf486d4]),
-  finish(0x151515, [0x10121c, 0x303a4a, 0x8996a5]),
-  finish(0xf4f4f0, [0xa6b6c7, 0xf4f4ee, 0xffffff]),
+  finish(0x858d98, [0x343943, 0x8994a5, 0xd8dde3]), // Steel grey
+  finish(0xf2f2f2, [0x12141a, 0xf5f5f4, 0x181b21]), // White / black
+  finish(0x9652ff, [0x2a105f, 0x9550ed, 0xf4a3ff]), // Purple
+  finish(0x71de36, [0x165933, 0x70dd28, 0xe5ff7b]), // Lime
+  finish(0xffd14f, [0x9e5c10, 0xffd63c, 0xfff4a6]), // Yellow
+  finish(0x3484ff, [0x142d84, 0x2372f6, 0x9fefff]), // Blue
+  finish(0xff913f, [0x92361a, 0xff8b26, 0xffd075]), // Orange
+  finish(0xef3653, [0x71132f, 0xe5294e, 0xffa3a3]), // Red
 ]);
 
 export function skateboardFinishByColor(color) {

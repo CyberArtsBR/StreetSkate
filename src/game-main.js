@@ -169,7 +169,7 @@ function setExploreView(name, instant = false) {
 function setCameraMode(nextMode) {
   if (!followCamera) return;
   followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
-  gameShell.cameraIndex = ['follow','classic','fixed','firstperson'].indexOf(followCamera.mode);
+  gameShell.cameraIndex = ['follow','classic','fixed'].indexOf(followCamera.mode);
   const button = document.querySelector('#camera-mode');
   button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
   button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
@@ -179,7 +179,7 @@ function setCameraMode(nextMode) {
 }
 
 function toggleCameraMode() {
-  const modes = ['follow', 'classic', 'fixed', 'firstperson'];
+  const modes = ['follow', 'classic', 'fixed'];
   setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
 }
 
@@ -485,7 +485,7 @@ renderer.setAnimationLoop(() => {
     };
     if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
     if (state.cameraModePressed && gameShell.active) toggleCameraMode();
-    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed','firstperson'][state.cameraModeIndex]);
+    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.active) {
       const respawn = skater.respawnSerial;
       skater.update(dt, gameShell.inputGrace > 0 ? {} : state, elapsed);
