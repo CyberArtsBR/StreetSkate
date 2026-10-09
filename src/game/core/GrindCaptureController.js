@@ -247,6 +247,9 @@ export function applyGrindEntry(runtime, capture, trick = {}) {
     profile: capture.profile,
     speed: capture.speed,
     time: 0,
+    // Rail-trick changes require both elapsed time and distance travelled.
+    lastSwitchTime: 0,
+    lastSwitchS: capture.s,
     balance: 0,
     balanceState: createBalanceState(1.18),
     instability: 0,

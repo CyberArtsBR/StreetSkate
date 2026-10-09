@@ -62,6 +62,18 @@ export class SkillStreetPhysics extends StreetPhysics {
   handleEvents(events) {
     const previousManual = this.manual;
     const previousGrind = this.grind?.trick?.name;
+    // Every rail trick grants points, so do not permit stationary button spam
+    // to manufacture a long combo. New tricks require actual rail travel.
+    if (events.grindChange && this.grind) {
+      const elapsed = this.grind.time - (this.grind.lastSwitchTime ?? 0);
+      const travelled = Math.abs(this.grind.s - (this.grind.lastSwitchS ?? this.grind.s));
+      if (elapsed < 0.20 || travelled < 0.38) {
+        events = { ...events, grindChange: null };
+      } else if (events.grindChange.name !== previousGrind) {
+        this.grind.lastSwitchTime = this.grind.time;
+        this.grind.lastSwitchS = this.grind.s;
+      }
+    }
     super.handleEvents(events);
 
     if (events.manual && this.manual && this.manual !== previousManual) {
@@ -101,6 +113,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     }
     this.manual = null;
     this.flatland = null;
+    if (this.grounded) this.setMovementState(MOVEMENT_STATE.GROUND);
     this.manualBalance = 0;
     this.manualTime = 0;
     this.manualInstability = 0;
@@ -294,9 +307,10 @@ export class SkillStreetPhysics extends StreetPhysics {
     const currentTravel = current.tangent.clone().multiplyScalar(this.grind.direction);
     const gravityAlong = GRAVITY.dot(currentTravel);
     const friction = 0.42 + 0.012 * this.grind.speed * this.grind.speed;
-    // Arcade grind assist keeps even slow entries moving through long curves.
-    this.grind.speed = clamp(this.grind.speed + gravityAlong * dt - friction * dt,
-      GRIND_CAPTURE.antiStallSpeed, 23);
+    // Preserve projected entry speed: a rail never gives free propulsion.
+    // A nearly stopped rider leaves the rail instead of accelerating to a floor.
+    this.grind.speed = clamp(this.grind.speed + gravityAlong * dt - friction * dt, 0, 23);
+    if (this.grind.speed <= 0.10) { this.exitGrind(false); return; }
 
     this.grind.s += this.grind.direction * this.grind.speed * dt;
     this.grind.contactClearance += (this.grind.contactClearanceTarget - this.grind.contactClearance) * (1 - Math.exp(-18 * dt));
