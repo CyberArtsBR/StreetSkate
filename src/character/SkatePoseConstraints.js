@@ -61,3 +61,26 @@ export function neutralHandOffset(outwardSign, frontArm=false, compression=0, ai
     (frontArm?0.095:-0.065)+0.06*C(balance,-1,1)
   );
 }
+
+/**
+ * Calibrate posture to an imported GLB's actual hip-to-ankle separation.
+ * A hard-coded 40 cm clearance straightens short-legged cartoon characters
+ * after we have crouched them. Tall and short rigs need different limits.
+ */
+export function avatarPoseCalibration(hipToAnkle) {
+  const height = C(Number.isFinite(hipToAnkle) ? hipToAnkle : 0.72, 0.30, 1.20);
+  return {
+    crouchScale: C(height / 0.72, 0.72, 1.25),
+    pelvisClearance: C(height * 0.52, 0.19, 0.405),
+  };
+}
+
+/** Only correct genuinely overextended legs: never lift the hips to force a
+ * knee bend, since that cancels the actual crouch pose. */
+export function legOverextension(hip, target, upperLength, lowerLength) {
+  if (!hip?.isVector3 || !target?.isVector3 ||
+      !Number.isFinite(upperLength) || !Number.isFinite(lowerLength)) return 0;
+  const reach = upperLength + lowerLength - 0.008;
+  if (!(reach > 0)) return 0;
+  return C(hip.distanceTo(target) - reach, 0, 0.14);
+}
