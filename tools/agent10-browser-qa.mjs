@@ -33,12 +33,15 @@ async function gotoTitle(){
  await page.waitForFunction(()=>window.streetSkate?.ready===true,null,{timeout:90000});
  await page.locator('body[data-screen="title"]').waitFor();
  assert.equal(await page.locator('#viewport canvas').count(),1,'Expected exactly one canvas');
+ await page.screenshot({path:join(out,'title-1440.png'),fullPage:true});
+ assert.equal(await page.locator('#game-shell.title-screen .art-hit span:visible').count(),0,'No duplicate title button captions');
 }
 async function chooseLoadout(){
  await page.locator('.loadout-character').first().click();
  await page.locator('.loadout-deck').nth(2).click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
  await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
+ if(page.viewportSize()?.width<=800) await page.screenshot({path:join(out,'selection-five-800.png'),fullPage:true});
  const cta=await page.locator('[data-action="confirmLoadout"]').boundingBox();
  const lastLocation=await page.locator('.loadout-location').last().boundingBox();
  assert.ok(cta && lastLocation && cta.y >= lastLocation.y + lastLocation.height - 2,
@@ -121,6 +124,8 @@ try{
   await page.locator('[data-action="start"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   assert.equal(await page.locator('.loadout-character').count(),4);
+  await page.waitForFunction(() => document.querySelectorAll('.rider-portrait img').length === 4, null, {timeout:60000});
+  await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),2);
@@ -166,9 +171,12 @@ try{
   // The tutorial stays available on demand and can be skipped back to pause.
   await page.keyboard.press('Escape');
   await page.locator('body[data-screen="pause"]').waitFor();
+  await page.screenshot({path:join(out,'pause-800.png'),fullPage:true});
   await page.locator('[data-action="tutorial"]').click();
   await page.locator('body[data-screen="tutorial"]').waitFor();
   assert.equal(await page.locator('[data-action="skipTutorial"]').count(),1);
+  assert.ok(await page.locator('.xbox-input.xbox-a').count()>0,'Tutorial must show colored Xbox A');
+  await page.screenshot({path:join(out,'tutorial-800.png'),fullPage:true});
   await page.locator('[data-action="skipTutorial"]').click();
   await page.locator('body[data-screen="pause"]').waitFor();
   await page.locator('[data-action="resume"]').click();
@@ -243,6 +251,36 @@ try{
    assert.equal(detail.attached,true,name+' avatar not attached to board rig');
    metrics.push({name,...detail});
    await page.screenshot({path:join(out,'rider-'+name+'.png'),fullPage:true});
+   // Capture an orthographic-like closer perspective of soles/knees and board,
+   // without permanently changing the Follow/Classic/Fixed camera controls.
+   const visual=await page.evaluate(() => {
+     const game=window.streetSkate, rider=game.skater.rider, board=game.skater.board;
+     const camera=game.camera;
+     const previousPosition=camera.position.clone(), previousRotation=camera.quaternion.clone();
+     const anchor=rider.root.getWorldPosition(camera.position.clone());
+     const gaps={};
+     rider.root.updateWorldMatrix(true,true);
+     board.root.updateWorldMatrix(true,true);
+     for (const side of ['l','r']) {
+       const bone=rider.bones?.['foot_'+side];
+       if (!bone) continue;
+       const foot=bone.getWorldPosition(camera.position.clone());
+       const inBoard=board.root.worldToLocal(foot);
+       const top=(board.contactRig.deckTopY||board.deckHeight)-board.deckHeight;
+       gaps[side]=Number((inBoard.y-top-rider.soleOffsets[side]).toFixed(4));
+     }
+     camera.position.copy(anchor).add({x:2.6,y:1.7,z:2.5});
+     camera.lookAt(anchor.x,anchor.y+0.5,anchor.z);
+     camera.updateMatrixWorld(true);
+     game.renderer.render(game.scene,camera);
+     const png=game.renderer.domElement.toDataURL('image/png').split(',')[1];
+     camera.position.copy(previousPosition);
+     camera.quaternion.copy(previousRotation);
+     camera.updateMatrixWorld(true);
+     return {png,gaps};
+   });
+   console.log('AGENT10 SOLE CLEARANCE '+name+' '+JSON.stringify(visual.gaps));
+   if(visual.png) await writeFile(join(out,'rider-closeup-'+name+'.png'),Buffer.from(visual.png,'base64'));
   }
   console.log('AGENT10 FOUR RIDERS '+JSON.stringify(metrics));
  });
