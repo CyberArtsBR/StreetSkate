@@ -117,10 +117,27 @@ try{
   await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent || ''), null, { timeout: 30000 });
   assert.match(await page.locator('.loadout-status').textContent(),/Invalid GLB header/i);
   assert.equal(await page.locator('.loadout-character').count(),4);
+  // A magic-only fake is not a valid GLB. It must never become selectable.
   const invalid=Buffer.alloc(128);invalid.write('glTF');
   await input.setInputFiles({name:'<img src=x onerror=alert(1)>.glb',mimeType:'model/gltf-binary',buffer:invalid});
+  await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent||''), null, { timeout: 30000 });
+  assert.equal(await page.locator('.loadout-character').count(),4);
   assert.equal(await page.locator('img[src="x"]').count(),0);
+
+  // Conversely, accept a real, small, self-contained GLB v2 and escape its
+  // potentially dangerous filename. This tests validation and DOM safety.
+  const json=Buffer.from(JSON.stringify({asset:{version:'2.0'},scene:0,scenes:[{nodes:[]}]}),'utf8');
+  const aligned=Math.ceil(json.length/4)*4;
+  const valid=Buffer.alloc(20+aligned,0x20);
+  valid.write('glTF',0,'ascii');
+  valid.writeUInt32LE(2,4);
+  valid.writeUInt32LE(valid.length,8);
+  valid.writeUInt32LE(aligned,12);
+  valid.writeUInt32LE(0x4e4f534a,16);
+  json.copy(valid,20);
+  await input.setInputFiles({name:'<img src=x onerror=alert(1)>.glb',mimeType:'model/gltf-binary',buffer:valid});
   await page.waitForFunction(() => document.querySelectorAll('.loadout-character').length === 5, null, { timeout: 30000 });
+  assert.equal(await page.locator('img[src="x"]').count(),0);
   assert.equal(await page.locator('.loadout-character').count(),5);
  });
  await checked('loadout and tutorial navigation, timed session',async()=>{
