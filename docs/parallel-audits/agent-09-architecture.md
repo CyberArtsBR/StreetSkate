@@ -171,3 +171,12 @@ node --test tests/agent09-*.test.mjs
 ```
 
 Full repository gates after integration: `npm test`, `npm run verify:physics`, `npm run build`, then Chrome/Playwright manual soak for Rooftop → legacy → Rooftop → Foundry once Foundry exists. Verify stable drawcalls/texture counts and no old rails/spot buttons during 20+ consecutive switches.
+
+### CI result — 2026-10-09
+
+[Phase 1 Core CI, Agent 09 branch](https://github.com/CyberArtsBR/StreetSkate/actions/runs/37919157561) executed the complete Node test suite on GitHub Actions after the 25-switch stress test was added:
+
+- **363 tests executed; 361 passed; 2 failed.**
+- All **18 Agent 09 registry/lifecycle tests passed**, including cancellation, failure rollback, double-dispose protection and 25 location changes.
+- Existing unrelated failures remain in `tests/grind-manual.test.mjs` ("low-speed capture does not create large fake speed") and `tests/ground-motor.test.mjs` ("ground steering owns the complete park carve curve"). Both belong to Agents 03/01, respectively.
+- The global workflow stops after `npm test` fails and therefore **did not run** the later physics verification or Vite build steps. No successful production build is claimed for this branch.
