@@ -54,6 +54,26 @@
 
 The potential **21+3 fewer decorative draw submissions** is a code-level *upper-view estimate*: it assumes the artwork and fascia were visible and does not account for GPU driver, culling or shadow passes. The full renderer audit will provide genuine draw counts instead.
 
+## Actual CI headless audit (2026-10-09)
+
+[GitHub Actions run #443](https://github.com/CyberArtsBR/StreetSkate/actions/runs/37918404464) executed the new tests against this branch's source tree. The structural-audit tool constructs real Three.js geometry/material objects but mocks canvas/image IO; these are **actual headless scene construction counts**, not GPU or browser benchmarks.
+
+| After-change statistic | Observed CI value |
+|---|---:|
+| Visible park meshes (including rooftop) | 15 |
+| Collision meshes | 142 |
+| Distinct visual materials | 11 |
+| Distinct material textures | 7 |
+| Geometry-attribute allocations (unique scene geometries) | 2.411 MiB |
+| Visual triangles (actual + manifest) | 28,301 |
+| Mural spatial batches | 4 |
+| Rooftop support meshes | 2 |
+| Rideable collision mesh batches | 1 |
+| Authored rail paths | 12 |
+| Relief ImageData base bytes (3 × 512² × RGBA) | 3,145,728 |
+
+**Validation:** all 4 Agent 07 regression tests passed; complete suite 347/349 passed. The 2 failures are `9. low-speed capture does not create large fake speed` and `ground steering owns the complete park carve curve` in non-owned physics tests. The workflow skipped physics verification, production build and browser smoke after `npm test` exited nonzero. **A production build and before/after WebGL renderer benchmark have not been executed on this branch.** The initial main merge commit already reports two physics failures, but their exact baseline logs were not rerun for this agent.
+
 ## Repeatable validation
 
 ```bash
