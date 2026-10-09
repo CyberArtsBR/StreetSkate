@@ -104,7 +104,7 @@ try{
  await checked('active park visual-versus-collision coverage diagnostic',async()=>{
   const coverage=await page.evaluate(()=>{
     const g=window.streetSkate;
-    return g.collision.auditCoverage(g.park,g.manifest.playableRegions,{samplesPerAxis:6});
+    return g.skater.surface.auditCoverage(g.park,g.manifest.playableRegions,{samplesPerAxis:6});
   });
   assert.ok(coverage.sampled>0,'Expected at least one playable-region sample');
   assert.ok(coverage.visualSamples>0,'Expected physical floor visual samples');

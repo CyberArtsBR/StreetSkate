@@ -292,3 +292,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 #game-shell .tutorial-poster > footer{position:absolute;top:calc(100% + 8px);bottom:auto;left:0;right:0;
   display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;min-height:44px}
 @media(max-height:500px){#game-shell.tutorial-screen .shell-content{width:min(96vw,calc((100dvh - 125px)*16/9))}}
+
+/* Preserve centered character names inside selectable rider cards. */
+#game-shell.loadout-screen .loadout-character{text-align:center}
+#game-shell.loadout-screen .loadout-character strong,#game-shell.loadout-screen .loadout-character small{text-align:center}
