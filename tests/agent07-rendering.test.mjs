@@ -7,6 +7,19 @@ const audit = auditSolarDock();
 
 test('agent07: surface bump generation avoids discarded high-resolution color canvases', async () => {
   const report = await audit;
+  console.log('AGENT07_STRUCTURAL_METRICS=' + JSON.stringify({
+    visibleMeshes: report.visibleMeshes,
+    collisionMeshes: report.collisionMeshes,
+    materialCount: report.materialCount,
+    distinctTextures: report.distinctTextures,
+    geometryAttributeMiB: report.geometryAttributeMiB,
+    visualTriangles: report.visualTriangles,
+    muralBatches: report.muralBatches,
+    rooftopMeshCount: report.rooftopMeshCount,
+    rideableCollisionBatches: report.rideableCollisionBatches,
+    authoredRailCount: report.authoredRailCount,
+    surfaceBumpBytesRGBA: report.surfaceBumpBytesRGBA,
+  }));
   assert.equal(report.surfaceCanvasSizes.filter(([w, h]) => w === 512 && h === 512).length, 3);
   assert.equal(report.surfaceCanvasSizes.filter(([w, h]) => w === 1024 || h === 1024).length, 0);
   assert.equal(report.surfaceCanvasSizes.filter(([w, h]) => w === 128 && h === 128).length, 1,
