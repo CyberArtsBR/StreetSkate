@@ -25,9 +25,11 @@ test('painted GLB deck is always opaque and depth-writing after choosing a finis
   assert.equal(deck.material.transparent, false);
   assert.equal(deck.material.depthWrite, true);
   assert.equal(deck.material.alphaTest, 0);
-  assert.equal(deck.material.vertexColors, true);
-  assert.ok(deck.geometry.getAttribute('color'));
+  assert.equal(deck.material.vertexColors, false, 'smooth Half Pipe paint is shader-driven');
+  assert.ok(deck.material.userData.halfPipeFinish.hpTail.value.isColor);
+  const oldPaint = deck.material.userData.halfPipeFinish.hpMiddle.value.clone();
   board.setFinish(6);
+  assert.ok(!deck.material.userData.halfPipeFinish.hpMiddle.value.equals(oldPaint));
   assert.equal(deck.material.opacity, 1, 'reselecting a finish must not restore GLB alpha');
   assert.equal(deck.material.transparent, false);
 });
