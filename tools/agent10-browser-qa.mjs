@@ -297,6 +297,54 @@ try{
    });
    console.log('AGENT10 SOLE CLEARANCE '+name+' '+JSON.stringify(visual.gaps));
    if(visual.png) await writeFile(join(out,'rider-closeup-'+name+'.png'),Buffer.from(visual.png,'base64'));
+
+   // Independently pose each stock rig using the same procedural IK as gameplay.
+   const posed=await page.evaluate(() => {
+     const game=window.streetSkate,skater=game.skater,rider=skater.rider;
+     const board=skater.board,camera=game.camera;
+     const oldPosition=camera.position.clone(),oldRotation=camera.quaternion.clone();
+     const images={},metrics={};
+     for(const pose of ['crouch','grab']){
+       rider.resetPresentation();
+       const grab=pose==='grab';
+       for(let i=0;i<18;i++){
+         rider.update({board,presentation:{state:grab?'AIR':'CROUCH'},
+           crouch:grab?0:1,grabState:grab?{name:'Indy'}:null,
+           grabWeight:grab?1:0,dt:1/60,stance:1});
+       }
+       rider.root.updateWorldMatrix(true,true);board.root.updateWorldMatrix(true,true);
+       const world=()=>camera.position.clone();
+       const pelvis=rider.bones.pelvis.getWorldPosition(world());
+       const localPelvis=board.root.worldToLocal(pelvis);
+       const top=(board.contactRig.deckTopY??board.deckHeight)-board.deckHeight;
+       const knees={};
+       for(const side of ['l','r']){
+         const hip=rider.bones['thigh_'+side].getWorldPosition(world());
+         const knee=rider.bones['calf_'+side].getWorldPosition(world());
+         const h=rider.root.worldToLocal(hip), k=rider.root.worldToLocal(knee);
+         knees[side]=Number(((k.x-h.x)*rider.outward[side]).toFixed(3));
+       }
+       metrics[pose]={hipsAboveDeck:Number((localPelvis.y-top).toFixed(3)),knees};
+       const center=rider.root.getWorldPosition(world());
+       camera.position.copy(center).add({x:2.5,y:1.6,z:2.7});
+       camera.lookAt(center.x,center.y+0.7,center.z);
+       camera.updateMatrixWorld(true);
+       game.renderer.render(game.scene,camera);
+       images[pose]=game.renderer.domElement.toDataURL('image/png').split(',')[1];
+     }
+     camera.position.copy(oldPosition);camera.quaternion.copy(oldRotation);
+     camera.updateMatrixWorld(true);rider.resetPresentation();skater.update(0,{},0);
+     return {metrics,images};
+   });
+   console.log('AGENT10 ANIMATION POSE '+name+' '+JSON.stringify(posed.metrics));
+   for(const pose of ['crouch','grab']){
+     assert.ok(posed.metrics[pose].hipsAboveDeck>0.34,name+' pelvis intersects board during '+pose);
+     assert.ok(Number.isFinite(posed.metrics[pose].knees.l)&&
+       Number.isFinite(posed.metrics[pose].knees.r),name+' knee IK must be finite');
+     if(posed.images[pose]) await writeFile(join(out,'rider-'+name+'-'+pose+'.png'),
+       Buffer.from(posed.images[pose],'base64'));
+   }
+
   }
   console.log('AGENT10 FOUR RIDERS '+JSON.stringify(metrics));
  });
