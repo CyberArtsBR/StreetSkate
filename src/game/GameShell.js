@@ -1,5 +1,6 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
+import { sessionWarning } from './SessionCountdown.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
@@ -146,14 +147,11 @@ export class GameShell {
         <div class="loadout-boards">${colors}</div></div>
         <div class="loadout-section"><div class="loadout-heading"><b>03 / CHOOSE A LOCATION</b><span>MORE PARKS COMING</span></div>
         <div class="loadout-locations">${spots}</div></div>
-        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'CONTINUE TO TUTORIAL →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
-        <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock CONTINUE.':'Rider and deck selected · Continue to tutorial.'))}</p></div>`;
+        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'START SESSION →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
     } else if(this.phase==='pause') {
-      title='PAUSED';body=this.button('RESUME','resume')+this.button('TUTORIAL','tutorial')
-        +this.button('MASTER VOL −','volumeDown')
-        +this.button('MASTER '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
-        +this.button('MASTER VOL +','volumeUp')
-        +this.button('OPTIONS','options')+this.button('RESTART RUN','restart')+this.button('MAIN MENU','title');
+      title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
+        this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
@@ -168,7 +166,7 @@ export class GameShell {
         +this.button('RUN IT AGAIN · 90 SEC','start')+this.button('PRACTICE','practice')+this.button('MAIN MENU','title');
     } else if(this.phase==='tutorial') {
       const page=this.pages[this.page];
-      const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}<span>LB / RB OR LEFT / RIGHT · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
+      const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${title}</h2>${body}</div>`;
@@ -218,8 +216,10 @@ export class GameShell {
       if(generation!==this.loadoutGeneration||this.phase!=='select')return;
       this.selectBusy=false;this.selectError='';
       this.finishIndex=board.finishIndex;
-      this.tutorialSeen=false;
-      this.openTutorial();
+      this.tutorialSeen=true;
+      const practice=this.pendingMode==='practice';
+      this.pendingMode=null;
+      this.start(practice);
     }catch(error){
       if(generation!==this.loadoutGeneration||this.phase!=='select')return;
       this.selectBusy=false;
@@ -229,7 +229,7 @@ export class GameShell {
   }
   start(practice){
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.cameraIndex=0;
-    this.music.next();this.setScreen('playing');this.actions.start(practice);this.actions.camera('follow');
+    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera('follow');
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
@@ -267,6 +267,7 @@ export class GameShell {
       case 'previous':this.page=Math.max(0,this.page-1);this.render();break;
       case 'next':this.page=Math.min(this.pages.length-1,this.page+1);this.render();break;
       case 'closeTutorial':this.closeTutorial();break;
+      case 'skipTutorial':this.closeTutorial();break;
     }
   }
   adjustMaster(step){
@@ -289,10 +290,17 @@ export class GameShell {
         const axis=['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(event.code)?'x':'y';
         this.moveSelection(axis,['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1);
       }
+      else if(event.code==='Enter'&&this.open)this.choose('skipTutorial');
       else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
   }
-  updateTimer(){this.timer.textContent=this.practice?'PRACTICE · ∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;this.timer.classList.toggle('time-low',!this.practice&&this.remaining<=15);}
+  updateTimer(){
+    const warn=sessionWarning(this.remaining,this.practice);
+    this.timer.textContent=this.practice?'PRACTICE · ∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
+    this.timer.classList.toggle('time-low',warn!=='none');
+    this.timer.classList.toggle('time-critical',warn==='critical');
+    this.timer.dataset.warningLabel=warn==='critical'?'FINAL 5 SECONDS':warn==='warning'?'10 SECONDS LEFT':'';
+  }
   update(dt){
     this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
     const focused=document.hasFocus();
@@ -314,6 +322,7 @@ export class GameShell {
       const direction=keys.left?'left':keys.right?'right':keys.up?'up':keys.down?'down':null;
       if(this.open){
         if(edge('back'))this.back();
+        else if(edge('start'))this.choose('skipTutorial');
         else if(edge('shoulderLeft')||edge('left'))this.choose('previous');
         else if(edge('shoulderRight')||edge('right'))this.choose('next');
         else if(edge('a'))this.menuButtons()[this.selection]?.click();
@@ -326,6 +335,7 @@ export class GameShell {
         if(edge('back'))this.back();
         else if(edge('a'))this.menuButtons()[this.selection]?.click();
         else if(edge('start')&&this.phase==='pause')this.resume();
+        else if(edge('start')&&this.phase==='title')this.begin(false);
       }
     }
     this.previousPad=keys;
