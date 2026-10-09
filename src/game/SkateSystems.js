@@ -20,7 +20,8 @@ export const GRIND_CAPTURE = Object.freeze({
   maxRiseVelocity: 0.45,
   maxAbove: 0.28,
   maxBelow: 0.07,
-  antiStallSpeed: 8.5,
+  // A captured rail must preserve incoming momentum; this is only a tiny numerical guard.
+  antiStallSpeed: 0.12,
   cooldown: 0.28,
 });
 
