@@ -53,31 +53,40 @@ async function finishTutorial(){
 }
 async function stats(stage){
  const sample=await page.evaluate(async()=>{
-  const deltas=[];let last=performance.now();const began=last;
-  // Observe long enough to distinguish an active software-rendered WebGL
-  // loop from a stalled loop; maintain the existing >3-frame assertion.
-  while(performance.now()-began<3200){
-   const t=await Promise.race([
-    new Promise(resolve=>requestAnimationFrame(()=>resolve(performance.now()))),
-    new Promise(resolve=>setTimeout(()=>resolve(null),600))
-   ]);
-   if(t===null)break; // background tabs or context loss must not hang QA
-   deltas.push(t-last);last=t;
-  }
-  const sorted=deltas.slice().sort((a,b)=>a-b);
-  const percentile=p=>sorted[Math.min(sorted.length-1,Math.floor(p*(sorted.length-1)))];
   const g=window.streetSkate;
-  const render=g?.renderer?.info?.render;
-  const memory=g?.renderer?.info?.memory;
-  return {frameCount:deltas.length,fps:deltas.length/((last-began)/1000),
+  const renderer=g?.renderer;
+  const startFrame=renderer?.info?.render?.frame;
+  const started=performance.now();
+  const deltas=[];let previous=started,observing=true;
+  // Collect RAF timing as telemetry, but the liveness gate uses Three.js's
+  // real renderer.info.render.frame counter. A fixed observation window does
+  // not prematurely abort when SwiftShader exceeds a 600ms frame time.
+  const measure=()=>{
+   const now=performance.now();
+   deltas.push(now-previous);previous=now;
+   if(observing)requestAnimationFrame(measure);
+  };
+  requestAnimationFrame(measure);
+  await new Promise(resolve=>setTimeout(resolve,8000));
+  observing=false;
+  const elapsedMs=performance.now()-started;
+  const finishFrame=renderer?.info?.render?.frame;
+  const frameCount=Number.isFinite(startFrame)&&Number.isFinite(finishFrame)
+   ?Math.max(0,finishFrame-startFrame):0;
+  const sorted=deltas.filter(Number.isFinite).sort((a,b)=>a-b);
+  const percentile=p=>sorted.length?sorted[Math.min(sorted.length-1,Math.floor(p*(sorted.length-1)))]:null;
+  const render=renderer?.info?.render,memory=renderer?.info?.memory;
+  return {frameCount,rafSamples:deltas.length,
+   fps:frameCount/(elapsedMs/1000),elapsedMs,
    frameMsP50:percentile(.5),frameMsP95:percentile(.95),
-   frameMsP99:percentile(.99),frameMsMax:sorted.at(-1),
+   frameMsP99:percentile(.99),frameMsMax:sorted.at(-1)??null,
    drawCalls:render?.calls??null,triangles:render?.triangles??null,
    geometries:memory?.geometries??null,textures:memory?.textures??null,
    jsHeap:performance.memory?.usedJSHeapSize??null,
    player:g?.skater?.position?.toArray?.()??null,
    camera:g?.camera?.position?.toArray?.()??null,
-   invariantViolations:g?.skater?.stateInvariantViolations?.map?.(x=>x.code)??[]};
+   invariantViolations:g?.skater?.stateInvariantViolations?.map?.(x=>x.code)??[],
+   focused:document.hasFocus(),hidden:document.hidden};
  });
  report.samples.push({stage,...sample});
  console.log('AGENT10 RENDER SAMPLE '+JSON.stringify({stage,...sample}));
