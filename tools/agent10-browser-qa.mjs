@@ -140,7 +140,8 @@ try{
   await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
-  assert.equal(await page.locator('.loadout-location[disabled]').count(),2);
+  assert.equal(await page.locator('.loadout-location[disabled]').count(),1);
+  assert.equal(await page.locator('.loadout-location[data-location="foundry"]').isEnabled(),true);
   assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),true);
   await page.locator('.loadout-character').first().focus();
   await page.keyboard.press('ArrowRight');

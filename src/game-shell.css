@@ -296,3 +296,6 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 /* Preserve centered character names inside selectable rider cards. */
 #game-shell.loadout-screen .loadout-character{text-align:center}
 #game-shell.loadout-screen .loadout-character strong,#game-shell.loadout-screen .loadout-character small{text-align:center}
+
+/* Preview of the actual warehouse environment. */
+.loadout-screen .loadout-location[data-location="foundry"]{background:linear-gradient(90deg,#102124ed,#10212475),url("/assets/warehouse/preview.webp") center 55%/cover}

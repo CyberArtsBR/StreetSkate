@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-09-title-clouds-landscape-guide",
+  "version": "2026-10-09-the-foundry",
   "park": "rooftop-underground",
   "parkAsset": "procedural:SolarDockPark",
   "playableAreas": 4,
@@ -39,5 +39,11 @@
   ],
   "bailModel": "nearby-flat-three-flashes-v1",
   "balanceModel": "active-rail-countersteering-v2",
-  "setting": "sunset-cloud-rooftop"
+  "setting": "sunset-cloud-rooftop",
+  "locations": [
+    "rooftop",
+    "foundry"
+  ],
+  "warehouseAsset": "procedural:WarehousePark",
+  "warehouseDistricts": 4
 }

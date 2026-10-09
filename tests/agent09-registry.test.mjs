@@ -19,6 +19,7 @@ test('registry IDs are stable and FOUNDRY never aliases rooftop', () => {
   const registry = createDefaultParkRegistry({
     rooftopLoader: () => ({ id: 'roof' }),
     legacyLoader: () => ({ id: 'old' }),
+    foundryLoader: () => ({ id: 'warehouse' }),
   });
   assert.deepEqual(registry.list({ selectableOnly: true }).map(p => p.id),
     ['rooftop', 'foundry', 'coming-soon-2']);
@@ -26,8 +27,8 @@ test('registry IDs are stable and FOUNDRY never aliases rooftop', () => {
     ['rooftop', 'foundry', 'coming-soon-2', 'legacy']);
   assert.equal(registry.get('legacy').available, true);
   assert.equal(registry.get('legacy').selectable, false);
-  assert.equal(registry.get('foundry').load, undefined);
-  assert.throws(() => registry.requirePlayable('foundry'), /not playable/);
+  assert.equal(registry.requirePlayable('foundry').load().id, 'warehouse');
+  assert.notEqual(registry.get('foundry').load, registry.get('rooftop').load);
   assert.throws(() => registry.requirePlayable('coming-soon-2'), /not playable/);
   assert.throws(() => registry.requirePlayable('not-real'), /Unknown park ID/);
   assert.equal(registry.requirePlayable('rooftop').id, 'rooftop');

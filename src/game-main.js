@@ -7,12 +7,9 @@ import { FollowCamera } from './game/FollowCamera.js';
 import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { assembleExpandedPark } from './park/ExpandedPark.js';
-import { createSolarDockPark } from './park/SolarDockPark.js';
+import { createParkWorld, prepareParkRuntime, bindParkRuntime, disposeParkWorld } from './game/ParkRegistry.js';
 import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
-import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import './style.css';
@@ -87,6 +84,9 @@ let followCamera = null;
 let transitionDebug = null;
 let dusk = false;
 let solarSky = null;
+let skyLoading = null;
+let currentWorld = null;
+let switchingWorld = false;
 let mode = 'skate';
 let loaded = false;
 let paused = false;
@@ -102,12 +102,11 @@ const skateAudio = new SkateAudio();
 window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: true });
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
-const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
 const gameShell = new GameShell({
   start: () => {
     if (!skater) return;
-    skater.reset(new THREE.Vector3(...manifest.spawn), 0);
-    skater.spawn.set(...manifest.spawn); skater.spawnHeading = 0;
+    skater.spawn.set(...manifest.spawn); skater.spawnHeading = Number(manifest.spawnHeading) || 0;
+    skater.reset(skater.spawn, skater.spawnHeading);
     setMode('skate'); input.read(); input.clear(); followCamera.snap(skater);
   },
   pause: value => setPaused(value),
@@ -117,39 +116,60 @@ const gameShell = new GameShell({
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
   masterVolume: value => skateAudio.setMasterVolume(value),
-  cancelLoadout: () => {
-    loadoutRequest++;
-    skater?.cancelRiderSwap?.();
-  },
-  loadout: async ({hero,board,location}) => {
-    if (!loaded || !skater) throw new Error('Park is still loading.');
-    if (location?.id !== 'rooftop') throw new Error('This location is not playable yet.');
-    const request = ++loadoutRequest;
-    const target = skater;
-    await target.setRiderModel(hero.url);
-    // Never let a superseded model load apply an old deck finish.
-    if (request !== loadoutRequest || target !== skater) return false;
-    target.board.setFinish(board.finishIndex);
-    return true;
-  },
+  cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
+  loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
 });
 gameShell.sound = skateAudio.enabled;
 skateAudio.setMasterVolume(gameShell.music.masterVolume);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
 function applyLighting() {
-  sun.intensity = dusk ? 0.65 : solarSky ? 2.1 : 2.8;
-  sun.color.set(dusk ? '#86b5ff' : solarSky ? '#ffddb8' : '#fff1d9');
-  ambient.intensity = dusk ? 0.4 : solarSky ? 0.65 : legacyPark ? 1.3 : 0.9;
-  if (solarSky) {
+  if (!currentWorld) return;
+  const presentation = currentWorld.presentation;
+  const sky = presentation.sky && solarSky;
+  const settings = !sky && presentation.sky
+    ? { ...presentation, ...presentation.fallback } : presentation;
+  sun.intensity = dusk ? 0.65 : settings.keyIntensity;
+  sun.color.set(dusk ? '#86b5ff' : settings.keyColor);
+  ambient.color.set(settings.ambientSky);
+  ambient.groundColor.set(settings.ambientGround);
+  ambient.intensity = dusk ? 0.4 : settings.ambientIntensity;
+  renderer.toneMappingExposure = settings.exposure;
+  scene.environment = sky?.environment?.texture || environment.texture;
+  scene.environmentIntensity = dusk ? 0.22 : settings.environmentIntensity;
+  if (sky) {
     scene.background = solarSky.background;
-    scene.backgroundIntensity = dusk ? 0.22 : 0.9;
-    scene.environmentIntensity = dusk ? 0.22 : 0.65;
-    scene.fog.color.set(dusk ? '#383e50' : '#c5b7a7');
+    scene.backgroundIntensity = dusk ? 0.22 : settings.backgroundIntensity;
   } else {
-    scene.background.set(dusk ? '#141f32' : daylightColor);
-    scene.fog.color.copy(scene.background);
+    scene.background = new THREE.Color(dusk ? '#141f32' : settings.background || '#c1d1cf');
+    scene.backgroundIntensity = 1;
   }
+  const fogColor = dusk ? '#383e50' : settings.fogColor;
+  scene.fog = settings.fogNear != null ? new THREE.Fog(fogColor, settings.fogNear, settings.fogFar)
+    : new THREE.FogExp2(fogColor, settings.fogDensity);
+  sun.target.position.set(...settings.center);
+  sun.position.set(...settings.keyPosition);
+  const extent = settings.shadowExtent;
+  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 0.5, far: 240 });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.shadow.needsUpdate = true;
+  floor.visible = Boolean(settings.floor);
+  floor.position.y = settings.floor ? -3.18 : -100;
+}
+
+// The indoor structure stays complete at skating height. The pre-collected
+// roof groups become a cutaway only when a high air or inspection camera would
+// otherwise cross the roof; the existing third-person camera rig is untouched.
+function updateWorldVisibility() {
+  if (!currentWorld?.cameraRoof.length) return;
+  const settings = currentWorld.presentation;
+  const threshold = settings.roofFadeHeight ?? settings.roofCutawayHeight;
+  if (!Number.isFinite(threshold)) return;
+  const hidden = currentWorld.roofCutaway
+    ? camera.position.y > threshold - 1 : camera.position.y > threshold;
+  if (currentWorld.roofCutaway === hidden) return;
+  currentWorld.roofCutaway = hidden;
+  for (const roof of currentWorld.cameraRoof) roof.visible = !hidden;
 }
 
 function setExploreView(name, instant = false) {
@@ -289,99 +309,157 @@ function showError(error) {
   console.error(error);
 }
 
-async function loadGame() {
-  try {
-    let world;
-    if (legacyPark) {
-      const loader = new GLTFLoader();
-      const [parkFile, collisionFile, parkManifest, expandedFile] = await Promise.all([
-        loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
-        loader.loadAsync('/assets/park/park-collision.glb'),
-        fetch('/assets/park/park-manifest.json').then(r => {
-          if (!r.ok) throw new Error('Park manifest unavailable');
-          return r.json();
-        }),
-        loader.loadAsync('/assets/park/halfnew.glb?v=fixed-black'),
-      ]);
-      world = { ...assembleExpandedPark(expandedFile.scene, parkFile.scene, collisionFile.scene, parkManifest), manifest: parkManifest };
-    } else {
-      document.querySelector('#load-progress').textContent = 'Building Solar Dock';
-      world = createSolarDockPark();
-      document.querySelector('#load-progress').textContent = 'Loading concrete, plywood and mural artwork';
-      await surfaceTexturesReady();
-    }
-    ({ park, collision, manifest } = world);
-    scene.background.set(daylightColor);
-    scene.fog.color.set(daylightColor);
-    scene.fog.density = legacyPark ? 0.005 : 0.0014;
-    floor.position.y = legacyPark ? -3.18 : -100;
-    floor.visible = legacyPark;
-    floor.material.color.set(legacyPark ? '#31454b' : '#232b38');
-    if (!legacyPark) {
-      ambient.intensity = 0.9;
-      renderer.toneMappingExposure = 0.94;
-      scene.environmentIntensity = 0.24;
-      document.querySelector('#load-progress').textContent = 'Loading 4K HDRI sky and environment lighting';
-      try {
-        solarSky = await loadSolarSky(renderer);
-        scene.environment = solarSky.environment.texture;
-        environment.dispose();
-      } catch (error) {
-        console.warn('HDRI unavailable; keeping fallback lighting.', error);
-        // A failed HDR download must not regress the art direction to gray.
-        // RoomEnvironment remains the reflection fallback; canvas only paints the sky.
-        solarSky = { background: createCloudBackdrop(new THREE.Color('#687bb2')) };
-      }
-    }
-    applyLighting();
-    const rampTuning = { factor: manifest.transitionScale, baked: true };
-    park.traverse(object => {
-      if (!object.isMesh) return;
-      object.castShadow = object.userData.castShadow !== false;
-      object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        if (material.map) material.map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      }
-    });
-    scene.add(park);
-    document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
+async function ensureWorldEnvironment(world) {
+  if (!world.presentation.sky || solarSky) return;
+  skyLoading ||= loadSolarSky(renderer).then(sky => { solarSky = sky; return sky; });
+  try { await skyLoading; }
+  catch (error) {
+    skyLoading = null;
+    solarSky = { background: createCloudBackdrop(new THREE.Color('#687bb2')) };
+    console.warn('HDRI unavailable; keeping fallback lighting.', error);
+  }
+}
 
-    skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails,
-      playableRegions: manifest.playableRegions }).load();
+function prepareWorldVisuals(world) {
+  const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  world.park.traverse(object => {
+    if (!object.isMesh) return;
+    object.castShadow = object.userData.castShadow !== false;
+    object.receiveShadow = true;
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+      if (material.map) material.map.anisotropy = anisotropy;
+    }
+  });
+  world.park.updateMatrixWorld(true);
+}
+
+function refreshLocationUi() {
+  document.querySelector('#poly-count').textContent = `${((manifest.visualTriangles || 0) / 1000).toFixed(1)}k triangles`;
+  document.querySelector('.asset-meta > span').textContent = manifest.dimensions || '136 × 92 m · 3 AREAS';
+  const center = currentWorld.presentation.center;
+  Object.assign(views, manifest.views || {
+    overview: { position: [155, 108, 165], target: center, caption: 'Three connected areas', index: '01' },
+    bowl: { position: [44, 30, 22], target: center, caption: 'Connected transitions', index: '02' },
+    street: { position: [31, 17, 37], target: center, caption: 'Find your next line', index: '03' },
+    top: { position: [center[0], 160, center[2] + 0.01], target: center, caption: 'All skating areas', index: '—' },
+  });
+  const spotNav = document.querySelector('#spot-nav');
+  spotNav.replaceChildren();
+  for (const spot of manifest.spots || []) {
+    const button = document.createElement('button');
+    button.textContent = spot.label; button.dataset.spot = spot.id;
+    button.title = `Start at ${spot.label}`;
+    button.setAttribute('aria-pressed', String(spot.id === 'entrance' || spot.id === 'street'));
+    button.onclick = () => goToSpot(spot.id);
+    spotNav.append(button);
+  }
+  spotNav.hidden = !manifest.spots?.length;
+  document.title = `Chimp Hawk Underground — ${currentWorld.id === 'foundry' ? 'The Foundry' : currentWorld.id === 'legacy' ? 'Legacy park' : 'Rooftop'}`;
+  document.querySelector('.edition').textContent = currentWorld.id === 'foundry' ? 'THE FOUNDRY' : currentWorld.id === 'legacy' ? 'LEGACY PARK' : 'ROOFTOP';
+  gameShell.setLocation(currentWorld.id);
+  transitionDebug?.dispose();
+  transitionDebug = null;
+  if (new URLSearchParams(window.location.search).get('debug') === '1') {
+    transitionDebug = new TransitionDebugVisualizer(skater.transitions);
+    scene.add(transitionDebug.group);
+  }
+  if (window.streetSkate) Object.assign(window.streetSkate, {
+    currentLocation: currentWorld.id, manifest, park, collision, skater, transitionDebug,
+    rampTuning: { factor: manifest.transitionScale, baked: true },
+  });
+}
+
+function commitWorld(world, runtime) {
+  const previousWorld = currentWorld;
+  const previousRuntime = previousWorld && {
+    surface: skater.surface, boardContact: skater.boardContact, contactRig: skater.contactRig,
+    coreController: skater.coreController, railNetwork: skater.railNetwork,
+    spawn: skater.spawn, spawnHeading: skater.spawnHeading, playableRegions: skater.playableRegions,
+  };
+  const previousPosition = skater.position.clone(), previousHeading = skater.heading, previousScore = skater.score;
+  try {
+    bindParkRuntime(skater, runtime);
+    currentWorld = world;
+    ({ park, collision, manifest } = world);
+    scene.add(park);
+    applyLighting();
+    refreshLocationUi();
+    input.clear(); tween = null; lastInputState = {};
+    followCamera.snap(skater);
+    updateHud();
+  } catch (error) {
+    world.park.removeFromParent();
+    if (previousWorld && previousRuntime) {
+      currentWorld = previousWorld;
+      ({ park, collision, manifest } = previousWorld);
+      bindParkRuntime(skater, previousRuntime);
+      skater.reset(previousPosition, previousHeading); skater.score = previousScore;
+      applyLighting(); refreshLocationUi(); followCamera.snap(skater);
+    }
+    throw error;
+  }
+  if (previousWorld && previousWorld !== world) disposeParkWorld(previousWorld, world);
+}
+
+async function selectLocation(id, { hero, finish } = {}) {
+  if (!loaded || !skater) throw new Error('Wait for the game to finish loading.');
+  if (switchingWorld) throw new Error('A location is already loading.');
+  switchingWorld = true;
+  const request = ++loadoutRequest;
+  setPaused(true);
+  let nextWorld;
+  const progress = message => {
+    gameShell.selectError = message;
+    if (gameShell.phase === 'select') gameShell.render();
+  };
+  try {
+    if (id !== currentWorld.id) {
+      nextWorld = await createParkWorld(id, progress);
+      prepareWorldVisuals(nextWorld);
+      await ensureWorldEnvironment(nextWorld);
+    }
+    if (request !== loadoutRequest) { if (nextWorld) disposeParkWorld(nextWorld, currentWorld); return false; }
+    const candidate = nextWorld || currentWorld;
+    // Build collision BVHs and validate the entry point before replacing any live references.
+    const runtime = nextWorld ? prepareParkRuntime(candidate, skater.board.contactRig) : null;
+    if (hero?.url) {
+      progress('LOADING YOUR CHARACTER…');
+      await skater.setRiderModel(hero.url);
+    }
+    if (request !== loadoutRequest) { if (nextWorld) disposeParkWorld(nextWorld, currentWorld); return false; }
+    if (runtime) commitWorld(candidate, runtime);
+    if (finish != null) skater.board.setFinish(finish);
+    followCamera.snap(skater);
+    return { locationId: currentWorld.id, manifest };
+  } catch (error) {
+    if (nextWorld && nextWorld !== currentWorld) disposeParkWorld(nextWorld, currentWorld);
+    throw new Error(`Could not load ${id === 'foundry' ? 'The Foundry' : 'the selected location'}. ${error.message || 'Choose another location and retry.'}`);
+  } finally {
+    switchingWorld = false;
+  }
+}
+
+async function loadGame() {
+  let initialWorld;
+  try {
+    initialWorld = await createParkWorld(legacyPark ? 'legacy' : 'rooftop', message => {
+      document.querySelector('#load-progress').textContent = message;
+    });
+    prepareWorldVisuals(initialWorld);
+    await ensureWorldEnvironment(initialWorld);
+    document.querySelector('#load-progress').textContent = 'Loading rider and skateboard';
+    skater = await new StreetSkater({ collision: initialWorld.collision, spawn: initialWorld.manifest.spawn,
+      rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
+    currentWorld = initialWorld;
+    ({ park, collision, manifest } = initialWorld);
+    scene.add(park, sun.target);
+    skater.spawnHeading = Number(manifest.spawnHeading) || 0;
+    skater.reset(skater.spawn, skater.spawnHeading);
+    applyLighting();
+    refreshLocationUi();
     setCameraMode('follow');
-
-    const debugTransitions = new URLSearchParams(window.location.search).get('debug') === '1';
-    if (debugTransitions) {
-      transitionDebug = new TransitionDebugVisualizer(skater.transitions);
-      scene.add(transitionDebug.group);
-    }
-
-    document.querySelector('#poly-count').textContent = `${(manifest.visualTriangles / 1000).toFixed(1)}k triangles`;
-    document.querySelector('.asset-meta > span').textContent = manifest.dimensions || '136 × 92 m · 3 AREAS';
-    const center = legacyPark ? new THREE.Vector3(34, 0, 23) : new THREE.Vector3(0, 0, -8);
-    if (manifest.views) Object.assign(views, manifest.views);
-    else {
-      views.overview = { position: [155, 108, 165], target: center.toArray(), caption: 'Three connected areas', index: '01' };
-      views.top = { position: [34, 160, 23.01], target: center.toArray(), caption: 'All three skating areas', index: '—' };
-    }
-    const spotNav = document.querySelector('#spot-nav');
-    for (const spot of manifest.spots || []) {
-      const button = document.createElement('button');
-      button.textContent = spot.label; button.dataset.spot = spot.id;
-      button.title = `Start at ${spot.label}`;
-      button.setAttribute('aria-pressed', String(spot.id === 'street'));
-      button.onclick = () => goToSpot(spot.id);
-      spotNav.append(button);
-    }
-    spotNav.hidden = !manifest.spots?.length;
-    if (legacyPark) {
-      document.title = 'StreetSkate — Legacy park';
-      document.querySelector('.edition').textContent = 'LEGACY PARK';
-      const link = document.querySelector('.download');
-      link.href = '/'; link.textContent = 'SOLAR DOCK ↗';
-    }
     renderer.domElement.tabIndex = 0;
     const finishes = document.querySelector('#board-finishes');
     const finishNames = ['Sunset', 'Ocean', 'Aqua', 'Lime', 'Gold', 'Nebula', 'Graphite', 'Pearl'];
@@ -396,11 +474,6 @@ async function loadGame() {
     soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
     soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
     soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
-    sun.target.position.copy(center);
-    scene.add(sun.target);
-    sun.position.copy(center).add(solarSky ? new THREE.Vector3(-55, 38, 18) : new THREE.Vector3(-25, 65, 10));
-    Object.assign(sun.shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, far: 200 });
-    sun.shadow.camera.updateProjectionMatrix();
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
@@ -408,13 +481,10 @@ async function loadGame() {
     gameShell.setReady();
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
-      setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2', rampTuning,
-      // Phase 1 QA hook: side-effect-free canonical gameplay snapshot shared
-      // with deterministic replay/debugging. This never repairs or mutates state.
+      currentLocation: currentWorld.id, selectLocation,
+      setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2',
+      rampTuning: { factor: manifest.transitionScale, baked: true },
       captureState: () => captureGameplayState(skater),
-      // QA-only readback of the semantic input object consumed by the latest
-      // focused animation frame. Returning a copy prevents tests/debug tools
-      // from mutating the live input path.
       captureInput: () => ({ ...lastInputState }),
       toggleDebugOverlay: () => debugOverlay.toggle(),
       captureAuditTelemetry: () => captureAuditTelemetry({
@@ -424,9 +494,16 @@ async function loadGame() {
       transitionDebug,
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
-  } catch (error) { showError(error); }
+  } catch (error) {
+    loaded = false;
+    gameShell.ready = false;
+    if (initialWorld) disposeParkWorld(initialWorld);
+    transitionDebug?.dispose(); transitionDebug = null;
+    currentWorld = null; park = null; collision = null; manifest = null;
+    skater?.root.removeFromParent();
+    showError(error);
+  }
 }
-
 controls.addEventListener('start', () => { tween = null; });
 document.querySelectorAll('button[data-view]').forEach((button) => button.addEventListener('click', () => {
   if (mode !== 'explore') setMode('explore');
@@ -523,5 +600,6 @@ renderer.setAnimationLoop(() => {
   });
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
+  updateWorldVisibility();
   renderer.render(scene, camera);
 });
