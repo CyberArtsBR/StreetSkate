@@ -10,8 +10,8 @@ export const PUMP_CONFIG = Object.freeze({
   cooldown: 0.22,
   landingWindow: 0.42,
   perfectPhase: 0.56,
-  timingSigma: 0.20,
-  timingCutoff: 0.45,
+  timingSigma: 0.19,
+  timingCutoff: 0.35,
   goodThreshold: 0.60,
   perfectThreshold: 0.90,
   specificEnergy: 9.2,
@@ -39,8 +39,9 @@ export function phaseFromMotion(normalY, verticalSpeed) {
 export function pumpTimingQuality(phase, config = PUMP_CONFIG) {
   const distance = Math.abs(clamp(phase, 0, 1) - config.perfectPhase);
   if (distance >= config.timingCutoff) return 0;
-  const quality = Math.exp(-0.5 * (distance / config.timingSigma) ** 2);
-  return quality < 0.18 ? 0 : clamp(quality, 0, 1);
+  const quality = Math.exp(-0.5 * (distance / Math.max(0.001, config.timingSigma)) ** 2);
+  // Bad timing must not reward repeated release attempts.
+  return quality < 0.24 ? 0 : clamp(quality, 0, 1);
 }
 
 export function evaluatePumpEligibility({
@@ -78,11 +79,13 @@ export function computePumpEnergy({
   compression = 1,
   geometryFactor = 1,
 } = {}, config = PUMP_CONFIG) {
-  const speed = Math.abs(tangentSpeed);
+  const speed = Math.abs(Number(tangentSpeed) || 0);
+  const validQuality = Number.isFinite(quality) && quality >= 0.24
+    ? clamp(quality, 0, 1) : 0;
   const capFactor = speedCapFactor(speed, config);
   const compressionFactor = 0.55 + 0.45 * clamp(compression, 0, 1);
   const specificEnergy = config.specificEnergy
-    * clamp(quality, 0, 1)
+    * validQuality
     * compressionFactor
     * clamp(geometryFactor, 0.55, 1)
     * capFactor;

@@ -233,12 +233,20 @@ export class TransitionController {
     const incomingSpeed = clamp(incomingVelocity.length(), 0, 24);
     const tangentVelocity = incomingVelocity.dot(edge.copingTangent);
     const tangentSpeed = Math.min(Math.abs(tangentVelocity), 2.8);
-    const surfaceVerticality = 1 - clamp(edge.surfaceNormal.y, 0, 1);
-    const geometryConversion = THREE.MathUtils.lerp(0.82, 0.99, surfaceVerticality);
-    const nonLateralSpeed = Math.sqrt(Math.max(0, incomingSpeed * incomingSpeed - tangentSpeed * tangentSpeed));
-    const baseVertical = Math.max(Math.max(0, incomingVelocity.y), nonLateralSpeed * geometryConversion);
-    const boost = clamp(launchBoost || 0, 0, 8.5);
-    let launchVertical = clamp(Math.sqrt(baseVertical * baseVertical + Math.pow(boost * 0.72, 2)), 2.5, 15.5);
+    const normalY = clamp(Math.abs(edge.surfaceNormal.y), 0, 1);
+    const nonLateralSpeed = Math.sqrt(Math.max(0,
+      incomingSpeed * incomingSpeed - tangentSpeed * tangentSpeed));
+    // Convert only the component of approach speed physically supported by the
+    // face's pitch. Shallow ramps cannot turn all forward velocity into lift.
+    const climbProjection = nonLateralSpeed * Math.sqrt(Math.max(0, 1 - normalY * normalY));
+    const baseVertical = Math.max(0, incomingVelocity.y, climbProjection);
+    const boost = clamp(Number(launchBoost) || 0, 0, 8.5);
+    const verticalBoost = boost * 0.72;
+    const energyBudget = Math.sqrt(incomingSpeed * incomingSpeed + verticalBoost * verticalBoost);
+    let launchVertical = clamp(Math.min(
+      Math.sqrt(baseVertical * baseVertical + verticalBoost * verticalBoost),
+      energyBudget,
+    ), 0, 15.5);
     const lateralVelocity = clamp(tangentVelocity, -2.6, 2.6);
     const exitRequested = Boolean(edge.exitRequested);
 
@@ -310,10 +318,16 @@ export class TransitionController {
     const frame = air.frame;
     const currentHorizontal = horizontal(velocity);
     if (air.transferring) {
-      const exitSpeed = clamp(frame.incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
-      const retainedLateral = frame.copingTangent.clone().multiplyScalar(air.lateralVelocity * 0.45);
-      const desired = frame.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      const next = accelerateToward(currentHorizontal, desired, 30 * dt);
+      // Verified deck geometry owns the transfer speed. Bound midair steering
+      // acceleration instead of applying an artificial 30m/s2 boost each frame.
+      const exitSpeed = air.exitControl?.geometryAware && !air.exitControl.abortToReturn
+        ? air.exitControl.horizontalSpeed
+        : clamp(frame.incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
+      const retainedLateral = frame.copingTangent.clone()
+        .multiplyScalar(air.lateralVelocity * 0.45);
+      const desired = frame.deckOutward.clone().multiplyScalar(Math.max(0, exitSpeed))
+        .add(retainedLateral);
+      const next = accelerateToward(currentHorizontal, desired, 8 * Math.max(0, dt));
       velocity.x = next.x;
       velocity.z = next.z;
     } else {
