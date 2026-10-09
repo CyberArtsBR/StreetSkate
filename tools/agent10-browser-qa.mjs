@@ -39,17 +39,13 @@ async function chooseLoadout(){
  await page.locator('.loadout-deck').nth(2).click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
  await page.locator('[data-action="confirmLoadout"]').click();
- await page.locator('body[data-screen="tutorial"]').waitFor({timeout:60000});
+ await page.locator('body[data-screen="playing"]').waitFor({timeout:60000});
+ assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0,
+   'valid loadout must start gameplay directly without a mandatory tutorial');
 }
 async function finishTutorial(){
- for(let i=0;i<20;i++){
-  if(await page.locator('[data-action="closeTutorial"]').count()){
-   await page.locator('[data-action="closeTutorial"]').click();
-   await page.locator('body[data-screen="playing"]').waitFor({timeout:30000});return;
-  }
-  await page.locator('[data-action="next"]').click();
- }
- throw new Error('Tutorial page count unexpectedly exceeds 20');
+ await page.locator('body[data-screen="playing"]').waitFor({timeout:30000});
+ assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0);
 }
 async function stats(stage){
  const sample=await page.evaluate(async()=>{
@@ -159,9 +155,19 @@ try{
   assert.equal(await page.locator('img[src="x"]').count(),0);
   assert.equal(await page.locator('.loadout-character').count(),5);
  });
- await checked('loadout and tutorial navigation, timed session',async()=>{
+ await checked('direct Start Session flow without mandatory tutorial',async()=>{
   await chooseLoadout();
   await finishTutorial();
+  // The tutorial stays available on demand and can be skipped back to pause.
+  await page.keyboard.press('Escape');
+  await page.locator('body[data-screen="pause"]').waitFor();
+  await page.locator('[data-action="tutorial"]').click();
+  await page.locator('body[data-screen="tutorial"]').waitFor();
+  assert.equal(await page.locator('[data-action="skipTutorial"]').count(),1);
+  await page.locator('[data-action="skipTutorial"]').click();
+  await page.locator('body[data-screen="pause"]').waitFor();
+  await page.locator('[data-action="resume"]').click();
+  await page.locator('body[data-screen="playing"]').waitFor();
   // The virtual GitHub runner has no hardware GPU: exercise live gameplay at
   // a practical software-raster viewport; menu layout was checked at 1440x900.
   // Keep the >3-frame liveness assertion unchanged. Do not use these FPS
