@@ -241,3 +241,12 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 .xbox-input.xbox-a{background:#148d34}.xbox-input.xbox-b{background:#d3273f}
 .xbox-input.xbox-x{background:#196ad8}.xbox-input.xbox-y{background:#c8a51c;color:#141414}
 .xbox-input.xbox-mod{border-radius:5px;font-size:.9em;padding:0 .45em}
+
+
+/* Ultrawide gutters use softened artwork; the sharp, correctly aligned 16:9 stage remains unchanged. */
+#game-shell.title-screen{isolation:isolate;background:#120d21;overflow:hidden}
+#game-shell.title-screen::before{
+ content:'';position:absolute;inset:-32px;z-index:-1;pointer-events:none;
+ background:url('/media/title-screen.png') center/cover no-repeat;
+ filter:blur(25px) brightness(.58) saturate(1.2);
+}
