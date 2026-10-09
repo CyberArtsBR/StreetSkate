@@ -232,3 +232,35 @@ test('failed resource cleanup does not discard the newly activated world', async
   assert.deepEqual(problems, ['listener cleanup failed']);
   lifecycle.dispose();
 });
+
+test('25 consecutive world switches never retain old collision, rails or resources', async () => {
+  const seen = [];
+  let generation = 0;
+  const make = id => () => {
+    const counts = {};
+    const candidate = world(counts);
+    candidate.manifest.spawn = [generation, 0.15, 1];
+    candidate.manifest.rails = [{
+      name: `${id}-rail-${generation}`,
+      points: [[0, 1, 0], [4, 1, 0]],
+    }];
+    generation++;
+    seen.push(counts);
+    return candidate;
+  };
+  const lifecycle = new WorldLifecycle({
+    registry: registryFor({ rooftop: make('roof'), legacy: make('legacy') }),
+  });
+  for (let n = 0; n < 25; n++) {
+    const expectedId = n % 2 ? 'legacy' : 'rooftop';
+    const active = await lifecycle.switchTo(expectedId);
+    assert.equal(active.id, expectedId);
+    assert.equal(active.world.manifest.spawn[0], n);
+    assert.equal(active.world.manifest.rails[0].name, `${n % 2 ? 'legacy' : 'roof'}-rail-${n}`);
+    if (n > 0) assert.equal(seen[n - 1].geometry, 1);
+    assert.equal(seen[n].geometry, undefined);
+  }
+  lifecycle.dispose();
+  assert.equal(seen.length, 25);
+  for (const counts of seen) assert.equal(counts.geometry, 1);
+});
