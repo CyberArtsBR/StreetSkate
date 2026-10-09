@@ -7,7 +7,7 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
  * Generated once (not per frame), with deterministic soft cloud clusters.
  * If Canvas 2D is unavailable, the original HDR panorama remains the fallback.
  */
-function createCloudBackdrop(fallback) {
+export function createCloudBackdrop(fallback) {
   if (typeof document === 'undefined') return fallback;
   const canvas = document.createElement('canvas');
   canvas.width = 2048;

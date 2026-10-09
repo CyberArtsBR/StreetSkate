@@ -1,6 +1,6 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
-import { sessionWarning } from './SessionCountdown.js';
+import { sessionWarning, countdownCrossing } from './SessionCountdown.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
@@ -340,7 +340,10 @@ export class GameShell {
     }
     this.previousPad=keys;
     if(this.active&&!this.practice&&document.hasFocus()){
+      const before=this.remaining;
       this.remaining=Math.max(0,this.remaining-dt);this.updateTimer();
+      const threshold=countdownCrossing(before,this.remaining,this.practice);
+      if(threshold)this.actions.countdownWarning?.(threshold);
       if(!this.remaining){this.finalScore=this.actions.score();this.actions.pause(true);this.music.next();this.setScreen('results');}
     }
   }

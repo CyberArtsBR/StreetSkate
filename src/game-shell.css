@@ -268,3 +268,20 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   .loadout-screen .loadout-shell{height:max-content;min-height:100%;padding-bottom:20px}
   .loadout-screen .loadout-shell footer{margin-top:12px}
 }
+
+
+/* Full, readable rider names, even for safely escaped custom GLB filenames. */
+.loadout-character strong,.loadout-character small{display:block;max-width:100%;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tutorial-frame footer,.tutorial-poster footer{position:relative}
+#game-shell .tutorial-frame footer>span,#game-shell .tutorial-poster footer>span{display:none}
+#game-shell .tutorial-frame footer [data-action="skipTutorial"],
+#game-shell .tutorial-poster footer [data-action="skipTutorial"]{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)!important;
+  z-index:2;min-width:max-content
+}
+@media(max-width:500px){
+  #game-shell .tutorial-frame footer [data-action="skipTutorial"],
+  #game-shell .tutorial-poster footer [data-action="skipTutorial"]{
+    position:static;transform:none!important;min-width:0
+  }
+}

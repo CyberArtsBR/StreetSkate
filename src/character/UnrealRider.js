@@ -131,13 +131,22 @@ export class UnrealRider {
     // sole clearance per avatar once; don't reuse the imported ankle height as
     // the skateboard's deck top.
     const floorY=new THREE.Box3().setFromObject(this.model).min.y;
+    // The imported rest pose may hold one sneaker above the other. A single
+    // whole-model floor height must not make the lifted ankle's *extra height*
+    // masquerade as extra sole thickness. Both Chimpions shoes use the same
+    // board clearance, measured from the lowest rest ankle.
+    const restAnkles = SIDES.map(side => this.bones['foot_' + side])
+      .filter(Boolean).map(foot => this.root.worldToLocal(foot.getWorldPosition(V())).y);
+    const soleClearance = restAnkles.length
+      ? C(Math.min(...restAnkles) - floorY - 0.012, 0.032, 0.16)
+      : 0.055;
     for (const side of SIDES) {
       const foot = this.bones['foot_' + side], knee=this.bones['calf_'+side];
       if (foot) {
         const footLocal=this.root.worldToLocal(foot.getWorldPosition(V()));
         this.feet[side] = { point:footLocal, q:foot.getWorldQuaternion(Q()) };
         // Excessive ankle-to-floor offsets cause visibly floating shoes on some rigs.
-        this.soleOffsets[side]=C(footLocal.y-floorY-0.012,0.032,0.16);
+        this.soleOffsets[side]=soleClearance;
       }
       const thigh = this.bones['thigh_' + side];
       if (knee && thigh) {
