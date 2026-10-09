@@ -92,7 +92,19 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       new StreetBoard('/assets/rider/skateboard.glb').load(),
       new UnrealRider('/assets/rider/TheanchoURi.glb').load(),
     ]);
-    this.visual.add(this.board.root, this.rider.root);
+    this.visual.add(this.board.root,this.rider.root);
+    this.flashMaterials = [];
+    this.visual.traverse(object => {
+      if (!object.isMesh || !object.material) return;
+      const variants = Array.isArray(object.material) ? object.material : [object.material];
+      variants.forEach((original,i) => {
+        if (!original) return;
+        const clone = original.clone();
+        if (Array.isArray(object.material)) object.material[i] = clone;
+        else object.material = clone;
+        this.flashMaterials.push({material:clone,opacity:clone.opacity,transparent:clone.transparent,depthWrite:clone.depthWrite});
+      });
+    });
     this.rider.deckHeight = this.board.deckHeight;
     this.setBoardContactRig(this.board.contactRig);
     this.balanceHud = ensureBalanceHud();
@@ -270,6 +282,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       pumpState: this.presentation.pumpState,
     });
     this.applyWallImpactPose(this.wallImpactPoseWeight());
+    if (this.respawnFlash > 0) this.respawnFlash = Math.max(0,this.respawnFlash-delta);
+    const flash = this.respawnFlash > 0 && Math.floor((0.9-this.respawnFlash)/0.15)%2===1;
+    for (const entry of this.flashMaterials || []) {
+      entry.material.opacity = entry.opacity*(flash ? 0.22 : 1);
+      entry.material.transparent = flash || entry.transparent;
+      entry.material.depthWrite = flash ? false : entry.depthWrite;
+    }
     this.balanceHud?.update(this.balanceMode(), this.balanceValue());
     this.updateDebugViewer();
     return { speedRatio: present.speedRatio };

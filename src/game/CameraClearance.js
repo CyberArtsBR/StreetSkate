@@ -11,7 +11,7 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
   if (direct.distanceTo(anchor) >= CAMERA_CLEARANCE.minimumDistance) return direct;
 
   const arm = desired.clone().sub(anchor);
-  if (cache?.arm) {
+  if (cache?.arm && !cache?.fixedAxis) {
     const cached = probe(anchor.clone().add(cache.arm));
     if (cached.distanceTo(anchor) >= CAMERA_CLEARANCE.minimumDistance) return cached;
   }

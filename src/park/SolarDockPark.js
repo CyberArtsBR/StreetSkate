@@ -322,12 +322,8 @@ export function createSolarDockPark() {
     if (!ground) box(position[0], position[1], position[2] - 0.1, width, width / 4, 0.18, 'graphite', 'solid');
     park.add(mesh);
   }
-  sign('SOLAR DOCK', 'DESERT SKATE TERMINAL / EST. 2026', [0, 5, -76], 26);
+  sign('CHIMP HAWK', 'UNDERGROUND / SKYLINE ROOFTOP', [0, 5, -76], 26);
   for (const x of [-11.5, 11.5]) box(x, 2.5, -76.2, 0.25, 5, 0.25, 'turquoise', 'solid');
-  sign('01 / STREET', 'BANKS / LEDGES / RAILS', [0, 0.025, 48], 12, true);
-  sign('02 / ORBIT', 'DEEP POOL / CONTINUOUS COPING', [-28, 0.025, -5], 12, true);
-  sign('03 / FLOW', 'TWIN TRANSITIONS / 3.8 M', [-28, 0.025, 45], 12, true);
-  sign('04 / MEGA', '58 DEGREE LAUNCH / 7 M GAP', [32, 11.025, 55], 14, true);
   function mural(word, position, width, height, yaw = 0, seed = 15) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), createGraffitiMaterial(word, seed));
     mesh.position.set(...position); mesh.rotation.y = yaw;
@@ -367,36 +363,7 @@ export function createSolarDockPark() {
   muralGeometry.dispose();
   for (let z = -47; z <= 47; z += 8) box(17.2, 0.012, z, 0.12, 0.015, 3, 'paint');
 
-  // Distant low-poly desert and solar arrays stay outside the skating boundary.
-  for (let i = 0; i < 26; i++) {
-    const angle = i / 26 * Math.PI * 2, radius = 115 + (i % 4) * 15;
-    const geometry = new THREE.ConeGeometry(20 + i % 5 * 5, 14 + i % 7 * 3, 5);
-    geometry.rotateY(i * 1.8).translate(Math.cos(angle) * radius, -3, Math.sin(angle) * radius - 8);
-    add(geometry, 'sand');
-  }
-  for (const x of [-60, 60]) for (const z of [-65, -28, 10, 47]) {
-    box(x, 4.5, z, 0.35, 9, 0.35, 'turquoise');
-    const panel = new THREE.BoxGeometry(6, 0.16, 3).rotateZ(x < 0 ? -0.18 : 0.18).translate(x, 9, z);
-    add(panel, 'graphite');
-    box(x, 8.8, z + 1.55, 5.5, 0.15, 0.14, 'amber');
-  }
-  // Industrial spectator shelters and stacked terminal modules sit beyond the
-  // play boundary, adding scale without placing clutter in the approach lanes.
-  for (const x of [-64, 64]) for (const z of [-45, 20]) {
-    box(x, 0.1, z, 10, 0.2, 17, 'concrete');
-    for (const dx of [-4, 4]) for (const dz of [-7, 7]) box(x + dx, 2.6, z + dz, 0.18, 5.2, 0.18, 'steel');
-    box(x, 5.25, z, 11, 0.22, 18, 'graphite');
-    box(x, 5.4, z + 8.85, 11, 0.12, 0.15, 'amber');
-    for (const dz of [-5, 0, 5]) {
-      box(x, 0.55, z + dz, 7, 0.18, 0.65, 'wood');
-      for (const dx of [-2.8, 2.8]) box(x + dx, 0.25, z + dz, 0.16, 0.5, 0.5, 'steel');
-    }
-  }
-  for (const [x,z] of [[-35,-91],[-17,-91],[32,-91]]) {
-    box(x, 2.1, z, 14, 4.2, 6, 'turquoise');
-    for (let offset=-6.7; offset<7; offset+=0.55) box(x+offset,2.1,z+3.02,0.08,4.1,0.08,'steel');
-    box(x,4.3,z,14.3,0.16,6.3,'graphite');
-  }
+  // Skyline replaces the former low-poly desert surroundings.
 
   let visualTriangles = 0;
   for (const [material, geometries] of batches) {
@@ -421,7 +388,7 @@ export function createSolarDockPark() {
   park.traverse(mesh => { if (mesh.isMesh) visualTriangles += (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3; });
 
   return { park, collision, manifest: {
-    name: 'SOLAR DOCK', theme: 'Desert skate terminal', visualTriangles,
+    name: 'SKYLINE ROOFTOP', theme: 'Sunset city skyscraper', visualTriangles,
     dimensions: '108 × 148 m · 4 SKATE ZONES', transitionScale: 1,
     spawn: [0, 0.15, 41], rails,
     playableRegions: [{ minX: -53.3, maxX: 53.3, minZ: -81.3, maxZ: 65.3 }],
@@ -433,7 +400,7 @@ export function createSolarDockPark() {
       { id: 'rail', label: 'Long rail', position: [-48, 0.15, -3], heading: Math.PI },
     ],
     views: {
-      overview: { position: [122, 110, 145], target: [0, 0, -8], caption: 'Solar Dock · Desert skate terminal', index: '01' },
+      overview: { position: [122, 110, 145], target: [0, 0, -8], caption: 'Skyline rooftop · Golden hour', index: '01' },
       bowl: { position: [3, 28, 12], target: [-28, -1.5, -24], caption: 'Orbit pool · Continuous transitions', index: '02' },
       street: { position: [22, 23, 47], target: [0, 0, 8], caption: 'Street terminal · Build your line', index: '03' },
       top: { position: [0, 173, -7.99], target: [0, 0, -8], caption: 'Four zones. One connected park.', index: '—' },

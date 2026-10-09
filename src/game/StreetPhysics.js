@@ -7,6 +7,7 @@ import { directionKey, grindFor } from './TrickCatalog.js';
 import { constrainToPark } from './ParkBoundaries.js';
 import { flipTurns } from '../character/TrickMotion.js';
 import { groundForwardFromHeading } from './core/GroundMotor.js';
+import { safeRespawnPoint } from './SafeRespawn.js';
 
 export const MOVEMENT_STATE = Object.freeze({
   GROUND: 'GROUND',
@@ -78,6 +79,7 @@ export class StreetPhysics {
     this.takeoffOllieRequested = null;
     this.contactCooldown = 0; this.grindIntentTime = 0;
     this.lastWheelSupport = null;
+    this.respawnFlash = 0;
     this.tricks.reset();
     this.groundDirection();
   }
@@ -299,7 +301,7 @@ export class StreetPhysics {
 
     if (this.movementState === MOVEMENT_STATE.BAIL || this.bailTime > 0) {
       this.bailTime -= dt;
-      if (this.bailTime <= 0) { const score = this.score; this.reset(); this.score = score; }
+      if (this.bailTime <= 0) { const score = this.score; const spot = safeRespawnPoint(this.surface,this.bailOrigin || this.position,this.spawn); this.reset(spot,this.spawnHeading || 0); this.score = score; this.respawnFlash = 0.90; }
       return;
     }
 
@@ -623,6 +625,7 @@ export class StreetPhysics {
   }
 
   bail(message) {
+    this.bailOrigin = this.position.clone();
     this.velocity.set(0, 0, 0); this.bailTime = 0.9;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
     this.setMovementState(MOVEMENT_STATE.BAIL);

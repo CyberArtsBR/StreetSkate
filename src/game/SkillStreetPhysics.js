@@ -268,8 +268,8 @@ export class SkillStreetPhysics extends StreetPhysics {
     if (grind.instability > 0.005) disturbBalance(grind.balanceState, grind.instability * dt * 1.8);
     const result = stepBalance(grind.balanceState, {
       dt,
-      duration: grind.time,
-      difficulty: grind.profile.difficulty,
+      duration: grind.time * 1.6,
+      difficulty: grind.profile.difficulty * 2.25,
       speed: grind.speed,
       comboDuration: this.tricks.comboDuration(),
       correction: clamp(input.steer || 0, -1, 1),
@@ -277,6 +277,14 @@ export class SkillStreetPhysics extends StreetPhysics {
     });
     grind.balance = result.value;
     this.grindBalance = result.value;
+    // Keep a live balance fight: neutral stick eventually forces a fall.
+    const correcting = Math.abs(input.steer || 0) > 0.30
+      && Math.sign(input.steer) === Math.sign(result.value);
+    grind.uncorrectedTime = Math.max(0, (grind.uncorrectedTime || 0) + (correcting ? -dt*1.8 : dt));
+    if (grind.uncorrectedTime > 1.35) {
+      this.bail('BAIL · rail balance needs active left/right corrections');
+      return false;
+    }
     this.tricks.addDuration(grind.profile.durationRate * dt);
     if (!result.failed) return true;
     const severe = Math.abs(result.value) + Math.abs(result.velocity) * 0.18 > 1.18;

@@ -200,7 +200,11 @@ export class UnrealRider {
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
       this.model.position.x += (stance < 0 ? -1 : 1) * (0.08 + bailProgress * 0.16);
-      this.model.position.y += bailProgress * 0.12;
+      this.model.position.y -= Math.min(0.58, bailProgress * 0.72);
+      // Sideways tumble sells the crash instead of merely recoiling in place.
+      this.model.quaternion.multiply(
+        new THREE.Quaternion().setFromAxisAngle(V(0,0,1), (stance < 0 ? 1 : -1) * Math.min(1.28, bailProgress * 1.68))
+      );
     }
     this.root.updateWorldMatrix(true, true);
     const rootQ = this.root.getWorldQuaternion(Q());

@@ -37,8 +37,8 @@ export const THPS_CAMERA = Object.freeze({
   classicVertHeight: 4.4,
   classicGrindZoom: 0.94,
   classicTrickZoom: 0.92,
-  landingHoldTime: 0.18,
-  returnReframeRate: 18,
+  landingHoldTime: 0.62,
+  returnReframeRate: 9,
 });
 
 function wrapAngle(value) {
@@ -147,12 +147,12 @@ export class FollowCamera {
   }
 
   setMode(mode, player = null) {
-    this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
+    this.mode = ['follow', 'classic', 'fixed', 'first-person'].includes(mode) ? mode : 'follow';
     if (player) this.snap(player);
   }
 
   snap(player) {
-    this.clearanceCache = { fixedAxis: this.mode === 'fixed' };
+    this.clearanceCache = { fixedAxis: this.mode === 'fixed' || this.mode === 'follow' };
     this.initialized = false;
     this.wasReturning = false;
     this.returnHold = 0;
@@ -172,6 +172,15 @@ export class FollowCamera {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
+    if (this.mode === 'first-person') {
+      const look = state.travelDirection.clone().setY(0).normalize();
+      const riderHeight = 1.64;
+      this.camera.position.copy(state.position).addScaledVector(UP,riderHeight);
+      this.camera.lookAt(state.position.clone().addScaledVector(UP,riderHeight).addScaledVector(look,6));
+      this.direction.copy(look); this.initialized = true;
+      if (player?.visual) player.visual.visible = false;
+      return;
+    }
     const classic = this.mode !== 'fixed';
     const highFollow = this.mode === 'follow';
     const returning = state.transitionReturning;

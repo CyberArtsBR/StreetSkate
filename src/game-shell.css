@@ -1,0 +1,26 @@
+/* 16:9 controller-first overlay: the running park remains the menu's live background. */
+.ch-shell{position:absolute;inset:0;z-index:22;display:grid;place-items:center;background:rgba(7,12,21,.62);backdrop-filter:blur(5px)}
+.ch-shell[hidden],.ch-timer[hidden]{display:none!important}
+.ch-menu{position:relative;aspect-ratio:16/9;width:min(100vw,177.7778vh);max-height:100vh;overflow:auto;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:4% 7%;border:1px solid rgba(255,232,178,.17);background:linear-gradient(100deg,rgba(5,11,22,.92) 0%,rgba(6,13,28,.78) 51%,rgba(70,38,62,.12) 100%),radial-gradient(circle at 80% 25%,rgba(251,121,68,.24),transparent 47%);box-shadow:0 0 100px rgba(0,0,0,.24) inset}
+.ch-menu-content{width:min(630px,74%);display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ch-menu h1,.ch-menu h2{width:100%;margin:4px 0 12px;color:#fff8db;font-family:Impact,'Arial Black',sans-serif;font-size:clamp(45px,7.2vw,112px);line-height:.91;letter-spacing:-.025em;text-shadow:0 8px 0 #1b1a25,0 15px 24px #000}
+.ch-menu h1 em{font-style:normal;color:#ffbd56}.ch-menu h2{font-size:clamp(34px,4.5vw,72px)}
+.ch-eyebrow{width:100%;margin:0;color:#ffcc77;font-weight:900;font-size:11px;letter-spacing:.22em}
+.ch-sub{width:100%;color:#f2ddcd;font-size:clamp(11px,1.1vw,16px);letter-spacing:.12em;margin:0 0 18px}
+.ch-menu button{font:800 clamp(11px,1.1vw,16px)/1.1 Arial,sans-serif;letter-spacing:.08em;border:1px solid #f7d18f88;color:#ffefdc;background:#161e2bd9;border-radius:5px;padding:13px 17px;min-height:43px;transition:background .12s,transform .12s}
+.ch-menu button.primary,.ch-menu button:is(:focus-visible,:hover){background:#ffbf5c;color:#18202e;transform:translateY(-2px);outline:2px solid #fff4da;outline-offset:2px}
+.ch-mini{width:100%;font-size:10px;letter-spacing:.1em;color:#bec4c8;margin-top:20px}
+.ch-track{position:absolute;right:5%;bottom:4%;font-size:10px;color:#eac6a1;background:#15172599;padding:9px 13px;border-radius:3px}
+.ch-tutorial{width:100%;display:flex;flex-direction:column;gap:6px;max-height:43vh;overflow:auto}
+.ch-tutorial>div{display:flex;gap:15px;justify-content:space-between;align-items:center;padding:9px 12px;background:#1b2938a3;border:1px solid #abb0aa24}
+.ch-tutorial b{min-width:38%;font:900 clamp(10px,1vw,13px) Arial,sans-serif;color:#ffc268}
+.ch-tutorial span{flex:1;font:500 clamp(10px,.95vw,13px) Arial,sans-serif;color:#f4f1e7}
+.ch-tip{font-size:12px;line-height:1.5;color:#ffe4b5;margin:8px 0}
+.ch-page{width:100%;margin:0;color:#aabbc7;font-size:10px;letter-spacing:2px}
+.ch-result{font:900 clamp(27px,4vw,60px) Impact,sans-serif;color:#ffcc72;margin:15px 0;width:100%}
+.ch-timer{position:absolute;top:26px;left:50%;transform:translateX(-50%);z-index:15;padding:10px 23px;border-radius:6px;background:#101827c9;border:1px solid #ffc4778c;display:flex;align-items:center;gap:16px;pointer-events:none}
+.ch-timer small{font-size:9px;color:#e2bb8e;letter-spacing:2px;font-weight:800}.ch-timer strong{font:900 29px Impact,sans-serif;color:#ffedc3}
+#app[data-ch-screen]:not([data-ch-screen='playing']) .topbar,#app[data-ch-screen]:not([data-ch-screen='playing']) .skate-hud{opacity:0;pointer-events:none}
+#app[data-ch-screen] .toolbar,#app[data-ch-screen] .bottom,#app[data-ch-screen] .intro,#app[data-ch-screen] .view-caption,#app[data-ch-screen] .spot-nav,#app[data-ch-screen] .controls-card,#app[data-ch-screen] #pause-overlay,#app[data-ch-screen] #debug-panel{display:none!important}
+#app[data-ch-screen='playing'] #viewport:after{background:linear-gradient(0deg,rgba(8,12,23,.60),transparent 19%)}
+@media(max-width:700px){.ch-menu{padding:6% 5%;}.ch-menu-content{width:95%}.ch-menu h1{font-size:clamp(30px,8.5vw,66px)}.ch-menu h2{font-size:clamp(26px,7vw,55px)}.ch-track{display:none}.ch-tutorial{max-height:30vh}.ch-tutorial>div{padding:5px 8px}.ch-menu button{padding:7px 10px;min-height:33px}.ch-tip{display:none}.ch-timer{top:12px;padding:5px 10px}}
