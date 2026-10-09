@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { createSolarDockPark } from '../src/park/SolarDockPark.js';
 import { surfaceTexturesReady } from '../src/park/SurfaceMaterials.js';
 
@@ -36,7 +37,7 @@ export async function auditSolarDock() {
   try {
     const { park, collision, manifest } = createSolarDockPark();
     await surfaceTexturesReady();
-    const geometryIds = new Set(), materialIds = new Set(), textureIds = new Set();
+    const geometryIds = new Set();
     const materials = new Set(), textures = new Set();
     let visibleMeshes = 0, collisionMeshes = 0, actualTriangles = 0;
     let geometryBytes = 0, sourceVertices = 0, indexedTriangles = 0;
@@ -114,7 +115,7 @@ export async function auditSolarDock() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === fileURLToPath(new URL('file://' + process.argv[1]).href)) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const report = await auditSolarDock();
   console.log(JSON.stringify(report, null, 2));
 }
