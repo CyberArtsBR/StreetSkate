@@ -38,7 +38,9 @@ New regression tests:
 
 Run: `npm ci && npm test && npm run verify:physics && npx vite build`.
 
-The existing `Phase 1 Core CI` workflow runs those checks and a Chromium browser smoke job when a PR targets main. **Live hardware gamepad testing is not claimed.** Browser layouts at 1920×1080, 1366×768, 1280×720 and compact widths require a human visual pass or dedicated screenshots; CSS breakpoints were reviewed and adjusted.
+PR #11 validation, second run (`37918190040`): **354 tests, 352 passed, 2 failed.** Every new Agent 08 regression test passed. The two remaining failures belong to unchanged physics tests: `tests/grind-manual.test.mjs` (low-speed grind capture) and `tests/ground-motor.test.mjs` (park carve steering). Both files and their implementation dependencies are outside Agent 08 ownership. The gated production bundle and Chromium browser smoke jobs were skipped because the global unit-test job was unsuccessful.
+
+The existing `Phase 1 Core CI` workflow runs unit/replay tests, physics verification, production bundling and a Chromium browser smoke job when a PR targets main. **Live hardware gamepad testing is not claimed.** Browser layouts at 1920×1080, 1366×768, 1280×720 and compact widths still require a human visual pass or dedicated screenshots; CSS breakpoints were reviewed and adjusted.
 
 ## Integration notes
 
