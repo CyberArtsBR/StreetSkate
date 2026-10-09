@@ -66,3 +66,19 @@ Existing CI on pull requests to `main` executes `npm test`, `npm run verify:phys
 - Measure average per-frame raycasts and substep/candidate counts on the largest warehouse park and compare identical replay traces before/after the scratch change.
 - Confirm the loaded skateboard GLB's four wheel extrema and truck placement against its contact-rig metadata, particularly under nonuniform scale.
 - Examine complex overlapping visual-only ramp triangles versus physical collision proxies in the actual warehouse GLB before broadening collision registration.
+
+## GitHub Actions evidence (2026-10-09)
+
+- [PR validation run 37917882278](https://github.com/CyberArtsBR/StreetSkate/actions/runs/37917882278), at code commit `b715a6c505a46bade7410ad5178651877ea1f37b`.
+- New deterministic scenarios: **12/12 PASS**.
+- Official board verification executed by `tests/agent04-board-verifier.test.mjs`: **15/15 PASS**, despite the unrelated failures below.
+- Entire Node suite: **356/358 PASS; 2 FAIL**. Consequently, the normal sequential verify:physics, Vite build, and browser smoke jobs were skipped by CI. Do not report those as passing.
+
+### Unchanged baseline failures (handoff; do not modify outside ownership)
+
+1. **Agent 03 / grinds** — `tests/grind-manual.test.mjs:77` expects `projectedGrindSpeed(0.21) === 0.21`, while unchanged `src/game/SkateSystems.js` sets `GRIND_CAPTURE.antiStallSpeed=8.5` and clamps speeds to that minimum; observed `8.5`.
+2. **Agent 01 / ground steering** — `tests/ground-motor.test.mjs:102` expects the high-speed steering rate at speed 12, while unchanged `src/game/core/GroundMotor.js` interpolates to that rate by `steerFullSpeed=17`. Decide whether the source or assertion reflects the intended carve curve.
+
+Neither failure is in an Agent04-changed file. These source/test inconsistencies are visible in the unmodified baseline, although a clean baseline CI run was not independently executed here.
+
+No measured FPS/GC benchmark was run; scratch-allocation reduction is an implementation change, not a claimed numeric performance gain.
