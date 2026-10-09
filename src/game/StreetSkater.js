@@ -118,16 +118,14 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const required = ['pelvis','head','upperarm_l','upperarm_r','thigh_l','thigh_r','foot_l','foot_r'];
     const missing = required.filter(name => !candidate.bones[name]);
     if (missing.length) {
-      candidate.model?.traverse(o=>{
-        if(o.isMesh)o.geometry?.dispose();
-      });
+      candidate.dispose();
       throw new Error('GLB requires a rigged humanoid avatar; missing bones: '+missing.join(', '));
     }
     candidate.deckHeight = this.board.deckHeight;
     const previous = this.rider;
     this.visual.add(candidate.root);
     this.rider = candidate;
-    previous?.root?.removeFromParent();
+    previous?.dispose();
     this.flashMaterials = [];
     this.visual.traverse(mesh => {
       if(!mesh.isMesh)return;
