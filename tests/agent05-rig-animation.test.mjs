@@ -58,8 +58,41 @@ for (const [avatar, file] of Object.entries(avatars)) {
     const gltf = readGlb(resolve('public/assets/rider', file));
     assert.ok(Array.isArray(gltf.scenes) && gltf.scenes.length > 0);
     assert.ok(Array.isArray(gltf.nodes) && gltf.nodes.length > 0);
-    const bones = resolveHumanoidBones(gltf.nodes.map(node => ({ name: node.name || '' })));
+    assert.ok(Array.isArray(gltf.skins) && gltf.skins.length > 0,
+      avatar + ' must contain a skinned rig');
+    for (const node of gltf.nodes) {
+      for (const prop of ['translation', 'rotation', 'scale', 'matrix']) {
+        if (node[prop]) assert.ok(node[prop].every(Number.isFinite),
+          avatar + ' has nonfinite node ' + prop);
+      }
+    }
+    const bones = resolveHumanoidBones(gltf.nodes.map((node, index) =>
+      ({ name: node.name || '', index })));
     const ik = humanoidIKAudit(bones);
+    assert.ok(ik.fullLegIK && ik.fullArmIK,
+      avatar + ' is missing required left/right skinned limb nodes');
+    const skinNodes = new Set(gltf.skins.flatMap(skin => skin.joints || []));
+    const descendant = (ancestor, target) => {
+      const todo = [...(gltf.nodes[ancestor]?.children || [])];
+      const visited = new Set();
+      while (todo.length) {
+        const index = todo.pop();
+        if (index === target) return true;
+        if (visited.has(index)) continue;
+        visited.add(index);
+        todo.push(...(gltf.nodes[index]?.children || []));
+      }
+      return false;
+    };
+    for (const side of ['l', 'r']) {
+      const thigh = bones['thigh_' + side].index;
+      const calf = bones['calf_' + side].index;
+      const foot = bones['foot_' + side].index;
+      assert.ok([thigh, calf, foot].every(index => skinNodes.has(index)),
+        avatar + ' leg chain absent from all GLB skins');
+      assert.ok(descendant(thigh, calf) && descendant(calf, foot),
+        avatar + ' leg hierarchy must be thigh -> calf -> foot');
+    }
     t.diagnostic(avatar + ': ' + gltf.nodes.length + ' nodes, ' +
       (gltf.skins?.length || 0) + ' skins, leg chains=' + JSON.stringify(ik.legs) +
       ', arm chains=' + JSON.stringify(ik.arms));
