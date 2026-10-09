@@ -76,8 +76,11 @@ async function renderPortrait(url) {
     model.rotation.y = Math.PI / 5;
     // Frame face, ears, headwear and shoulders at thumbnail scale.
     const camera = new THREE.PerspectiveCamera(39, 320 / 340, 0.05, 40);
-    camera.position.set(0, 0.38, 2.65);
-    camera.lookAt(0, 0.38, 0);
+    // Oversized Chimpions heads and muzzle shapes extend well below the cranium.
+    // Fit the full original normalized model in the vertical preview so the
+    // mouth, ears and hats never disappear beneath the portrait's bottom edge.
+    camera.position.set(0, 0.2, 3.4);
+    camera.lookAt(0, 0.18, 0);
     renderer.setClearColor(0, 0);
     renderer.clear();
     renderer.render(scene, camera);
