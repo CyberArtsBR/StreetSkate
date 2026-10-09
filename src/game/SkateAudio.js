@@ -4,6 +4,8 @@ export class SkateAudio {
     this.enabled = true;
     try { this.enabled = localStorage.getItem('streetskate.sound') !== 'off'; } catch {}
     this.previous = null;
+    this.baseGain = 0.34;
+    this.masterVolume = 0.5;
   }
 
   async unlock() {
@@ -12,7 +14,7 @@ export class SkateAudio {
     if (!Audio) return;
     if (!this.context) {
       const c = this.context = new Audio();
-      this.master = c.createGain(); this.master.gain.value = 0.34; this.master.connect(c.destination);
+      this.master = c.createGain(); this.master.gain.value = this.baseGain*this.masterVolume; this.master.connect(c.destination);
       this.buffer = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
       const samples = this.buffer.getChannelData(0);
       for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
@@ -67,6 +69,12 @@ export class SkateAudio {
     if (!this.context) return;
     for (const layer of [this.roll, this.grind, this.wind]) layer.gain.gain.setTargetAtTime(0, this.context.currentTime, 0.02);
     this.previous = null;
+  }
+
+  setMasterVolume(value) {
+    this.masterVolume = Math.max(0,Math.min(1,Number(value)||0));
+    if (this.context && this.master) this.master.gain.setTargetAtTime(
+      this.baseGain*this.masterVolume,this.context.currentTime,0.045);
   }
 
   toggle() {

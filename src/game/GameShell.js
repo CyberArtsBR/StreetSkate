@@ -1,5 +1,10 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
+import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
+import { characterPortrait } from './CharacterPortraits.js';
+
+const safe = value => String(value).replace(/[&<>"']/g, ch =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 const CAMERAS=['follow','classic','fixed','firstperson'];
 const CAMERA_LABELS=['Follow','Classic','Fixed','First person'];
@@ -8,12 +13,33 @@ export class GameShell {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
     this.selection=0;this.previousPad={};this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
+    this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
+    this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
     this.timer=document.createElement('div');this.timer.id='run-timer';document.querySelector('#app').append(this.timer);
     this.song=document.createElement('div');this.song.id='now-playing';document.body.append(this.song);
     this.music=new MusicPlayer((title,note)=>{this.song.textContent=`♫ ${title} · Backspace / View to skip${note?' · '+note:''}`;});
+    this.avatarInput=document.createElement('input');
+    this.avatarInput.type='file';this.avatarInput.accept='.glb,model/gltf-binary';this.avatarInput.hidden=true;
+    document.body.append(this.avatarInput);
+    this.avatarInput.addEventListener('change',async()=>{
+      const file=this.avatarInput.files?.[0];this.avatarInput.value='';
+      if(!file)return;
+      if(file.size>35*1024*1024 || file.size<100 || !/\.glb$/i.test(file.name)) {
+        this.selectError='Choose a rigged .GLB file smaller than 35 MB.';this.render();return;
+      }
+      const magic=new Uint8Array(await file.slice(0,4).arrayBuffer());
+      if(String.fromCharCode(...magic)!=='glTF'){this.selectError='Invalid GLB header.';this.render();return;}
+      const next=URL.createObjectURL(file);
+      if(this.avatarUrl)URL.revokeObjectURL(this.avatarUrl);
+      this.avatarUrl=next;
+      this.heroes=this.heroes.filter(h=>h.id!=='custom');
+      this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
+      this.heroIndex=this.heroes.length-1;this.selectError='Avatar ready · continue to verify the skeleton.';
+      this.render();
+    });
     window.addEventListener('keydown',e=>this.key(e),true);
     this.render();
   }
@@ -27,17 +53,43 @@ export class GameShell {
   render(){
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
     this.timer.hidden=!this.active;this.updateTimer();
-    this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':'menu-screen';
+    this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':'menu-screen';
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
       body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
+    } else if(this.phase==='select') {
+      const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${i===this.heroIndex?'is-chosen':''}"
+        style="--rider-accent:${hero.accent}" aria-pressed="${i===this.heroIndex}">
+        <span class="rider-portrait" data-portrait-url="${safe(hero.url)}"><span class="rider-initial">${safe(hero.name[0]||'?')}</span></span>
+        <strong>${safe(hero.name)}</strong><small>${safe(hero.subtitle)}</small></button>`).join('');
+      const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${i===this.boardIndex?'is-chosen':''}"
+        style="--deck-gradient:${board.gradient}" aria-pressed="${i===this.boardIndex}"><span class="deck-preview"></span><b>${safe(board.label)}</b></button>`).join('');
+      const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
+        class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
+        <strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
+      body=`<div class="loadout-shell"><header><small>CHIMP HAWK · YOUR NEXT SESSION</small><h2>BUILD YOUR LINE</h2>
+        <p>CHOOSE YOUR RIDER · YOUR DECK · YOUR SPOT</p></header>
+        <div class="loadout-section"><div class="loadout-heading"><b>01 / CHOOSE YOUR RIDER</b><button data-menu data-action="upload">↑ UPLOAD YOUR CHARACTER AVATAR .GLB FILE</button></div>
+        <div class="loadout-roster">${cards}</div></div>
+        <div class="loadout-section"><div class="loadout-heading"><b>02 / GRADIENT GLOW SKATEBOARD</b><span>+20% DECK SIZE</span></div>
+        <div class="loadout-boards">${colors}</div></div>
+        <div class="loadout-section"><div class="loadout-heading"><b>03 / CHOOSE A LOCATION</b><span>MORE PARKS COMING</span></div>
+        <div class="loadout-locations">${spots}</div></div>
+        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'CONTINUE TO TUTORIAL →','confirmLoadout',this.selectBusy)}</footer>
+        <p class="loadout-status" aria-live="polite">${safe(this.selectError)}</p></div>`;
     } else if(this.phase==='pause') {
-      title='PAUSED';body=this.button('RESUME','resume')+this.button('TUTORIAL','tutorial')+this.button('OPTIONS','options')+this.button('RESTART RUN','restart')+this.button('MAIN MENU','title');
+      title='PAUSED';body=this.button('RESUME','resume')+this.button('TUTORIAL','tutorial')
+        +this.button('MASTER VOL −','volumeDown')
+        +this.button('MASTER '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
+        +this.button('MASTER VOL +','volumeUp')
+        +this.button('OPTIONS','options')+this.button('RESTART RUN','restart')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
-        +this.button(`MUSIC · ${Math.round(this.music.audio.volume*100)}%`,'volume')
+        +this.button('MASTER VOLUME −','volumeDown')
+        +this.button('MASTER · '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
+        +this.button('MASTER VOLUME +','volumeUp')
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+['SUNSET','OCEAN','AQUA','LIME','GOLD','NEBULA','GRAPHITE','PEARL'][this.finishIndex],'deck')
         +this.button('BACK','back');
@@ -49,15 +101,50 @@ export class GameShell {
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}<span>LB / RB OR LEFT / RIGHT · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=this.phase==='title'||this.phase==='tutorial'?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${title}</h2>${body}</div>`;
-    for(const button of this.menuButtons()) {button.onclick=()=>this.choose(button.dataset.action);button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};}
+    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${title}</h2>${body}</div>`;
+    for(const button of this.menuButtons()) {
+      button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
+      button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};
+    }
+    if(this.phase==='select')this.loadPortraits();
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     this.focusSelection();
   }
   begin(practice=false){
     if(!this.ready)return;
-    if(!this.tutorialSeen){this.pendingMode=practice?'practice':'timed';this.openTutorial();return;}
-    this.start(practice);
+    this.pendingMode=practice?'practice':'timed';
+    this.selectError='';
+    this.setScreen('select');
+  }
+  async loadPortraits(){
+    for(const el of this.content.querySelectorAll('[data-portrait-url]')){
+      const url=el.dataset.portraitUrl;
+      if(!url)continue;
+      characterPortrait(url).then(image=>{
+        if(!el.isConnected)return;
+        const thumb=document.createElement('img');
+        thumb.src=image;thumb.alt='';thumb.draggable=false;
+        el.replaceChildren(thumb);
+      }).catch(()=>{}); // Monogram remains visible if a model is unavailable.
+    }
+  }
+  async confirmLoadout(){
+    if(this.selectBusy||this.phase!=='select')return;
+    const hero=this.heroes[this.heroIndex];
+    const board=BOARD_CHOICES[this.boardIndex];
+    const location=LOCATIONS[this.locationIndex];
+    if(!hero||!location?.available)return;
+    this.selectBusy=true;this.selectError='Loading '+hero.name+'…';this.render();
+    try{
+      await this.actions.loadout({hero,board,location});
+      this.selectBusy=false;this.selectError='';
+      this.tutorialSeen=false;
+      this.openTutorial();
+    }catch(error){
+      this.selectBusy=false;
+      this.selectError='Cannot load '+hero.name+': '+(error?.message||'Invalid or missing GLB.');
+      this.render();
+    }
   }
   start(practice){
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.cameraIndex=0;
@@ -74,17 +161,23 @@ export class GameShell {
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
   back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='title')this.choose('launcher');}
-  choose(action){
+  choose(action,index=0){
     this.music.unlock();
     switch(action){
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
       case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
+      case 'hero':this.heroIndex=index;this.render();break;
+      case 'board':this.boardIndex=index;this.render();break;
+      case 'location':if(LOCATIONS[index]?.available){this.locationIndex=index;this.render();}break;
+      case 'upload':this.avatarInput.click();break;
+      case 'confirmLoadout':void this.confirmLoadout();break;
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%4;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
-      case 'volume':this.music.setVolume(this.music.audio.volume>=.99?0:Math.min(1,this.music.audio.volume+.1));this.render();break;
+      case 'volumeDown':this.adjustMaster(-.1);break;
+      case 'volumeUp':this.adjustMaster(.1);break;
       case 'sound':this.sound=!this.sound;this.actions.sound(this.sound);this.render();break;
       case 'deck':this.finishIndex=(this.finishIndex+1)%8;this.actions.deck(this.finishIndex);this.render();break;
       case 'title':this.actions.pause(true);this.setScreen('title');break;
@@ -93,6 +186,11 @@ export class GameShell {
       case 'next':this.page=Math.min(this.pages.length-1,this.page+1);this.render();break;
       case 'closeTutorial':this.closeTutorial();break;
     }
+  }
+  adjustMaster(step){
+    this.music.setMasterVolume(Math.round(Math.max(0,Math.min(1,this.music.masterVolume+step))*100)/100);
+    this.actions.masterVolume?.(this.music.masterVolume);
+    this.render();
   }
   key(event){
     if(/INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))return;

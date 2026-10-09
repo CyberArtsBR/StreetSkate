@@ -67,7 +67,8 @@ export class StreetBoard {
   async load() {
     this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
     const original = new THREE.Box3().setFromObject(this.model);
-    this.model.scale.setScalar(1.05 / original.getSize(new THREE.Vector3()).x);
+    // 20% larger deck with fully remeasured wheel/support geometry.
+    this.model.scale.setScalar(1.26 / original.getSize(new THREE.Vector3()).x);
     this.model.rotation.y = Math.PI / 2;
     this.model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(this.model);
@@ -97,7 +98,7 @@ export class StreetBoard {
       if (!mesh.isMesh || !/^Board1/i.test(mesh.name)) return;
       if (!mesh.userData.gradientOwned) {
         mesh.geometry = mesh.geometry.clone();
-        const own = material => { const m = material.clone(); m.map = null; m.vertexColors = true; m.color.set('#ffffff'); m.roughness = 0.46; return m; };
+        const own = material => { const m = material.clone(); m.map = null; m.vertexColors = true; m.color.set('#ffffff'); m.roughness = 0.46; m.emissive.set('#18212b'); m.emissiveIntensity = 0.16; return m; };
         mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
         mesh.userData.gradientOwned = true;
       }

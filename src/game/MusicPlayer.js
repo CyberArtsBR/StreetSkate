@@ -6,7 +6,12 @@ export const TRACKS = [
 
 export class MusicPlayer {
   constructor(onChange = () => {}) {
-    this.audio = new Audio(); this.audio.preload = 'metadata'; this.audio.volume = 0.55;
+    this.audio = new Audio(); this.audio.preload = 'auto';
+    this.baseVolume = 0.55;
+    let saved = 0.50;
+    try { const stored = localStorage.getItem('streetskate.masterVolume'); if (stored !== null) saved = Number(stored); } catch {}
+    this.masterVolume = Number.isFinite(saved) ? Math.max(0, Math.min(1, saved)) : 0.50;
+    this.audio.volume = this.baseVolume * this.masterVolume;
     this.queue = []; this.current = -1; this.onChange = onChange; this.unlocked = false;
     this.failed = new Set(); this.playPending = null;
     this.audio.addEventListener('ended', () => this.next());
@@ -49,4 +54,10 @@ export class MusicPlayer {
   }
   unlock() { if(this.audio.paused&&!this.audio.ended) this.play(); }
   setVolume(value) { this.audio.volume=Math.max(0,Math.min(1,value)); }
+  setMasterVolume(value) {
+    this.masterVolume=Math.max(0,Math.min(1,Number(value)||0));
+    this.audio.volume=this.baseVolume*this.masterVolume;
+    try { localStorage.setItem('streetskate.masterVolume',String(this.masterVolume)); } catch {}
+    this.onChange(this.title,'');
+  }
 }
