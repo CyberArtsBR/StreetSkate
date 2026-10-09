@@ -4,6 +4,7 @@ import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset } from './SkatePoseConstraints.js';
+import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -315,7 +316,9 @@ export class UnrealRider {
         const x=C(this.feet[side].point.x,-width,width);
         const z=C(this.feet[side].point.z,-halfLength,halfLength);
         const y=deckTop+this.soleOffsets[side];
-        this.ft[side].copy(this.root.worldToLocal(this.boardPoint(board,x,y,z)));
+        // A completed 180 shove-it changes the deck's cosmetic yaw, not
+        // which foot is in front. Never cross the rider's leg targets.
+        this.ft[side].copy(this.root.worldToLocal(plantedFootWorldPoint(board,x,y,z)));
       }
     }
     // Ollie/vert tuck lowers the pelvis with the feet on the deck. Only a flip
@@ -371,8 +374,11 @@ export class UnrealRider {
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
-      const footQ = deckLocked && !releasedFoot ? board.root.getWorldQuaternion(Q()) : rootQ.clone();
-      setWorldQ(foot, footQ.multiply(this.feet[side].q));
+      // The board may have spun 180 degrees while the skater stayed facing
+      // forward. Preserve the skater's ankle yaw and only align deck tilt.
+      setWorldQ(foot, footWorldOrientation(
+        this.root, board, this.feet[side].q, deckLocked && !releasedFoot,
+      ));
     }
 
     this.root.updateWorldMatrix(true, true);

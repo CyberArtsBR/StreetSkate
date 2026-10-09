@@ -103,7 +103,27 @@ export class StreetBoard {
       if (!mesh.isMesh || !/^Board1/i.test(mesh.name)) return;
       if (!mesh.userData.gradientOwned) {
         mesh.geometry = mesh.geometry.clone();
-        const own = material => { const m = material.clone(); m.map = null; m.vertexColors = true; m.color.set('#ffffff'); m.roughness = 0.46; m.emissive.set('#18212b'); m.emissiveIntensity = 0.16; return m; };
+        const own = material => {
+          const m = material.clone();
+          // GLB deck materials may use BLEND/alpha for their original graphic.
+          // A new vertex-color paint is solid: retaining the source alpha made
+          // the deck and grip translucent, with the trucks showing through.
+          m.map = null;
+          m.alphaMap = null;
+          m.transparent = false;
+          m.opacity = 1;
+          m.alphaTest = 0;
+          m.alphaHash = false;
+          m.depthTest = true;
+          m.depthWrite = true;
+          m.transmission = 0;
+          m.vertexColors = true;
+          m.color.set('#ffffff');
+          m.roughness = 0.46;
+          m.emissive.set('#18212b');
+          m.emissiveIntensity = 0.16;
+          return m;
+        };
         mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
         mesh.userData.gradientOwned = true;
       }
