@@ -136,7 +136,8 @@ export class UnrealRider {
       if (foot) {
         const footLocal=this.root.worldToLocal(foot.getWorldPosition(V()));
         this.feet[side] = { point:footLocal, q:foot.getWorldQuaternion(Q()) };
-        this.soleOffsets[side]=C(footLocal.y-floorY,0.035,0.22);
+        // Excessive ankle-to-floor offsets cause visibly floating shoes on some rigs.
+        this.soleOffsets[side]=C(footLocal.y-floorY-0.012,0.032,0.16);
       }
       const thigh = this.bones['thigh_' + side];
       if (knee && thigh) {
@@ -238,7 +239,8 @@ export class UnrealRider {
       + landingSeverity * 0.45 + grind * 0.22 + manualW * 0.12 + pump * 0.1, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, grab > 0 ? 18 : 14, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
-    this.model.position.y -= 0.025 + compression * 0.43;
+    // Keep hip compression anatomical; IK keeps shoe soles planted on the deck.
+    this.model.position.y -= 0.025 + compression * 0.27;
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -286,7 +288,8 @@ export class UnrealRider {
       const lateral = Math.hypot(shoulder.x - localTarget.x, shoulder.z - localTarget.z);
       reachDrop = Math.max(reachDrop, shoulder.y - localTarget.y - Math.sqrt(Math.max(0.005, length * length - lateral * lateral)));
     }
-    this.model.position.y -= C(reachDrop, 0, 0.28) * grab;
+    // Pulling the whole torso down to reach a grip made the body intersect the deck.
+    this.model.position.y -= C(reachDrop, 0, 0.085) * grab;
     this.root.updateWorldMatrix(true, true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
@@ -370,7 +373,8 @@ export class UnrealRider {
       if (!upper || !lower || !hand) continue;
       const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
       const target = this.at[side].copy(shoulder)
-        .add(V(0.14 + compression * 0.02, -0.31 + air * 0.08 + sign * balance * 0.04, sign * (0.14 + air * 0.08)));
+        .add(V(0.10 + compression * 0.02 + (side === 'l' ? -0.025 : 0.035),
+          -0.33 + air * 0.08 + sign * balance * 0.04, sign * (0.19 + air * 0.08)));
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
