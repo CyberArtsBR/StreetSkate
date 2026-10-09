@@ -1,3 +1,4 @@
+import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
@@ -254,10 +255,10 @@ export class UnrealRider {
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     // Half Pipe's compact air silhouette: knees stay tucked through the flight,
     // instead of standing at takeoff and only bending near the apex.
-    const tuck = air * (vert ? 0.65 : 0.53);
-    const compTarget = C(Math.max(crouch, tuck, grab * 0.68)
-      + landingSeverity * 0.32 + grind * 0.16 + manualW * 0.08 + pump * 0.08, 0, 1);
-    const compression = C(springStep(this.scalar.compression, compTarget, grab > 0 ? 18 : 14, dt), 0, 1);
+    const halfPipe = halfPipePose({ charge: crouch, air, vert, verticalVelocity,
+      landing: landingSeverity, speed: speedRatio, grab });
+    const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04, 0, 1);
+    const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
     // Keep hip compression anatomical; IK keeps shoe soles planted on the deck.
     this.model.position.y -= riderCrouchOffset(compression, grab);
@@ -277,7 +278,7 @@ export class UnrealRider {
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), 0.045, rootQ);
-      this.rotate(name, V(0, 0, 1), (-0.015 - compression * 0.22 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
+      this.rotate(name, V(0, 0, 1), (-0.10 - compression * 0.22 - air * 0.08 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
       this.rotate(name, V(1, 0, 0), apex * 0.03 - pump * 0.025, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
@@ -364,6 +365,27 @@ export class UnrealRider {
     if (bail) {
       this.ft.l.x -= 0.2 + bailProgress * 0.2; this.ft.r.x += 0.2 + bailProgress * 0.2;
       this.ft.l.y += 0.16; this.ft.r.y += 0.1;
+    }
+    // Half Pipe's knee-driven pelvis height, before solving the planted feet.
+    // One-foot tricks and bails retain their existing authored leg release.
+    if (deckLocked && !grabState && !manual && !grindType && !wallRide) {
+      const flex = C(0.45 + compression * 0.80 + air * 0.45, 0.45, 1.85);
+      let shift = Infinity;
+      for (const side of SIDES) {
+        const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side], foot = this.bones['foot_' + side];
+        if (!thigh || !calf || !foot || !this.feet[side]) continue;
+        const hip = this.root.worldToLocal(thigh.getWorldPosition(V()));
+        const knee = this.root.worldToLocal(calf.getWorldPosition(V()));
+        const ankle = this.root.worldToLocal(foot.getWorldPosition(V()));
+        const delta = hip.clone().sub(this.ft[side]);
+        shift = Math.min(shift, kneeHeight(hip.distanceTo(knee), knee.distanceTo(ankle), flex,
+          delta.x * delta.x + delta.z * delta.z) - delta.y);
+      }
+      if (Number.isFinite(shift)) {
+        this.model.position.y += C(shift, -0.18, 0.12);
+        this.root.updateWorldMatrix(true, true);
+        ensurePelvisDeckClearance(this.model, this.bones.pelvis, board, 0.405);
+      }
     }
     for (const side of SIDES) {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];

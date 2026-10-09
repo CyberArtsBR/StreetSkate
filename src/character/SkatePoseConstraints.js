@@ -56,8 +56,8 @@ export function boundedHandReach(shoulder, desired, armLength, margin=0.035) {
 export function neutralHandOffset(outwardSign, frontArm=false, compression=0, air=0, balance=0) {
   const sign=outwardSign<0?-1:1;
   return new THREE.Vector3(
-    sign*(0.19+0.04*C(compression,0,1)),
-    -0.32+0.09*C(air,0,1)+0.05*C(balance,-1,1)*sign,
+    sign*(0.14+0.035*C(compression,0,1)),
+    -0.36-0.035*C(compression,0,1)+0.045*C(air,0,1)+0.05*C(balance,-1,1)*sign,
     (frontArm?0.095:-0.065)+0.06*C(balance,-1,1)
   );
 }

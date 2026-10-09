@@ -344,7 +344,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       time: elapsed,
       dt: delta,
     };
-    this.board?.update({ ...common, airborne: !this.grounded && !this.grind });
+    this.board?.update({ ...common, speedRatio: present.speedRatio, airborne: !this.grounded && !this.grind });
     if (this.rider) this.rider.root.rotation.set(0, 0, 0);
     this.rider?.update({
       ...common,
