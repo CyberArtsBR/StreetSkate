@@ -1,6 +1,7 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
+import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
 import { characterPortrait } from './CharacterPortraits.js';
 
@@ -32,13 +33,20 @@ export class GameShell {
       if(file.size>35*1024*1024 || file.size<20 || !/\.glb$/i.test(file.name)) {
         this.selectError='Choose a rigged .GLB file smaller than 35 MB.';this.render();return;
       }
-      // GLB 2.0 starts with a 12-byte header followed by a JSON chunk.
-      // Reject malformed uploads before passing their object URL to the loader.
-      let header;
-      try { header=await file.slice(0,20).arrayBuffer(); }
-      catch { this.selectError='Unable to read the GLB file.';this.render();return; }
-      if(!isValidGlbHeader(header,file.size)) {
-        this.selectError='Invalid GLB 2.0 header or JSON chunk.';this.render();return;
+      // Validate both the header and the full GLB structure *before* exposing
+      // untrusted bytes to GLTFLoader or creating a persistent object URL.
+      // The inspector rejects external/data URI resources and oversized rigs.
+      const uploadGeneration=(this.avatarUploadGeneration=(this.avatarUploadGeneration||0)+1);
+      try {
+        const buffer=await file.arrayBuffer();
+        if(uploadGeneration!==this.avatarUploadGeneration)return;
+        if(!isValidGlbHeader(buffer.slice(0,20),buffer.byteLength))
+          throw new Error('Invalid GLB 2.0 header or JSON chunk.');
+        inspectGlb(buffer);
+      } catch(error) {
+        if(uploadGeneration!==this.avatarUploadGeneration)return;
+        this.selectError='Invalid GLB header or content: '+(error?.message||'Unable to read file.');
+        this.render();return;
       }
       const next=URL.createObjectURL(file);
       if(this.avatarUrl)URL.revokeObjectURL(this.avatarUrl);
