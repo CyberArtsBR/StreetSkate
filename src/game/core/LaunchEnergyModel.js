@@ -37,12 +37,18 @@ export function rampLaunchBonus({
   const energy = clamp((magnitude - config.minSpeed)
     / Math.max(0.1, config.boostFullSpeed - config.minSpeed), 0, 1);
   const riseQuality = clamp(rise / 5.5, 0, 1);
+  // Avoid full-strength launch energy from barely moving, shallow seam contacts.
+  // Well-established carving speeds continue to use the original arcade curve.
+  const entrySpeed = clamp((magnitude - config.minSpeed) / 2.8, 0, 1);
+  const entryRise = clamp((rise - config.minVerticalSpeed) / 0.65, 0, 1);
+  const entryWeight = (entrySpeed * entrySpeed * (3 - 2 * entrySpeed))
+    * (entryRise * entryRise * (3 - 2 * entryRise));
   const quality = clamp(
     0.34 + slope * 0.38 + energy * 0.34 + riseQuality * 0.18,
     0,
     1,
   );
-  return THREE.MathUtils.lerp(config.boostMin, config.boostMax, quality);
+  return THREE.MathUtils.lerp(config.boostMin, config.boostMax, quality) * entryWeight;
 }
 
 export function updateRampLaunchMemory({
