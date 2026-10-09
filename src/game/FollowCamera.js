@@ -42,7 +42,8 @@ export const THPS_CAMERA = Object.freeze({
   classicGrindZoom: 0.94,
   classicTrickZoom: 0.92,
   landingHoldTime: 0.9,
-  returnReframeRate: 18,
+  returnReframeRate: 8,
+  reverseReturnReframeRate: 2.4,
 });
 
 function wrapAngle(value) {
@@ -199,14 +200,21 @@ export class FollowCamera {
         // matching downhill travel or deliberate player steering, never a stale
         // uphill heading from the coping contact.
         const aligned = state.travelDirection.dot(this.vertDirection) > 0.5;
-        if (!highFollow || aligned || Math.abs(input.steer || 0) > 0.25 || state.grindActive || input.vertExit)
-          this.returnHold = Math.max(0, this.returnHold - dt);
+        // A mismatched downhill vector must never latch the camera on the
+        // old vert side forever. Deliberate steering/alignment clears it sooner.
+        const deliberateExit = aligned || Math.abs(input.steer || 0) > 0.25
+          || state.grindActive || input.vertExit;
+        this.returnHold = Math.max(0, this.returnHold - dt * (deliberateExit ? 2 : 1));
       }
       // High Follow anticipates the downhill return as soon as vert air begins.
       // Classic retains its original ramp-side framing. Trick spins steer neither.
       if (returning || this.returnHold > 0) {
-        if (highFollow) this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, THPS_CAMERA.returnReframeRate));
-        else this.direction.copy(this.vertDirection);
+        if (highFollow) {
+          // Even a true 180-degree coping reversal must not whip the camera.
+          const reverse = this.direction.dot(this.vertDirection) < THPS_CAMERA.reverseDotThreshold;
+          const rate = reverse ? THPS_CAMERA.reverseReturnReframeRate : THPS_CAMERA.returnReframeRate;
+          this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, rate));
+        } else this.direction.copy(this.vertDirection);
       }
       else if (!state.bailing) this.direction.copy(smoothCameraDirection(
         this.direction, state.travelDirection, dt,
