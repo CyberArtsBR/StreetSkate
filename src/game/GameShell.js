@@ -55,7 +55,12 @@ export class GameShell {
   // Spatial controller navigation: left/right stays on the same visual row,
   // up/down targets the closest item in the row immediately above/below.
   moveSelection(axis, sign) {
-    const buttons=this.menuButtons(), current=buttons[this.selection];
+    const buttons=this.menuButtons();
+    // Pointer, keyboard and gamepad can hand focus to the browser between
+    // frames; always navigate from the actual focused card if there is one.
+    const focusedIndex=buttons.indexOf(document.activeElement);
+    if(focusedIndex>=0)this.selection=focusedIndex;
+    const current=buttons[this.selection];
     if(!current)return;
     const r=current.getBoundingClientRect();
     const cx=r.left+r.width/2,cy=r.top+r.height/2;
