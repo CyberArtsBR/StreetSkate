@@ -54,7 +54,9 @@ async function finishTutorial(){
 async function stats(stage){
  const sample=await page.evaluate(async()=>{
   const deltas=[];let last=performance.now();const began=last;
-  while(performance.now()-began<1300){
+  // Observe long enough to distinguish an active software-rendered WebGL
+  // loop from a stalled loop; maintain the existing >3-frame assertion.
+  while(performance.now()-began<3200){
    const t=await Promise.race([
     new Promise(resolve=>requestAnimationFrame(()=>resolve(performance.now()))),
     new Promise(resolve=>setTimeout(()=>resolve(null),600))
