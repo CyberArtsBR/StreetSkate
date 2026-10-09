@@ -101,6 +101,16 @@ async function stats(stage){
 }
 try{
  await checked('startup and playable renderer',gotoTitle);
+ await checked('active park visual-versus-collision coverage diagnostic',async()=>{
+  const coverage=await page.evaluate(()=>{
+    const g=window.streetSkate;
+    return g.collision.auditCoverage(g.park,g.manifest.playableRegions,{samplesPerAxis:6});
+  });
+  assert.ok(coverage.sampled>0,'Expected at least one playable-region sample');
+  assert.ok(coverage.visualSamples>0,'Expected physical floor visual samples');
+  console.log('AGENT10 PARK COVERAGE '+JSON.stringify(coverage));
+  report.parkCoverage=coverage;
+ });
  await checked('packaged rider and title media are accessible',async()=>{
   for(const asset of ['/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
    '/assets/rider/The_Anchor.glb','/assets/rider/TuxR.glb',

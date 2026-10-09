@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { BlockTriangleIndex } from './collision/BlockTriangleIndex.js';
+import { auditParkSurfaceCoverage } from './collision/ParkCoverageAudit.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -193,6 +194,11 @@ export class ParkCollision {
       return result;
     }
     return null;
+  }
+
+  /** QA-only read-only visual/collision coverage sampling; no gameplay changes. */
+  auditCoverage(visualRoot, playableRegions, options = {}) {
+    return auditParkSurfaceCoverage({ collision: this, visualRoot, playableRegions, ...options });
   }
 
   ground(position, rise = 0.14, drop = 0.2) {
