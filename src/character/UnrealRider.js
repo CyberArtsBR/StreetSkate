@@ -1,10 +1,10 @@
-import { halfPipePose, kneeHeight } from './HalfPipePose.js';
+import { halfPipePose } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
-import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset } from './SkatePoseConstraints.js';
+import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -88,6 +88,7 @@ export class UnrealRider {
     this.kneePoles={};
     this.outward={l:-1,r:1};
     this.at = { l: V(), r: V() };
+    this.poseCalibration = avatarPoseCalibration(0.72);
   }
 
   async load() {
@@ -144,6 +145,12 @@ export class UnrealRider {
     const soleClearance = restAnkles.length
       ? C(Math.min(...restAnkles) - floorY - 0.012, 0.032, 0.16)
       : 0.055;
+    // The proportions of uploaded Chimpions/animal rigs differ dramatically.
+    // Scale crouching and deck clearance by the rig's actual leg height.
+    if (restAnkles.length && this.bones.pelvis) {
+      const hipY = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V())).y;
+      this.poseCalibration = avatarPoseCalibration(hipY - Math.min(...restAnkles));
+    }
     // Imported character axes can be mirrored by the +90 degree GLB rotation.
     // Infer leg sides from the actual positioned feet, never side labels alone.
     if (this.bones.foot_l && this.bones.foot_r) {
@@ -261,7 +268,7 @@ export class UnrealRider {
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
     // Keep hip compression anatomical; IK keeps shoe soles planted on the deck.
-    this.model.position.y -= riderCrouchOffset(compression, grab);
+    this.model.position.y -= riderCrouchOffset(compression, grab) * this.poseCalibration.crouchScale;
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -278,8 +285,10 @@ export class UnrealRider {
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), 0.045, rootQ);
-      this.rotate(name, V(0, 0, 1), (-0.10 - compression * 0.22 - air * 0.08 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
-      this.rotate(name, V(1, 0, 0), apex * 0.03 - pump * 0.025, rootQ);
+      // Pitch at the hips/spine during crouches and grabs, not just sideways
+      // roll. This brings the shoulders toward the deck before arm IK reaches.
+      this.rotate(name, V(0, 0, 1), (-0.055 - compression * 0.12 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
+      this.rotate(name, V(1, 0, 0), (-compression * 0.24 - grab * 0.32 + apex * 0.03 - pump * 0.025) / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
     this.rotate('neck_01', V(0, 1, 0), 0.11, rootQ);
@@ -301,7 +310,7 @@ export class UnrealRider {
     // Idle is already deck-aligned: applying a clearance lift then could
     // reintroduce floating shoes on short-legged GLB characters.
     if (compression>0.08 || grab>0.05)
-      ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,0.405);
+      ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,this.poseCalibration.pelvisClearance);
     this.root.updateWorldMatrix(true,true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
@@ -366,25 +375,26 @@ export class UnrealRider {
       this.ft.l.x -= 0.2 + bailProgress * 0.2; this.ft.r.x += 0.2 + bailProgress * 0.2;
       this.ft.l.y += 0.16; this.ft.r.y += 0.1;
     }
-    // Half Pipe's knee-driven pelvis height, before solving the planted feet.
-    // One-foot tricks and bails retain their existing authored leg release.
-    if (deckLocked && !grabState && !manual && !grindType && !wallRide) {
-      const flex = C(0.45 + compression * 0.80 + air * 0.45, 0.45, 1.85);
-      let shift = Infinity;
+    // Half Pipe's previous law-of-cosines lift could undo the crouch by
+    // raising the pelvis up to 12 cm every frame. IK already bends the knees;
+    // correct only true overextension when a rider's foot cannot reach.
+    if (deckLocked && !bail) {
+      let overextension = 0;
       for (const side of SIDES) {
-        const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side], foot = this.bones['foot_' + side];
+        const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side],
+          foot = this.bones['foot_' + side];
         if (!thigh || !calf || !foot || !this.feet[side]) continue;
-        const hip = this.root.worldToLocal(thigh.getWorldPosition(V()));
-        const knee = this.root.worldToLocal(calf.getWorldPosition(V()));
-        const ankle = this.root.worldToLocal(foot.getWorldPosition(V()));
-        const delta = hip.clone().sub(this.ft[side]);
-        shift = Math.min(shift, kneeHeight(hip.distanceTo(knee), knee.distanceTo(ankle), flex,
-          delta.x * delta.x + delta.z * delta.z) - delta.y);
+        const hip = thigh.getWorldPosition(V()), knee = calf.getWorldPosition(V());
+        const ankle = foot.getWorldPosition(V());
+        overextension = Math.max(overextension, legOverextension(hip,
+          this.root.localToWorld(this.ft[side].clone()),
+          hip.distanceTo(knee), knee.distanceTo(ankle)));
       }
-      if (Number.isFinite(shift)) {
-        this.model.position.y += C(shift, -0.18, 0.12);
+      if (overextension > 0.001) {
+        this.model.position.y -= overextension;
         this.root.updateWorldMatrix(true, true);
-        ensurePelvisDeckClearance(this.model, this.bones.pelvis, board, 0.405);
+        ensurePelvisDeckClearance(this.model, this.bones.pelvis, board,
+          this.poseCalibration.pelvisClearance);
       }
     }
     for (const side of SIDES) {
@@ -436,7 +446,10 @@ export class UnrealRider {
       limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {
         const handQ = rootQ.clone().multiply(this.hands[side].q);
-        if (reach && board) handQ.slerp(board.root.getWorldQuaternion(Q()).multiply(this.hands[side].q), reachWeight);
+        // Keep the wrist aligned to the deck surface without copying the
+        // decorative 180-degree shove-it yaw into the rider's forearm.
+        if (reach && board) handQ.slerp(
+          footWorldOrientation(this.root, board, this.hands[side].q, true), reachWeight);
         setWorldQ(hand, handQ);
       }
     }
