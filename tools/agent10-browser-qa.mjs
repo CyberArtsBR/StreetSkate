@@ -7,7 +7,14 @@ const url=process.env.STREETSKATE_URL||'http://127.0.0.1:4173';
 const out=process.env.AGENT10_ARTIFACT_DIR||'artifacts/agent10';
 await mkdir(out,{recursive:true});
 const report={url,started:new Date().toISOString(),checks:[],pageErrors:[],requestFailures:[],consoleErrors:[],samples:[]};
-const browser=await chromium.launch({headless:true,args:['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist']});
+// Headless Chromium can deprioritize RAF in software WebGL even while the
+// tab is under test. Disable background throttling without lowering the
+// required number of animation frames.
+const browser=await chromium.launch({headless:true,args:[
+ '--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist',
+ '--disable-background-timer-throttling','--disable-renderer-backgrounding',
+ '--disable-backgrounding-occluded-windows',
+]});
 const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
 await context.addInitScript(()=>{
   window.__agent10Unhandled=[];
@@ -71,6 +78,7 @@ async function stats(stage){
    invariantViolations:g?.skater?.stateInvariantViolations?.map?.(x=>x.code)??[]};
  });
  report.samples.push({stage,...sample});
+ console.log('AGENT10 RENDER SAMPLE '+JSON.stringify({stage,...sample}));
  assert.ok(Array.isArray(sample.player)&&sample.player.every(Number.isFinite),'Non-finite player');
  assert.ok(Array.isArray(sample.camera)&&sample.camera.every(Number.isFinite),'Non-finite camera');
  assert.deepEqual(sample.invariantViolations,[],'Runtime invariant failures');
