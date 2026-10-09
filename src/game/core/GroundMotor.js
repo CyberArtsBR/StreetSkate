@@ -222,8 +222,10 @@ export function resolveGroundPropulsion({
 
   const resistance = passiveRollingResistance(nextSpeed, config, crouched)
     + (braking ? brakeDecel : 0);
-  nextSpeed = Math.sign(nextSpeed)
-    * Math.max(0, Math.abs(nextSpeed) - resistance * step);
+  const remainingMagnitude = Math.max(0, Math.abs(nextSpeed) - resistance * step);
+  // Canonical stopped state is +0 in regular and fakie. Multiplying a zero
+  // magnitude by Math.sign(-speed) otherwise leaves observable negative zero.
+  nextSpeed = remainingMagnitude > 0 ? Math.sign(nextSpeed) * remainingMagnitude : 0;
   nextSpeed = clamp(nextSpeed, -config.absoluteSpeedCap, config.absoluteSpeedCap);
 
   return {
