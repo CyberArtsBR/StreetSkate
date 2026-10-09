@@ -150,7 +150,7 @@ test('menu gamepad A is edge-triggered, not repeatedly selected while held', () 
   });
   try {
     const shell = Object.create(GameShell.prototype);
-    shell.phase = 'select'; shell.padFocused = false;
+    shell.phase = 'select'; shell.selection = 0; shell.padFocused = false;
     shell.previousPad = {}; shell.navRepeat = 0; shell.inputGrace = 0;
     shell.music = { unlock() {}, next() {} };
     const btn = { clicks: 0, click() { this.clicks++; } };
