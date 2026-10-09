@@ -3,7 +3,7 @@ import { MusicPlayer } from './MusicPlayer.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
-import { characterPortrait } from './CharacterPortraits.js';
+import { characterPortrait, forgetCharacterPortrait } from './CharacterPortraits.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -17,6 +17,7 @@ export class GameShell {
     this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
+    this.loadoutGeneration=0;this.avatarUploadGeneration=0;
     this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ ← → / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
@@ -28,6 +29,8 @@ export class GameShell {
     this.avatarInput.type='file';this.avatarInput.accept='.glb,model/gltf-binary';this.avatarInput.hidden=true;
     document.body.append(this.avatarInput);
     this.avatarInput.addEventListener('change',async()=>{
+      // Even a rejected replacement cancels the previous asynchronous read.
+      const uploadGeneration=++this.avatarUploadGeneration;
       const file=this.avatarInput.files?.[0];this.avatarInput.value='';
       if(!file)return;
       if(file.size>35*1024*1024 || file.size<20 || !/\.glb$/i.test(file.name)) {
@@ -36,7 +39,6 @@ export class GameShell {
       // Validate both the header and the full GLB structure *before* exposing
       // untrusted bytes to GLTFLoader or creating a persistent object URL.
       // The inspector rejects external/data URI resources and oversized rigs.
-      const uploadGeneration=(this.avatarUploadGeneration=(this.avatarUploadGeneration||0)+1);
       try {
         const buffer=await file.arrayBuffer();
         if(uploadGeneration!==this.avatarUploadGeneration)return;
@@ -49,7 +51,10 @@ export class GameShell {
         this.render();return;
       }
       const next=URL.createObjectURL(file);
-      if(this.avatarUrl)URL.revokeObjectURL(this.avatarUrl);
+      if(this.avatarUrl){
+        forgetCharacterPortrait(this.avatarUrl);
+        URL.revokeObjectURL(this.avatarUrl);
+      }
       this.avatarUrl=next;
       this.heroes=this.heroes.filter(h=>h.id!=='custom');
       this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
@@ -64,7 +69,16 @@ export class GameShell {
   get active(){return this.phase==='playing';}
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
-  setScreen(phase){this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();}
+  setScreen(phase){
+    // Leaving the selector invalidates any pending rider swap's UI completion.
+    // A previously started loader may still resolve, but must never reopen a
+    // tutorial or overwrite the player's new screen after Back/Escape.
+    if(this.phase==='select'&&phase!=='select'){
+      this.loadoutGeneration++;
+      this.selectBusy=false;
+    }
+    this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();
+  }
   menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
   focusSelection(){
     const buttons=this.menuButtons();
@@ -196,14 +210,17 @@ export class GameShell {
     const board=BOARD_CHOICES[this.boardIndex];
     const location=LOCATIONS[this.locationIndex];
     if(!this.heroConfirmed||!this.boardConfirmed||!hero||!location?.available)return;
+    const generation=++this.loadoutGeneration;
     this.selectBusy=true;this.selectError='Loading '+hero.name+'…';this.render();
     try{
       await this.actions.loadout({hero,board,location});
+      if(generation!==this.loadoutGeneration||this.phase!=='select')return;
       this.selectBusy=false;this.selectError='';
       this.finishIndex=board.finishIndex;
       this.tutorialSeen=false;
       this.openTutorial();
     }catch(error){
+      if(generation!==this.loadoutGeneration||this.phase!=='select')return;
       this.selectBusy=false;
       this.selectError='Cannot load '+hero.name+': '+(error?.message||'Invalid or missing GLB.');
       this.render();
@@ -226,6 +243,7 @@ export class GameShell {
   back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     this.music.unlock();
+    if(this.selectBusy&&['hero','board','location','upload','confirmLoadout'].includes(action))return;
     switch(action){
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
