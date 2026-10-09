@@ -1,4 +1,5 @@
 import { SKATEBOARD_FINISHES } from '../skateboard/BoardFinishes.js';
+import { PARK_DEFINITIONS } from '../park/ParkRegistry.js';
 
 export const DEFAULT_CHARACTERS = Object.freeze([
   Object.freeze({ id:'heretic', name:'Heretic', subtitle:'THE EXECUTOR', url:'/assets/rider/The_Heretic.glb', accent:'#f66e62' }),
@@ -14,8 +15,6 @@ export const BOARD_CHOICES = Object.freeze(LABELS.map((label, finishIndex) =>
     finishIndex,
     gradient:SKATEBOARD_FINISHES[finishIndex].cssGradient,
   })));
-export const LOCATIONS = Object.freeze([
-  {id:'rooftop', name:'SKYLINE ROOFTOP', subtitle:'Sunset cloud skatepark', available:true},
-  {id:'coming-soon-1', name:'COMING SOON', subtitle:'New location', available:false},
-  {id:'coming-soon-2', name:'COMING SOON', subtitle:'New location', available:false},
-]);
+export const LOCATIONS = Object.freeze(PARK_DEFINITIONS
+  .filter(park => park.selectable)
+  .map(({ id, name, subtitle, available }) => Object.freeze({ id, name, subtitle, available })));
