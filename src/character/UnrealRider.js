@@ -316,7 +316,9 @@ export class UnrealRider {
         const x=C(this.feet[side].point.x,-width,width);
         const z=C(this.feet[side].point.z,-halfLength,halfLength);
         const y=deckTop+this.soleOffsets[side];
-        this.ft[side].copy(this.root.worldToLocal(this.boardPoint(board,x,y,z)));
+        // A completed 180 shove-it changes the deck's cosmetic yaw, not
+        // which foot is in front. Never cross the rider's leg targets.
+        this.ft[side].copy(this.root.worldToLocal(plantedFootWorldPoint(board,x,y,z)));
       }
     }
     // Ollie/vert tuck lowers the pelvis with the feet on the deck. Only a flip
