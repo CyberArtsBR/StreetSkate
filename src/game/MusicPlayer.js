@@ -39,6 +39,7 @@ export class MusicPlayer {
     this.audio.addEventListener('error', this._error);
     window.addEventListener('pointerdown', this.unlock, { passive: true });
     window.addEventListener('keydown', this.unlock, { passive: true });
+    window.addEventListener('touchstart', this.unlock, { passive: true });
     document.addEventListener('visibilitychange', this._visibility);
     this.next();
   }
@@ -88,7 +89,8 @@ export class MusicPlayer {
     } catch (error) {
       if (generation !== this.generation || this.disposed) return;
       if (error?.name === 'NotAllowedError') {
-        this.onChange(this.title, 'Click or press Enter once to enable music');
+        // Retry on an ordinary input; avoid a second explicit Enter/click instruction.
+        this.onChange(this.title, '');
       } else if (error?.name !== 'AbortError') {
         this.onChange(this.title, 'Unable to play track · skip to retry');
       }
@@ -119,6 +121,7 @@ export class MusicPlayer {
     this.audio.removeEventListener('error', this._error);
     window.removeEventListener('pointerdown', this.unlock);
     window.removeEventListener('keydown', this.unlock);
+    window.removeEventListener('touchstart', this.unlock);
     document.removeEventListener('visibilitychange', this._visibility);
     this.audio.removeAttribute?.('src');
     this.audio.load?.();

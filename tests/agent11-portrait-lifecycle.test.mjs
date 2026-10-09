@@ -78,6 +78,8 @@ function fixtureLoadout(loader) {
   shell.render = () => {};
   shell.openedTutorial = 0;
   shell.openTutorial = () => { shell.openedTutorial++; };
+  shell.startedSessions = [];
+  shell.start = practice => { shell.startedSessions.push(practice); shell.phase='playing'; };
   return shell;
 }
 
@@ -91,6 +93,7 @@ test('returning to title invalidates stale loadout completion', async () => {
   await pending;
   assert.equal(shell.phase, 'title');
   assert.equal(shell.openedTutorial, 0);
+  assert.deepEqual(shell.startedSessions, [], 'stale selection must never start gameplay');
   assert.equal(shell.selectBusy, false);
 });
 
@@ -114,6 +117,8 @@ test('late load failure cannot overwrite a newer selection', async () => {
   assert.equal(shell.selectError, 'Loading Heretic…');
   finishNew();
   await current;
-  assert.equal(shell.openedTutorial, 1);
+  assert.equal(shell.openedTutorial, 0, 'tutorial is optional, never forced');
+  assert.deepEqual(shell.startedSessions, [false], 'latest valid selection starts exactly one session');
+  assert.equal(shell.phase, 'playing');
   assert.equal(shell.selectBusy, false);
 });

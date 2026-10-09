@@ -14,6 +14,11 @@ export class StreetBoard {
     this._rotation = new THREE.Euler();
     this._poseQuaternion = new THREE.Quaternion();
     this.poseReady = false;
+    // Persistent equivalent board yaw prevents a completed shove-it from unwinding.
+    this._yawHold = 0;
+    this._wasFlipping = false;
+    this._lastFlipYaw = 0;
+    this._lastFlipProgress = 0;
     this.contactRig = { ...PRODUCTION_BOARD_CONTACT_RIG };
   }
 
@@ -130,6 +135,10 @@ export class StreetBoard {
 
   resetPresentation() {
     this.poseReady = false;
+    this._yawHold = 0;
+    this._wasFlipping = false;
+    this._lastFlipYaw = 0;
+    this._lastFlipProgress = 0;
   }
 
   update({ presentation = null, airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
@@ -139,20 +148,33 @@ export class StreetBoard {
     this.root.position.set(0,
       this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);
     const grabPose = GRAB_POSES[grabState?.name] || [0, 0, 0];
+    if (!flipState && this._wasFlipping) {
+      // 180/360 yaw is physically equivalent for a symmetrical deck; keep the
+      // attained visual orientation instead of visibly spinning backwards.
+      if (!bail && this._lastFlipProgress >= 0.90) {
+        const halfTurns = Math.round(this._lastFlipYaw / Math.PI);
+        this._yawHold = THREE.MathUtils.euclideanModulo(this._yawHold + halfTurns * Math.PI, Math.PI * 2);
+      }
+      this._wasFlipping = false;
+    }
     let x = grabPose[0] * grabWeight;
-    let y = grabPose[1] * grabWeight;
+    let y = grabPose[1] * grabWeight + this._yawHold;
     let z = grabPose[2] * grabWeight;
 
     if (flipState) {
       const turns = flipTurns(flipState);
+      this._wasFlipping = true;
+      this._lastFlipYaw = turns.yaw * Math.PI * 2;
+      this._lastFlipProgress = flipState.progress ?? 0;
       x += turns.pitch * Math.PI * 2;
       y += turns.yaw * Math.PI * 2;
       z += turns.roll * Math.PI * 2;
     } else if (airborne && !grabState && !bail) {
       x += popMotion(presentation?.popProgress ?? 1);
     }
-    if (manual === 'manual') x -= 0.16 + clamp(manualBalance, -1, 1) * 0.035;
-    if (manual === 'noseManual') x += 0.16 - clamp(manualBalance, -1, 1) * 0.035;
+    // Readable nose/tail lift while respecting short-deck ground clearance.
+    if (manual === 'manual') x -= 0.225 + clamp(manualBalance, -1, 1) * 0.018;
+    if (manual === 'noseManual') x += 0.225 - clamp(manualBalance, -1, 1) * 0.018;
     if (grindPose) {
       x += grindPose.pitch || 0;
       y += grindPose.yaw || 0;

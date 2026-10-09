@@ -33,23 +33,27 @@ async function gotoTitle(){
  await page.waitForFunction(()=>window.streetSkate?.ready===true,null,{timeout:90000});
  await page.locator('body[data-screen="title"]').waitFor();
  assert.equal(await page.locator('#viewport canvas').count(),1,'Expected exactly one canvas');
+ await page.screenshot({path:join(out,'title-1440.png'),fullPage:true});
+ assert.equal(await page.locator('#game-shell.title-screen .art-hit span:visible').count(),0,'No duplicate title button captions');
 }
 async function chooseLoadout(){
  await page.locator('.loadout-character').first().click();
  await page.locator('.loadout-deck').nth(2).click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
+ await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
+ if(page.viewportSize()?.width<=800) await page.screenshot({path:join(out,'selection-five-800.png'),fullPage:true});
+ const cta=await page.locator('[data-action="confirmLoadout"]').boundingBox();
+ const lastLocation=await page.locator('.loadout-location').last().boundingBox();
+ assert.ok(cta && lastLocation && cta.y >= lastLocation.y + lastLocation.height - 2,
+   'START SESSION must not overlap location cards, including on short viewports');
  await page.locator('[data-action="confirmLoadout"]').click();
- await page.locator('body[data-screen="tutorial"]').waitFor({timeout:60000});
+ await page.locator('body[data-screen="playing"]').waitFor({timeout:60000});
+ assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0,
+   'valid loadout must start gameplay directly without a mandatory tutorial');
 }
 async function finishTutorial(){
- for(let i=0;i<20;i++){
-  if(await page.locator('[data-action="closeTutorial"]').count()){
-   await page.locator('[data-action="closeTutorial"]').click();
-   await page.locator('body[data-screen="playing"]').waitFor({timeout:30000});return;
-  }
-  await page.locator('[data-action="next"]').click();
- }
- throw new Error('Tutorial page count unexpectedly exceeds 20');
+ await page.locator('body[data-screen="playing"]').waitFor({timeout:30000});
+ assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0);
 }
 async function stats(stage){
  const sample=await page.evaluate(async()=>{
@@ -97,6 +101,18 @@ async function stats(stage){
 }
 try{
  await checked('startup and playable renderer',gotoTitle);
+ // The owner has deferred map-hole testing; enable this diagnostic explicitly
+ // with STREETSKATE_AUDIT_PARK_COVERAGE=1 after they provide gameplay reproductions.
+ if(process.env.STREETSKATE_AUDIT_PARK_COVERAGE==='1') await checked('active park visual-versus-collision coverage diagnostic',async()=>{
+  const coverage=await page.evaluate(()=>{
+    const g=window.streetSkate;
+    return g.skater.surface.auditCoverage(g.park,g.manifest.playableRegions,{samplesPerAxis:6});
+  });
+  assert.ok(coverage.sampled>0,'Expected at least one playable-region sample');
+  assert.ok(coverage.visualSamples>0,'Expected physical floor visual samples');
+  console.log('AGENT10 PARK COVERAGE '+JSON.stringify(coverage));
+  report.parkCoverage=coverage;
+ });
  await checked('packaged rider and title media are accessible',async()=>{
   for(const asset of ['/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
    '/assets/rider/The_Anchor.glb','/assets/rider/TuxR.glb',
@@ -120,6 +136,8 @@ try{
   await page.locator('[data-action="start"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   assert.equal(await page.locator('.loadout-character').count(),4);
+  await page.waitForFunction(() => document.querySelectorAll('.rider-portrait img').length === 4, null, {timeout:60000});
+  await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),2);
@@ -159,9 +177,28 @@ try{
   assert.equal(await page.locator('img[src="x"]').count(),0);
   assert.equal(await page.locator('.loadout-character').count(),5);
  });
- await checked('loadout and tutorial navigation, timed session',async()=>{
+ await checked('direct Start Session flow without mandatory tutorial',async()=>{
   await chooseLoadout();
   await finishTutorial();
+  // The tutorial stays available on demand and can be skipped back to pause.
+  await page.keyboard.press('Escape');
+  await page.locator('body[data-screen="pause"]').waitFor();
+  await page.screenshot({path:join(out,'pause-800.png'),fullPage:true});
+  await page.locator('[data-action="tutorial"]').click();
+  await page.locator('body[data-screen="tutorial"]').waitFor();
+  assert.equal(await page.locator('[data-action="skipTutorial"]').count(),1);
+  const next=page.locator('[data-action="next"]');
+  const nextBox=await next.boundingBox();
+  const viewport=page.viewportSize();
+  assert.ok(nextBox && viewport && nextBox.y>=0 && nextBox.y+nextBox.height<=viewport.height,
+    'Poster next button must be fully visible at short heights');
+  await next.click(); // Poster is image-only; icons appear on the control tables.
+  assert.ok(await page.locator('.xbox-input.xbox-a').count()>0,'Tutorial must show colored Xbox A');
+  await page.screenshot({path:join(out,'tutorial-800.png'),fullPage:true});
+  await page.locator('[data-action="skipTutorial"]').click();
+  await page.locator('body[data-screen="pause"]').waitFor();
+  await page.locator('[data-action="resume"]').click();
+  await page.locator('body[data-screen="playing"]').waitFor();
   // The virtual GitHub runner has no hardware GPU: exercise live gameplay at
   // a practical software-raster viewport; menu layout was checked at 1440x900.
   // Keep the >3-frame liveness assertion unchanged. Do not use these FPS
@@ -232,6 +269,84 @@ try{
    assert.equal(detail.attached,true,name+' avatar not attached to board rig');
    metrics.push({name,...detail});
    await page.screenshot({path:join(out,'rider-'+name+'.png'),fullPage:true});
+   // Capture an orthographic-like closer perspective of soles/knees and board,
+   // without permanently changing the Follow/Classic/Fixed camera controls.
+   const visual=await page.evaluate(() => {
+     const game=window.streetSkate, rider=game.skater.rider, board=game.skater.board;
+     const camera=game.camera;
+     const previousPosition=camera.position.clone(), previousRotation=camera.quaternion.clone();
+     const anchor=rider.root.getWorldPosition(camera.position.clone());
+     const gaps={};
+     rider.root.updateWorldMatrix(true,true);
+     board.root.updateWorldMatrix(true,true);
+     for (const side of ['l','r']) {
+       const bone=rider.bones?.['foot_'+side];
+       if (!bone) continue;
+       const foot=bone.getWorldPosition(camera.position.clone());
+       const inBoard=board.root.worldToLocal(foot);
+       const top=(board.contactRig.deckTopY||board.deckHeight)-board.deckHeight;
+       gaps[side]=Number((inBoard.y-top-rider.soleOffsets[side]).toFixed(4));
+     }
+     camera.position.copy(anchor).add({x:2.6,y:1.7,z:2.5});
+     camera.lookAt(anchor.x,anchor.y+0.5,anchor.z);
+     camera.updateMatrixWorld(true);
+     game.renderer.render(game.scene,camera);
+     const png=game.renderer.domElement.toDataURL('image/png').split(',')[1];
+     camera.position.copy(previousPosition);
+     camera.quaternion.copy(previousRotation);
+     camera.updateMatrixWorld(true);
+     return {png,gaps};
+   });
+   console.log('AGENT10 SOLE CLEARANCE '+name+' '+JSON.stringify(visual.gaps));
+   if(visual.png) await writeFile(join(out,'rider-closeup-'+name+'.png'),Buffer.from(visual.png,'base64'));
+
+   // Independently pose each stock rig using the same procedural IK as gameplay.
+   const posed=await page.evaluate(() => {
+     const game=window.streetSkate,skater=game.skater,rider=skater.rider;
+     const board=skater.board,camera=game.camera;
+     const oldPosition=camera.position.clone(),oldRotation=camera.quaternion.clone();
+     const images={},metrics={};
+     for(const pose of ['crouch','grab']){
+       rider.resetPresentation();
+       const grab=pose==='grab';
+       for(let i=0;i<18;i++){
+         rider.update({board,presentation:{state:grab?'AIR':'CROUCH'},
+           crouch:grab?0:1,grabState:grab?{name:'Indy'}:null,
+           grabWeight:grab?1:0,dt:1/60,stance:1});
+       }
+       rider.root.updateWorldMatrix(true,true);board.root.updateWorldMatrix(true,true);
+       const world=()=>camera.position.clone();
+       const pelvis=rider.bones.pelvis.getWorldPosition(world());
+       const localPelvis=board.root.worldToLocal(pelvis);
+       const top=(board.contactRig.deckTopY??board.deckHeight)-board.deckHeight;
+       const knees={};
+       for(const side of ['l','r']){
+         const hip=rider.bones['thigh_'+side].getWorldPosition(world());
+         const knee=rider.bones['calf_'+side].getWorldPosition(world());
+         const h=rider.root.worldToLocal(hip), k=rider.root.worldToLocal(knee);
+         knees[side]=Number(((k.x-h.x)*rider.outward[side]).toFixed(3));
+       }
+       metrics[pose]={hipsAboveDeck:Number((localPelvis.y-top).toFixed(3)),knees};
+       const center=rider.root.getWorldPosition(world());
+       camera.position.copy(center).add({x:2.5,y:1.6,z:2.7});
+       camera.lookAt(center.x,center.y+0.7,center.z);
+       camera.updateMatrixWorld(true);
+       game.renderer.render(game.scene,camera);
+       images[pose]=game.renderer.domElement.toDataURL('image/png').split(',')[1];
+     }
+     camera.position.copy(oldPosition);camera.quaternion.copy(oldRotation);
+     camera.updateMatrixWorld(true);rider.resetPresentation();skater.update(0,{},0);
+     return {metrics,images};
+   });
+   console.log('AGENT10 ANIMATION POSE '+name+' '+JSON.stringify(posed.metrics));
+   for(const pose of ['crouch','grab']){
+     assert.ok(posed.metrics[pose].hipsAboveDeck>0.34,name+' pelvis intersects board during '+pose);
+     assert.ok(Number.isFinite(posed.metrics[pose].knees.l)&&
+       Number.isFinite(posed.metrics[pose].knees.r),name+' knee IK must be finite');
+     if(posed.images[pose]) await writeFile(join(out,'rider-'+name+'-'+pose+'.png'),
+       Buffer.from(posed.images[pose],'base64'));
+   }
+
   }
   console.log('AGENT10 FOUR RIDERS '+JSON.stringify(metrics));
  });

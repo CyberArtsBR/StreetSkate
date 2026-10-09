@@ -13,7 +13,7 @@ import { createSolarDockPark } from './park/SolarDockPark.js';
 import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
-import { loadSolarSky } from './park/SolarSky.js';
+import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import './style.css';
 import './game-shell.css';
@@ -113,6 +113,7 @@ const gameShell = new GameShell({
   pause: value => setPaused(value),
   camera: mode => setCameraMode(mode),
   score: () => skater?.score || 0,
+  countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
   masterVolume: value => skateAudio.setMasterVolume(value),
@@ -327,6 +328,9 @@ async function loadGame() {
         environment.dispose();
       } catch (error) {
         console.warn('HDRI unavailable; keeping fallback lighting.', error);
+        // A failed HDR download must not regress the art direction to gray.
+        // RoomEnvironment remains the reflection fallback; canvas only paints the sky.
+        solarSky = { background: createCloudBackdrop(new THREE.Color('#687bb2')) };
       }
     }
     applyLighting();

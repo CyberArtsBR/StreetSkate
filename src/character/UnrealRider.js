@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
+import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset } from './SkatePoseConstraints.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -83,6 +84,7 @@ export class UnrealRider {
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
     this.kneePoles={};
+    this.outward={l:-1,r:1};
     this.at = { l: V(), r: V() };
   }
 
@@ -131,12 +133,30 @@ export class UnrealRider {
     // sole clearance per avatar once; don't reuse the imported ankle height as
     // the skateboard's deck top.
     const floorY=new THREE.Box3().setFromObject(this.model).min.y;
+    // The imported rest pose may hold one sneaker above the other. A single
+    // whole-model floor height must not make the lifted ankle's *extra height*
+    // masquerade as extra sole thickness. Both Chimpions shoes use the same
+    // board clearance, measured from the lowest rest ankle.
+    const restAnkles = SIDES.map(side => this.bones['foot_' + side])
+      .filter(Boolean).map(foot => this.root.worldToLocal(foot.getWorldPosition(V())).y);
+    const soleClearance = restAnkles.length
+      ? C(Math.min(...restAnkles) - floorY - 0.012, 0.032, 0.16)
+      : 0.055;
+    // Imported character axes can be mirrored by the +90 degree GLB rotation.
+    // Infer leg sides from the actual positioned feet, never side labels alone.
+    if (this.bones.foot_l && this.bones.foot_r) {
+      const lx=this.root.worldToLocal(this.bones.foot_l.getWorldPosition(V())).x;
+      const rx=this.root.worldToLocal(this.bones.foot_r.getWorldPosition(V())).x;
+      this.outward.l=lx<=rx?-1:1;
+      this.outward.r=-this.outward.l;
+    }
     for (const side of SIDES) {
       const foot = this.bones['foot_' + side], knee=this.bones['calf_'+side];
       if (foot) {
         const footLocal=this.root.worldToLocal(foot.getWorldPosition(V()));
         this.feet[side] = { point:footLocal, q:foot.getWorldQuaternion(Q()) };
-        this.soleOffsets[side]=C(footLocal.y-floorY,0.035,0.22);
+        // Excessive ankle-to-floor offsets cause visibly floating shoes on some rigs.
+        this.soleOffsets[side]=soleClearance;
       }
       const thigh = this.bones['thigh_' + side];
       if (knee && thigh) {
@@ -233,12 +253,13 @@ export class UnrealRider {
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     // Half Pipe's compact air silhouette: knees stay tucked through the flight,
     // instead of standing at takeoff and only bending near the apex.
-    const tuck = air * (vert ? 0.78 : 0.62);
-    const compTarget = C(Math.max(crouch, tuck, grab * 0.98)
-      + landingSeverity * 0.45 + grind * 0.22 + manualW * 0.12 + pump * 0.1, 0, 1);
+    const tuck = air * (vert ? 0.65 : 0.53);
+    const compTarget = C(Math.max(crouch, tuck, grab * 0.68)
+      + landingSeverity * 0.32 + grind * 0.16 + manualW * 0.08 + pump * 0.08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, grab > 0 ? 18 : 14, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
-    this.model.position.y -= 0.025 + compression * 0.43;
+    // Keep hip compression anatomical; IK keeps shoe soles planted on the deck.
+    this.model.position.y -= riderCrouchOffset(compression, grab);
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -255,7 +276,7 @@ export class UnrealRider {
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), 0.045, rootQ);
-      this.rotate(name, V(0, 0, 1), (-0.02 - compression * 0.38 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
+      this.rotate(name, V(0, 0, 1), (-0.015 - compression * 0.22 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
       this.rotate(name, V(1, 0, 0), apex * 0.03 - pump * 0.025, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
@@ -272,22 +293,14 @@ export class UnrealRider {
       this.rotate('spine_03', V(0, 0, 1), (stance < 0 ? -1 : 1) * 0.2, rootQ);
     }
 
-    // Bring the shoulder into the measured arm's reach before solving IK.
-    // Stretching an unreachable arm alone leaves the hand near the knee.
-    this.root.updateWorldMatrix(true, true);
-    let reachDrop = 0;
-    if (grab > 0 && board) for (const side of SIDES) {
-      const target = this.grabTarget(grabState?.name, side, stance, board);
-      const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
-      if (!target || !upper || !lower || !hand) continue;
-      const a = upper.getWorldPosition(V()), b = lower.getWorldPosition(V()), c = hand.getWorldPosition(V());
-      const length = (a.distanceTo(b) + b.distanceTo(c)) * 0.96;
-      const shoulder = this.root.worldToLocal(a), localTarget = this.root.worldToLocal(target.clone());
-      const lateral = Math.hypot(shoulder.x - localTarget.x, shoulder.z - localTarget.z);
-      reachDrop = Math.max(reachDrop, shoulder.y - localTarget.y - Math.sqrt(Math.max(0.005, length * length - lateral * lateral)));
-    }
-    this.model.position.y -= C(reachDrop, 0, 0.28) * grab;
-    this.root.updateWorldMatrix(true, true);
+    // Grabs use constrained upper-arm reach; never compress the entire rig to
+    // place a hand on a target the skeleton cannot reach.
+    this.root.updateWorldMatrix(true,true);
+    // Idle is already deck-aligned: applying a clearance lift then could
+    // reintroduce floating shoes on short-legged GLB characters.
+    if (compression>0.08 || grab>0.05)
+      ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,0.405);
+    this.root.updateWorldMatrix(true,true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
     const deckLocked = Boolean(board && !flipState && !bail && !flatland);
@@ -352,9 +365,8 @@ export class UnrealRider {
     for (const side of SIDES) {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];
       if (!upper || !lower || !foot || !this.feet[side]) continue;
-      const poleDirection = this.kneePoles[side]?.lengthSq() > 1e-8
-        ? this.kneePoles[side] : V(0, -0.4, 0.25);
-      const kneePole = upper.getWorldPosition(V()).add(poleDirection.clone().applyQuaternion(rootQ));
+      const poleDirection=outwardKneePole(this.kneePoles[side],this.outward[side],compression);
+      const kneePole=upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
@@ -369,8 +381,9 @@ export class UnrealRider {
       const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
       if (!upper || !lower || !hand) continue;
       const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
-      const target = this.at[side].copy(shoulder)
-        .add(V(0.14 + compression * 0.02, -0.31 + air * 0.08 + sign * balance * 0.04, sign * (0.14 + air * 0.08)));
+      const isFront=side===(stance<0?'r':'l');
+      const target=this.at[side].copy(shoulder)
+        .add(neutralHandOffset(this.outward[side],isFront,compression,air,balance));
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
@@ -384,8 +397,15 @@ export class UnrealRider {
       const reach = handstand ? this.boardPoint(board, sign * 0.14, 0.04, 0) : grabTarget;
       const world = this.root.localToWorld(target.clone());
       const reachWeight = handstand ? flat : grab;
-      if (reach) world.lerp(reach, reachWeight);
-      limb(upper, lower, hand, world, this.root.localToWorld(shoulder.clone().add(V(-0.18, -0.2, sign * 0.7))));
+      if (reach) {
+        const reachFrom=upper.getWorldPosition(V());
+        const limbLength=reachFrom.distanceTo(lower.getWorldPosition(V()))
+          +lower.getWorldPosition(V()).distanceTo(hand.getWorldPosition(V()));
+        world.lerp(boundedHandReach(reachFrom,reach,limbLength),reachWeight);
+      }
+      const elbowPole=this.root.localToWorld(shoulder.clone().add(
+        V(this.outward[side]*0.34,-0.18,isFront?0.17:-0.11)));
+      limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {
         const handQ = rootQ.clone().multiply(this.hands[side].q);
         if (reach && board) handQ.slerp(board.root.getWorldQuaternion(Q()).multiply(this.hands[side].q), reachWeight);

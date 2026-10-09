@@ -49,6 +49,25 @@ export class SkateAudio {
     source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
   }
 
+  countdownCue(seconds) {
+    if (!this.enabled || this.disposed || !this.context || this.context.state !== 'running') return;
+    const context = this.context, now = context.currentTime;
+    // Short synthesized arcade cues: one per crossed threshold, honoring
+    // the existing sound toggle and master-volume gain. No audio asset needed.
+    const oscillator = context.createOscillator(), gain = context.createGain();
+    oscillator.type = seconds === 5 ? 'triangle' : 'sine';
+    oscillator.frequency.setValueAtTime(seconds === 5 ? 880 : 660, now);
+    oscillator.frequency.exponentialRampToValueAtTime(seconds === 5 ? 1040 : 760, now + 0.14);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+    oscillator.connect(gain);
+    gain.connect(this.master);
+    oscillator.start(now);
+    oscillator.stop(now + 0.22);
+    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+  }
+
   update(player, active) {
     if (!player) return;
     const speed = player.velocity.length();

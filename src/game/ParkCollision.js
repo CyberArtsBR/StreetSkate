@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { BlockTriangleIndex } from './collision/BlockTriangleIndex.js';
+import { auditParkSurfaceCoverage } from './collision/ParkCoverageAudit.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -63,7 +64,8 @@ export class ParkCollision {
           .fromBufferAttribute(position, index ? index.getX(i + j) : i + j).applyMatrix4(mesh.matrixWorld));
         const triangle = new THREE.Triangle(...vertices);
         const normal = triangle.getNormal(new THREE.Vector3());
-        if (rideable && normal.y > 0.035) continue;
+        // Even an accidentally reversed floor triangle is rideable when approached from above.
+        if (rideable && Math.abs(normal.y) > 0.035) continue;
         triangle.faceNormal = normal;
         triangle.railId = mesh.userData.railId || null;
         this.blocks.addTriangle(triangle);
@@ -84,6 +86,10 @@ export class ParkCollision {
     this.ray.intersectObjects(this.ridingMeshes, false, this._rayHits);
     for (const hit of this._rayHits) {
       this.normal(hit, normalOut);
+      // Authoring/export tools sometimes reverse otherwise valid ramp/floor
+      // triangles. A ray descending from above must receive the upward face;
+      // never reorient underside hits on upward sweeps.
+      if (direction.y < -0.05 && normalOut.y < -minNormalY) normalOut.negate();
       if (normalOut.y <= minNormalY) continue;
       pointOut.copy(hit.point);
       const result = this._probeResult;
@@ -188,6 +194,11 @@ export class ParkCollision {
       return result;
     }
     return null;
+  }
+
+  /** QA-only read-only visual/collision coverage sampling; no gameplay changes. */
+  auditCoverage(visualRoot, playableRegions, options = {}) {
+    return auditParkSurfaceCoverage({ collision: this, visualRoot, playableRegions, ...options });
   }
 
   ground(position, rise = 0.14, drop = 0.2) {
