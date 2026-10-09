@@ -11,12 +11,13 @@ const makeRail = (id, z = 0, type = 'QUARTER') => ({
     supportsTransfer: true, supportsPump: true },
 });
 function setup({ normalY = 0.45, speed = 7, rise = 4.4,
-  boost = 2.8, z = 0, type = 'QUARTER' } = {}) {
+  boost = 2.8, z = 0, type = 'QUARTER', inwardSign = 1 } = {}) {
   const controller = new TransitionController({ rails: [makeRail(type, z, type)] });
-  const inward = new THREE.Vector3(0, 0, 1);
-  const position = new THREE.Vector3(0, 1.9, z + 0.18);
-  const normal = new THREE.Vector3(0, normalY, Math.sqrt(1 - normalY ** 2));
-  const velocity = new THREE.Vector3(0, rise, -speed);
+  const inward = new THREE.Vector3(0, 0, inwardSign);
+  const position = new THREE.Vector3(0, 1.9, z + 0.18 * inwardSign);
+  const normal = new THREE.Vector3(0, normalY,
+    Math.sqrt(1 - normalY ** 2) * inwardSign);
+  const velocity = new THREE.Vector3(0, rise, -speed * inwardSign);
   const candidate = controller.launchAt(position, normal, velocity);
   assert.ok(candidate, type + ' must detect coping');
   const before = velocity.clone();
@@ -55,10 +56,11 @@ test('small and large quarter: launch height follows actual transition slope', (
 });
 
 test('halfpipe opposing walls and bowl pocket frames retain local inward directions', () => {
-  const east = setup({ type: 'VERT', z: 12, normalY: 0.2 });
-  const west = setup({ type: 'MINI', z: 0, normalY: 0.6 });
-  assert.ok(east.air.frame.rampInward.dot(new THREE.Vector3(0, 0, 1)) > 0.99);
+  const east = setup({ type: 'VERT', z: 12, normalY: 0.2, inwardSign: -1 });
+  const west = setup({ type: 'MINI', z: 0, normalY: 0.6, inwardSign: 1 });
+  assert.ok(east.air.frame.rampInward.dot(new THREE.Vector3(0, 0, -1)) > 0.99);
   assert.ok(west.air.frame.rampInward.dot(new THREE.Vector3(0, 0, 1)) > 0.99);
+  assert.ok(east.air.frame.rampInward.dot(west.air.frame.rampInward) < -0.99);
   const bowl = setup({ type: 'BOWL', normalY: 0.25, speed: 7.8 });
   const flight = simulate(bowl, 1 / 120, 1.6);
   assert.equal(flight.grounded, true, 'ballistic bowl descent crosses the ramp-side re-entry plane');
