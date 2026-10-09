@@ -4,6 +4,7 @@ import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset } from './SkatePoseConstraints.js';
+import { footWorldOrientation } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
