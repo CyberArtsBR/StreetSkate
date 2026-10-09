@@ -14,6 +14,10 @@ The legacy runtime's `stepGround` uses `lerp(2.7, 1.2, abs(speed) / 12)` for ste
 
 `groundControlIntent` checked `speed >= sharpTurnMinSpeed` even though ground speed is signed relative to deck orientation. When rolling fakie at -8 m/s, Down+Left/Right could never satisfy this branch, so it became a brake command. Changed to `Math.abs(speed) >= sharpTurnMinSpeed`, giving the same deliberate sharp-carve semantics in regular and fakie. Down alone, Shift brake, and steep near-stall rollback remain unchanged.
 
+### 3. Fully braking in fakie returned signed negative zero
+
+The pure propulsion transaction used `Math.sign(nextSpeed) * Math.max(0, remaining)`, which returns `-0` for a stopped reverse-rolling skater. JavaScript's strict assertion semantics and state serialization distinguish this boundary in some paths. Canonicalize a fully stopped board to `+0` regardless of previous travel sign; strictly preserve real negative speed while moving. The new braking test detects this edge case.
+
 ## Invariants preserved
 
 - Ground steering yaw is player-authored; collision normals, camera heading, and deck-facing alignment do not become steering inputs.
@@ -47,7 +51,7 @@ npx vite build
 
 The **GitHub PR workflow** (`.github/workflows/phase1-core-ci.yml`) runs all tests, physics verification, Vite bundle, and browser smoke on PRs to main. Track its actual results via the PR checks. No local repository checkout or dependencies were available to this chat runtime, so do not claim local npm, physics verification, build, or gameplay FPS passed without workflow evidence.
 
-The main commit message explicitly reports **two pre-existing failing physics tests**. This branch specifically fixes the ground-steering curve mismatch; other independent failures must be triaged by their owners.
+First PR workflow run [37917393784](https://github.com/CyberArtsBR/StreetSkate/actions/runs/37917393784) executed `npm test`: **352 passed, 2 failed**. The original `ground steering owns the complete park carve curve` test passed, and 8 of 9 new Agent 01 tests passed. The ninth exposed reverse-speed `-0` and led to the concrete canonical-stop fix above, rather than weakening the assertion. The other failure was the pre-existing `9. low-speed capture does not create large fake speed` test in grind capture (expected 0.21, actual 8.5), outside Agent 01 ownership. A follow-up CI run is required to verify the updated branch. The initial workflow skipped physics verification and production build due to the failed unit-test prerequisite.
 
 ## Integration requests / remaining risks
 
