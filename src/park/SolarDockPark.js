@@ -17,8 +17,8 @@ export function createSolarDockPark() {
     ...createSurfaceMaterials(),
     graphite: new THREE.MeshStandardMaterial({ color: '#323c40', roughness: 0.72 }),
     amber: new THREE.MeshStandardMaterial({ color: '#edab38', roughness: 0.56 }),
-    turquoise: new THREE.MeshStandardMaterial({ color: '#247c80', metalness: 0.48, roughness: 0.35 }),
-    steel: new THREE.MeshStandardMaterial({ color: '#87999b', metalness: 0.75, roughness: 0.3 }),
+    turquoise: new THREE.MeshStandardMaterial({ color: '#317f87', metalness: 0.25, roughness: 0.34 }),
+    steel: new THREE.MeshStandardMaterial({ color: '#9bafb5', metalness: 0.82, roughness: 0.27 }),
     sand: new THREE.MeshStandardMaterial({ color: '#ae8060', roughness: 1, flatShading: true }),
     paint: new THREE.MeshStandardMaterial({ color: '#eee7d2', roughness: 0.9 }),
     guardGlass: new THREE.MeshStandardMaterial({ color: '#86bbc9', roughness: 0.15, transparent: true, opacity: 0.16, depthWrite: false }),
@@ -360,6 +360,36 @@ export function createSolarDockPark() {
   }
   muralGeometry.dispose();
   for (let z = -47; z <= 47; z += 8) box(17.2, 0.012, z, 0.12, 0.015, 3, 'paint');
+
+  // The same translucent mural material is used throughout the park.
+  // Four spatial batches keep frustum culling useful without submitting a
+  // separate WebGL draw for every profile decal, floor logo and bowl segment.
+  // Art is visual-only: do not touch collision proxies, rails or transitions.
+  const muralZones = new Map();
+  for (const mesh of park.children) {
+    if (!mesh.isMesh || mesh.material !== muralMaterial) continue;
+    mesh.updateMatrix();
+    const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrix);
+    geometry.computeBoundingBox();
+    const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+    const zone = (center.x < 0 ? 'west-' : 'east-') + (center.z < 0 ? 'north' : 'south');
+    if (!muralZones.has(zone)) muralZones.set(zone, []);
+    muralZones.get(zone).push({ mesh, geometry });
+  }
+  for (const [zone, entries] of muralZones) {
+    const merged = mergeGeometries(entries.map(entry => entry.geometry), false);
+    for (const entry of entries) entry.geometry.dispose();
+    if (!merged) continue; // Preserve originals rather than dropping art.
+    const artwork = new THREE.Mesh(merged, muralMaterial);
+    artwork.name = 'Solar Dock / mural batch / ' + zone;
+    artwork.userData.castShadow = false;
+    artwork.receiveShadow = true;
+    for (const entry of entries) {
+      park.remove(entry.mesh);
+      entry.mesh.geometry.dispose();
+    }
+    park.add(artwork);
+  }
 
   park.add(createRooftopCity());
 
