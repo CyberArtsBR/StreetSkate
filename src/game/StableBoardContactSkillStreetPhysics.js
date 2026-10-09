@@ -121,6 +121,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
         contact.clearanceRadius,
         this._deckHitPoint,
         this._deckHitNormal,
+        null,
+        0.08, // Search sharp ledge sides, not the nearest sloping ramp surface.
       );
       if (!hit || !isSharpDeckBlocker(hit.normal)) continue;
 
