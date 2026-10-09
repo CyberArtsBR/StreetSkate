@@ -110,11 +110,13 @@ try{
  await checked('invalid custom avatar is rejected without DOM injection',async()=>{
   const input=page.locator('input[type="file"][accept*=".glb"]');
   await input.setInputFiles({name:'not-a-model.glb',mimeType:'model/gltf-binary',buffer:Buffer.alloc(128)});
+  await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent || ''), null, { timeout: 30000 });
   assert.match(await page.locator('.loadout-status').textContent(),/Invalid GLB header/i);
   assert.equal(await page.locator('.loadout-character').count(),4);
   const invalid=Buffer.alloc(128);invalid.write('glTF');
   await input.setInputFiles({name:'<img src=x onerror=alert(1)>.glb',mimeType:'model/gltf-binary',buffer:invalid});
   assert.equal(await page.locator('img[src="x"]').count(),0);
+  await page.waitForFunction(() => document.querySelectorAll('.loadout-character').length === 5, null, { timeout: 30000 });
   assert.equal(await page.locator('.loadout-character').count(),5);
  });
  await checked('loadout and tutorial navigation, timed session',async()=>{
