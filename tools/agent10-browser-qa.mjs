@@ -101,7 +101,9 @@ async function stats(stage){
 }
 try{
  await checked('startup and playable renderer',gotoTitle);
- await checked('active park visual-versus-collision coverage diagnostic',async()=>{
+ // The owner has deferred map-hole testing; enable this diagnostic explicitly
+ // with STREETSKATE_AUDIT_PARK_COVERAGE=1 after they provide gameplay reproductions.
+ if(process.env.STREETSKATE_AUDIT_PARK_COVERAGE==='1') await checked('active park visual-versus-collision coverage diagnostic',async()=>{
   const coverage=await page.evaluate(()=>{
     const g=window.streetSkate;
     return g.skater.surface.auditCoverage(g.park,g.manifest.playableRegions,{samplesPerAxis:6});

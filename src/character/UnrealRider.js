@@ -296,7 +296,10 @@ export class UnrealRider {
     // Grabs use constrained upper-arm reach; never compress the entire rig to
     // place a hand on a target the skeleton cannot reach.
     this.root.updateWorldMatrix(true,true);
-    ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,0.405);
+    // Idle is already deck-aligned: applying a clearance lift then could
+    // reintroduce floating shoes on short-legged GLB characters.
+    if (compression>0.08 || grab>0.05)
+      ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,0.405);
     this.root.updateWorldMatrix(true,true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
