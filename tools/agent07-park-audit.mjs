@@ -80,10 +80,22 @@ export async function auditSolarDock() {
       .filter(o => o.userData.surface === 'solid' && o.userData.railId)
       .map(o => o.userData.railId));
     const fascia = park.getObjectByName('Rooftop / batched fascia');
+    const wood = park.getObjectByName('Solar Dock / wood')?.material;
+    const concrete = park.getObjectByName('Solar Dock / concrete')?.material;
+    const bowl = park.getObjectByName('Solar Dock / bowl')?.material;
+    const surfaceValidation = {
+      woodAlbedoColorSpace: wood?.map?.colorSpace,
+      concreteAlbedoColorSpace: concrete?.map?.colorSpace,
+      woodBumpColorSpace: wood?.bumpMap?.colorSpace,
+      woodReliefPixels: [wood?.bumpMap?.image?.width, wood?.bumpMap?.image?.height],
+      concreteAndBowlShareColorMap: concrete?.map === bowl?.map,
+      woodRoughness: wood?.roughness,
+      concreteRoughness: concrete?.roughness,
+    };
     const summary = {
       scope: 'static scene construction; WebGL calls and FPS not measured',
       visibleMeshes, collisionMeshes, opaqueMeshes, transparentMeshes,
-      materialCount: visualMaterials.size, distinctTextures: textures.size,
+      materialCount: visualMaterials.size, distinctTextures: textures.size, surfaceValidation,
       uniqueGeometryCount: geometryIds.size,
       geometryAttributeBytes: geometryBytes,
       geometryAttributeMiB: +(geometryBytes / (1024 * 1024)).toFixed(3),
