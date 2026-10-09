@@ -48,7 +48,11 @@ async function stats(stage){
  const sample=await page.evaluate(async()=>{
   const deltas=[];let last=performance.now();const began=last;
   while(performance.now()-began<1300){
-   const t=await new Promise(resolve=>requestAnimationFrame(resolve));
+   const t=await Promise.race([
+    new Promise(resolve=>requestAnimationFrame(resolve)),
+    new Promise(resolve=>setTimeout(()=>resolve(null),600))
+   ]);
+   if(t===null)break; // background tabs or context loss must not hang QA
    deltas.push(t-last);last=t;
   }
   const sorted=deltas.slice().sort((a,b)=>a-b);
