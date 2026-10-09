@@ -137,7 +137,7 @@ export class GameShell {
       const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${this.boardConfirmed&&i===this.boardIndex?'is-chosen':''}"
         style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-preview"></span><b>${safe(board.label)}</b></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
-        class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
+        data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK · YOUR NEXT SESSION</small><h2>BUILD YOUR LINE</h2>
         <p>CHOOSE YOUR RIDER · YOUR DECK · YOUR SPOT</p></header>
@@ -203,6 +203,7 @@ export class GameShell {
       }).catch(()=>{}); // Monogram remains visible if a model is unavailable.
     }
   }
+  setLocation(id){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.root.dataset.location=id;}
   async confirmLoadout(){
     if(this.selectBusy||this.phase!=='select')return;
     const hero=this.heroes[this.heroIndex];

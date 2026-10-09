@@ -113,3 +113,5 @@ export function createGraffitiMaterial() {
   sharedGraffitiMaterial.name = 'Solar Dock / shared murals';
   return sharedGraffitiMaterial;
 }
+
+export const sharedSurfaceTextures = () => new Set(photos.values());

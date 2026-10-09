@@ -4,7 +4,7 @@
  */
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', name: 'SKYLINE ROOFTOP', subtitle: 'Sunset cloud skatepark', available: true, selectable: true }),
-  Object.freeze({ id: 'foundry', name: 'THE FOUNDRY', subtitle: 'Indoor warehouse · In development', available: false, selectable: true }),
+  Object.freeze({ id: 'foundry', name: 'THE FOUNDRY', subtitle: 'Industrial skate warehouse', available: true, selectable: true }),
   Object.freeze({ id: 'coming-soon-2', name: 'COMING SOON', subtitle: 'New location', available: false, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
@@ -150,11 +150,21 @@ async function loadLegacy({ scope, signal }) {
   return { ...assembled, manifest };
 }
 
-export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyLoader = loadLegacy } = {}) {
+async function loadFoundry({ scope, signal }) {
+  const { createWarehousePark } = await import('./WarehousePark.js');
+  assertNotAborted(signal);
+  const world = createWarehousePark();
+  scope.trackWorld(world, { disposeTextures: true });
+  await world.ready;
+  assertNotAborted(signal);
+  return world;
+}
+
+export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyLoader = loadLegacy, foundryLoader = loadFoundry } = {}) {
   const registry = new ParkRegistry();
   for (const definition of PARK_DEFINITIONS) {
     const load = definition.id === 'rooftop' ? rooftopLoader :
-      definition.id === 'legacy' ? legacyLoader : undefined;
+      definition.id === 'legacy' ? legacyLoader : definition.id === 'foundry' ? foundryLoader : undefined;
     registry.register({ ...definition, ...(load ? { load } : {}) });
   }
   return registry;
