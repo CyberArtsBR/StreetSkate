@@ -172,10 +172,12 @@ export class WorldLifecycle {
     const scope = new WorldResourceScope();
     try {
       const loaded = await entry.load({ scope, signal, parkId: id });
-      this.#check(request, signal);
+      // Even a *superseded* loader may return a valid Object3D. Own its roots
+      // before checking the generation, otherwise that stale result leaks.
       // Loaders should track resources as soon as they are created. This
       // additional registration also handles simple third-party park loaders.
       scope.trackWorld(loaded, { disposeTextures: loaded?.resourceOwnership?.textures === 'owned' });
+      this.#check(request, signal);
       const { validateParkWorld } = await import('./ParkRegistry.js');
       const world = validateParkWorld(loaded);
       this.#check(request, signal);
