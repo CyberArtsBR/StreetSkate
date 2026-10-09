@@ -21,7 +21,9 @@ export const GROUND_MOTOR = Object.freeze({
   downhillGravityScale: 1.0,
   steerRateLowSpeed: 2.7,
   steerRateHighSpeed: 1.2,
-  steerFullSpeed: 17,
+  // Match the original runtime's 12 m/s steering-rate saturation: park-speed
+  // carving must use the high-speed rate, not an unintended 17 m/s ramp.
+  steerFullSpeed: 12,
   turnGainLowSpeed: 1.55,
   turnGainHighSpeed: 1.78,
   turnGainFullSpeed: 17,
@@ -141,7 +143,8 @@ export function groundControlIntent({
   config = GROUND_MOTOR,
 } = {}) {
   const down = drive < config.brakeDriveThreshold;
-  const sharpTurn = !manual && !brake && down && speed >= config.sharpTurnMinSpeed
+  // Negative signed speed is fakie travel, not low/invalid ground speed.
+  const sharpTurn = !manual && !brake && down && Math.abs(speed) >= config.sharpTurnMinSpeed
     && Math.abs(steer) >= config.sharpTurnInputThreshold;
   const steepAndSlow = Math.abs(speed) < config.steepBrakeReleaseSpeed
     && normalY < config.steepBrakeReleaseNormalY;
