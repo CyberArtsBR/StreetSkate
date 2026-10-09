@@ -91,6 +91,7 @@ export class UnrealRider {
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
+      this.dispose();
       throw new Error('Rider GLB has invalid or empty visual bounds');
     }
     this.model.scale.setScalar(1.82 / height);
@@ -394,4 +395,34 @@ export class UnrealRider {
     for (const [bone, quaternion] of this.rest) if (!finiteQ(bone.quaternion)) bone.quaternion.copy(quaternion);
     this.root.updateWorldMatrix(true, true);
   }
+  /** Release resources owned by this GLB instance after a successful hot-swap
+   * or rejected import. Board, scene lighting, renderer and other riders are
+   * never owned here. Repeated calls are safe.
+   */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    const geometries = new Set(), materials = new Set();
+    const textures = new Set(), skeletons = new Set();
+    this.model?.traverse(object => {
+      if (object.isSkinnedMesh && object.skeleton) skeletons.add(object.skeleton);
+      if (object.geometry) geometries.add(object.geometry);
+      for (const material of (Array.isArray(object.material) ? object.material : [object.material])) {
+        if (!material) continue;
+        materials.add(material);
+        for (const value of Object.values(material)) {
+          if (value?.isTexture) textures.add(value);
+        }
+        for (const uniform of Object.values(material.uniforms || {})) {
+          if (uniform?.value?.isTexture) textures.add(uniform.value);
+        }
+      }
+    });
+    this.root.removeFromParent();
+    for (const skeleton of skeletons) skeleton.dispose?.();
+    for (const geometry of geometries) geometry.dispose?.();
+    for (const material of materials) material.dispose?.();
+    for (const texture of textures) texture.dispose?.();
+  }
+
 }
