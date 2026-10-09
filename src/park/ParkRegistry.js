@@ -30,6 +30,7 @@ export function validateParkManifest(source) {
         region.minX >= region.maxX || region.minZ >= region.maxZ) fail(`playableRegions[${index}] bounds`);
     return Object.freeze({ ...region });
   });
+  if (source.spots !== undefined && !Array.isArray(source.spots)) fail('spots must be an array');
   const spotIds = new Set();
   const spots = (source.spots || []).map((spot, index) => {
     if (!spot || typeof spot.id !== 'string' || !spot.id.trim() ||
@@ -38,7 +39,6 @@ export function validateParkManifest(source) {
     spotIds.add(spot.id);
     return Object.freeze({ ...spot, position: Object.freeze([...spot.position]) });
   });
-  if (source.spots !== undefined && !Array.isArray(source.spots)) fail('spots must be an array');
   const views = {};
   if (source.views !== undefined) {
     if (!source.views || typeof source.views !== 'object' || Array.isArray(source.views)) fail('views must be an object');
