@@ -206,6 +206,51 @@ try{
   await stats('practice-restart-3');
   await page.screenshot({path:join(out,'practice-restart.png'),fullPage:true});
  });
+ await checked('all four stock GLB riders load and bind without stale resources',async()=>{
+  const avatars=[
+   ['heretic','/assets/rider/The_Heretic.glb'],
+   ['adolescent','/assets/rider/The_AdolescentUR.glb'],
+   ['anchor','/assets/rider/The_Anchor.glb'],
+   ['tuxr','/assets/rider/TuxR.glb'],
+  ];
+  const metrics=[];
+  for(const [name,url] of avatars){
+   const detail=await page.evaluate(async asset=>{
+    const skater=window.streetSkate.skater;
+    const rider=await skater.setRiderModel(asset);
+    let meshCount=0;
+    rider.model.traverse(node=>{if(node.isMesh)meshCount++;});
+    const required=['pelvis','head','upperarm_l','upperarm_r','thigh_l','thigh_r','foot_l','foot_r'];
+    return {meshCount,boneCount:rider.rigAudit?.boneCount??0,
+     requiredRig:required.every(b=>!!rider.bones?.[b]),
+     attached:rider.root.parent===skater.visual,
+     geometries:window.streetSkate.renderer.info.memory.geometries,
+     textures:window.streetSkate.renderer.info.memory.textures};
+   },url);
+   assert.ok(detail.meshCount>0,name+' has no visible model meshes');
+   assert.ok(detail.boneCount>0&&detail.requiredRig,name+' has an invalid rig');
+   assert.equal(detail.attached,true,name+' avatar not attached to board rig');
+   metrics.push({name,...detail});
+   await page.screenshot({path:join(out,'rider-'+name+'.png'),fullPage:true});
+  }
+  console.log('AGENT10 FOUR RIDERS '+JSON.stringify(metrics));
+ });
+ await checked('90-second results screen, score and return to title',async()=>{
+  await page.keyboard.press('Escape');
+  await page.locator('body[data-screen="pause"]').waitFor();
+  await page.locator('[data-action="title"]').click();
+  await page.locator('body[data-screen="title"]').waitFor();
+  await page.locator('[data-action="start"]').click();
+  await page.locator('body[data-screen="select"]').waitFor();
+  await chooseLoadout();
+  await finishTutorial();
+  // Exercise real in-game countdown; no timer bypass or fake result screen.
+  await page.waitForFunction(()=>document.body.dataset.screen==='results',null,{timeout:160000});
+  assert.match(await page.locator('.result-score').textContent(),/POINTS BANKED/);
+  await page.screenshot({path:join(out,'timed-results.png'),fullPage:true});
+  await page.locator('[data-action="title"]').click();
+  await page.locator('body[data-screen="title"]').waitFor();
+ });
  const rejections=await page.evaluate(()=>window.__agent10Unhandled||[]);
  assert.deepEqual(report.pageErrors,[],'Uncaught runtime page errors');
  assert.deepEqual(rejections,[],'Unhandled Promise rejections');
