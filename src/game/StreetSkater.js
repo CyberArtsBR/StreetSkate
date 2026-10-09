@@ -24,6 +24,9 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._rightVisual = new THREE.Vector3();
     this._presentationUp = new THREE.Vector3(0, 1, 0);
     this._basis = new THREE.Matrix4();
+    this._smoothedVisualPosition = null;
+    this._targetVisualRotation = new THREE.Quaternion();
+    this._visualRotationInitialized = false;
     this._wallPoseQ = new THREE.Quaternion();
     this._wallPoseAxisX = new THREE.Vector3(1, 0, 0);
     this._wallPoseAxisZ = new THREE.Vector3(0, 0, 1);
@@ -139,6 +142,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   resetPresentationAfterSwap() {
     this.rider?.resetPresentation();
     this.board?.resetPresentation();
+    this._smoothedVisualPosition=null;this._visualRotationInitialized=false;
     if(this.presentation) this.presentation.stateTime=0;
     this.update(0,{},0);
   }
@@ -156,6 +160,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this.rider?.resetPresentation();
     this.board?.resetPresentation();
     this.presentationNormal.copy(this.bodyUp());
+    this._smoothedVisualPosition=null;
+    this._visualRotationInitialized=false;
   }
 
   updatePresentation(delta, input, before) {
@@ -255,6 +261,21 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const present = this.updatePresentation(delta, input, before);
 
     this.root.position.copy(this.position);
+    // Gameplay collision stays authoritative on root. Only the rendered skater
+    // receives a tiny capped low-pass correction to hide high-frequency contact
+    // and fixed-step micro-jitter, especially noticeable from side cameras.
+    if(!this._smoothedVisualPosition)this._smoothedVisualPosition=this.position.clone();
+    else if(delta>0){
+      if(this._smoothedVisualPosition.distanceToSquared(this.position)>4)
+        this._smoothedVisualPosition.copy(this.position);
+      else {
+        this._smoothedVisualPosition.lerp(this.position,1-Math.exp(-27*delta));
+        const lag=this._smoothedVisualPosition.clone().sub(this.position);
+        if(lag.lengthSq()>0.18*0.18)
+          this._smoothedVisualPosition.copy(this.position).add(lag.setLength(0.18));
+      }
+    }
+    this.visual.position.copy(this._smoothedVisualPosition).sub(this.position);
     const surfaceUp = this.bodyUp();
     this.presentationNormal.lerp(surfaceUp, 1 - Math.exp(-18 * Math.max(delta, 1 / 120))).normalize();
     yawStableSurfaceBasis(
@@ -265,9 +286,15 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       this._presentationUp,
     );
     this._forwardVisual.copy(this._backVisual).negate();
-    this.visual.quaternion.setFromRotationMatrix(
+    this._targetVisualRotation.setFromRotationMatrix(
       this._basis.makeBasis(this._rightVisual, this._presentationUp, this._backVisual),
     );
+    if(!this._visualRotationInitialized||delta<=0) {
+      this.visual.quaternion.copy(this._targetVisualRotation);
+      this._visualRotationInitialized=true;
+    }else{
+      this.visual.quaternion.slerp(this._targetVisualRotation,1-Math.exp(-23*delta));
+    }
 
     const grabActive = Boolean(this.grabState && input.grabHeld && !this.flipState);
     const p = this.presentation;

@@ -71,6 +71,8 @@ export class UnrealRider {
       .map(state => [state, { value: state === 'IDLE' ? 1 : 0, velocity: 0 }]));
     this.scalar = { compression: { value: 0, velocity: 0 } };
     this.ft = { l: V(), r: V() };
+    this.soleOffsets={l:0.05,r:0.05};
+    this.kneePoles={};
     this.at = { l: V(), r: V() };
   }
 
@@ -98,10 +100,30 @@ export class UnrealRider {
       semanticNames: Object.fromEntries(Object.entries(SEMANTIC).map(([key, name]) => [key, this.bones[name]?.name || null])),
     };
     if (missing.length) console.warn('[StreetSkate] rider rig missing:', missing.join(', '));
-    this.root.updateMatrixWorld(true);
+    this.root.updateWorldMatrix(true, true);
+    // Imported rigs have different pivots. Center the ACTUAL two foot anchors
+    // on the board rather than centering the visual bounding box or pelvis.
+    const leftFoot=this.bones.foot_l, rightFoot=this.bones.foot_r;
+    if(leftFoot&&rightFoot){
+      const midpoint=leftFoot.getWorldPosition(V()).add(rightFoot.getWorldPosition(V())).multiplyScalar(0.5);
+      const localMidpoint=this.root.worldToLocal(midpoint);
+      this.model.position.x-=localMidpoint.x;
+      this.model.position.z-=localMidpoint.z;
+      this.basePos.copy(this.model.position);
+      this.root.updateWorldMatrix(true,true);
+    }
+    // A foot bone is at the ankle, not the bottom of the shoe. Calibrate its
+    // sole clearance per avatar once; don't reuse the imported ankle height as
+    // the skateboard's deck top.
+    const floorY=new THREE.Box3().setFromObject(this.model).min.y;
     for (const side of SIDES) {
-      const foot = this.bones['foot_' + side];
-      if (foot) this.feet[side] = { point: this.root.worldToLocal(foot.getWorldPosition(V())), q: foot.getWorldQuaternion(Q()) };
+      const foot = this.bones['foot_' + side], knee=this.bones['calf_'+side];
+      if (foot) {
+        const footLocal=this.root.worldToLocal(foot.getWorldPosition(V()));
+        this.feet[side] = { point:footLocal, q:foot.getWorldQuaternion(Q()) };
+        this.soleOffsets[side]=C(footLocal.y-floorY,0.035,0.22);
+      }
+      if(knee)this.kneePoles[side]=this.root.worldToLocal(knee.getWorldPosition(V()));
       const hand = this.bones['hand_' + side];
       if (hand) this.hands[side] = { q: hand.getWorldQuaternion(Q()) };
     }
@@ -251,8 +273,16 @@ export class UnrealRider {
     for (const side of SIDES) {
       if (!this.feet[side]) continue;
       this.ft[side].copy(this.feet[side].point);
-      if (deckLocked) this.ft[side].copy(this.root.worldToLocal(this.boardPoint(board,
-        this.ft[side].x, this.ft[side].y, this.ft[side].z)));
+      if (deckLocked) {
+        const contact=board.contactRig||{};
+        const deckTop=(contact.deckTopY||board.deckHeight)-(board.deckHeight||0);
+        const width=Math.max(0.15,(contact.deckWidth||0.42)*0.43);
+        const halfLength=Math.max(0.35,(contact.deckLength||1.1)*0.39);
+        const x=C(this.feet[side].point.x,-width,width);
+        const z=C(this.feet[side].point.z,-halfLength,halfLength);
+        const y=deckTop+this.soleOffsets[side];
+        this.ft[side].copy(this.root.worldToLocal(this.boardPoint(board,x,y,z)));
+      }
     }
     // Ollie/vert tuck lowers the pelvis with the feet on the deck. Only a flip
     // or a named one-foot trick releases them; a generic air pose must not float.
@@ -302,7 +332,8 @@ export class UnrealRider {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];
       if (!upper || !lower || !foot || !this.feet[side]) continue;
       const restPoint = this.feet[side].point;
-      const kneePole = V(restPoint.x + 0.35, 0.25, restPoint.z);
+      const kneePole=this.kneePoles[side]?.clone()
+        || V(restPoint.x + (side==='l'?-0.35:0.35),0.25,restPoint.z);
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), this.root.localToWorld(kneePole));
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)

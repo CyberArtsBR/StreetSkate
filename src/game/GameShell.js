@@ -6,8 +6,8 @@ import { characterPortrait } from './CharacterPortraits.js';
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
-const CAMERAS=['follow','classic','fixed','firstperson'];
-const CAMERA_LABELS=['Follow','Classic','Fixed','First person'];
+const CAMERAS=['follow','classic','fixed'];
+const CAMERA_LABELS=['Follow','Classic','Fixed'];
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
@@ -15,6 +15,7 @@ export class GameShell {
     this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
+    this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
@@ -37,7 +38,9 @@ export class GameShell {
       this.avatarUrl=next;
       this.heroes=this.heroes.filter(h=>h.id!=='custom');
       this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
-      this.heroIndex=this.heroes.length-1;this.selectError='Avatar ready · continue to verify the skeleton.';
+      this.heroIndex=this.heroes.length-1;this.heroConfirmed=true;
+      this.focusHint={action:'hero',index:this.heroIndex};
+      this.selectError='Avatar ready · continue to verify the skeleton.';
       this.render();
     });
     window.addEventListener('keydown',e=>this.key(e),true);
@@ -49,6 +52,32 @@ export class GameShell {
   setScreen(phase){this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();}
   menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
   focusSelection(){const buttons=this.menuButtons();this.selection=(this.selection+buttons.length)%Math.max(1,buttons.length);buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));buttons[this.selection]?.focus({preventScroll:true});}
+  // Spatial controller navigation: left/right stays on the same visual row,
+  // up/down targets the closest item in the row immediately above/below.
+  moveSelection(axis, sign) {
+    const buttons=this.menuButtons();
+    // Pointer, keyboard and gamepad can hand focus to the browser between
+    // frames; always navigate from the actual focused card if there is one.
+    const focusedIndex=buttons.indexOf(document.activeElement);
+    if(focusedIndex>=0)this.selection=focusedIndex;
+    const current=buttons[this.selection];
+    if(!current)return;
+    const r=current.getBoundingClientRect();
+    const cx=r.left+r.width/2,cy=r.top+r.height/2;
+    let best=-1,score=Infinity;
+    for(let i=0;i<buttons.length;i++){
+      if(i===this.selection)continue;
+      const box=buttons[i].getBoundingClientRect();
+      const x=box.left+box.width/2-cx,y=box.top+box.height/2-cy;
+      const primary=(axis==='x'?x:y)*sign;
+      const secondary=axis==='x'?y:x;
+      if(primary<=Math.max(4,(axis==='x'?r.width:r.height)*0.12))continue;
+      if(axis==='x'&&Math.abs(secondary)>Math.max(r.height,box.height)*0.85)continue;
+      const candidate=primary+Math.abs(secondary)*1.7;
+      if(candidate<score){best=i;score=candidate;}
+    }
+    if(best>=0){this.selection=best;this.focusSelection();}
+  }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
   render(){
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
@@ -59,12 +88,12 @@ export class GameShell {
     if(this.phase==='title') {
       body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
     } else if(this.phase==='select') {
-      const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${i===this.heroIndex?'is-chosen':''}"
-        style="--rider-accent:${hero.accent}" aria-pressed="${i===this.heroIndex}">
+      const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
+        style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
         <span class="rider-portrait" data-portrait-url="${safe(hero.url)}"><span class="rider-initial">${safe(hero.name[0]||'?')}</span></span>
         <strong>${safe(hero.name)}</strong><small>${safe(hero.subtitle)}</small></button>`).join('');
-      const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${i===this.boardIndex?'is-chosen':''}"
-        style="--deck-gradient:${board.gradient}" aria-pressed="${i===this.boardIndex}"><span class="deck-preview"></span><b>${safe(board.label)}</b></button>`).join('');
+      const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${this.boardConfirmed&&i===this.boardIndex?'is-chosen':''}"
+        style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-preview"></span><b>${safe(board.label)}</b></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
         class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
@@ -76,8 +105,8 @@ export class GameShell {
         <div class="loadout-boards">${colors}</div></div>
         <div class="loadout-section"><div class="loadout-heading"><b>03 / CHOOSE A LOCATION</b><span>MORE PARKS COMING</span></div>
         <div class="loadout-locations">${spots}</div></div>
-        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'CONTINUE TO TUTORIAL →','confirmLoadout',this.selectBusy)}</footer>
-        <p class="loadout-status" aria-live="polite">${safe(this.selectError)}</p></div>`;
+        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'CONTINUE TO TUTORIAL →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock CONTINUE.':'Rider and deck selected · Continue to tutorial.'))}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('RESUME','resume')+this.button('TUTORIAL','tutorial')
         +this.button('MASTER VOL −','volumeDown')
@@ -91,7 +120,7 @@ export class GameShell {
         +this.button('MASTER · '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
         +this.button('MASTER VOLUME +','volumeUp')
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
-        +this.button('DECK · '+['SUNSET','OCEAN','AQUA','LIME','GOLD','NEBULA','GRAPHITE','PEARL'][this.finishIndex],'deck')
+        +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
         +this.button('BACK','back');
     } else if(this.phase==='results') {
       title='TIME’S UP';body=`<p class="result-score">${this.finalScore.toLocaleString()}<small>POINTS BANKED</small></p>`
@@ -108,12 +137,19 @@ export class GameShell {
     }
     if(this.phase==='select')this.loadPortraits();
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
+    if(this.focusHint){
+      const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
+        && Number(button.dataset.index||0)===this.focusHint.index);
+      if(index>=0)this.selection=index;
+      this.focusHint=null;
+    }
     this.focusSelection();
   }
   begin(practice=false){
     if(!this.ready)return;
     this.pendingMode=practice?'practice':'timed';
-    this.selectError='';
+    this.selectError='';this.heroConfirmed=false;this.boardConfirmed=false;
+    this.focusHint={action:'hero',index:this.heroIndex};
     this.setScreen('select');
   }
   async loadPortraits(){
@@ -133,11 +169,12 @@ export class GameShell {
     const hero=this.heroes[this.heroIndex];
     const board=BOARD_CHOICES[this.boardIndex];
     const location=LOCATIONS[this.locationIndex];
-    if(!hero||!location?.available)return;
+    if(!this.heroConfirmed||!this.boardConfirmed||!hero||!location?.available)return;
     this.selectBusy=true;this.selectError='Loading '+hero.name+'…';this.render();
     try{
       await this.actions.loadout({hero,board,location});
       this.selectBusy=false;this.selectError='';
+      this.finishIndex=board.finishIndex;
       this.tutorialSeen=false;
       this.openTutorial();
     }catch(error){
@@ -160,26 +197,26 @@ export class GameShell {
     else if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     this.music.unlock();
     switch(action){
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
       case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
-      case 'hero':this.heroIndex=index;this.render();break;
-      case 'board':this.boardIndex=index;this.render();break;
-      case 'location':if(LOCATIONS[index]?.available){this.locationIndex=index;this.render();}break;
+      case 'hero':this.heroIndex=index;this.heroConfirmed=true;this.focusHint={action:'hero',index};this.render();break;
+      case 'board':this.boardIndex=index;this.boardConfirmed=true;this.focusHint={action:'board',index};this.render();break;
+      case 'location':if(LOCATIONS[index]?.available){this.locationIndex=index;this.focusHint={action:'location',index};this.render();}break;
       case 'upload':this.avatarInput.click();break;
       case 'confirmLoadout':void this.confirmLoadout();break;
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
-      case 'camera':this.cameraIndex=(this.cameraIndex+1)%4;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
       case 'volumeDown':this.adjustMaster(-.1);break;
       case 'volumeUp':this.adjustMaster(.1);break;
       case 'sound':this.sound=!this.sound;this.actions.sound(this.sound);this.render();break;
-      case 'deck':this.finishIndex=(this.finishIndex+1)%8;this.actions.deck(this.finishIndex);this.render();break;
+      case 'deck':this.finishIndex=(this.finishIndex+1)%BOARD_CHOICES.length;this.actions.deck(this.finishIndex);this.render();break;
       case 'title':this.actions.pause(true);this.setScreen('title');break;
       case 'back':this.back();break;
       case 'previous':this.page=Math.max(0,this.page-1);this.render();break;
@@ -203,6 +240,10 @@ export class GameShell {
       if(event.code==='Escape')this.back();
       else if(['ArrowLeft','KeyA'].includes(event.code)&&this.open)this.choose('previous');
       else if(['ArrowRight','KeyD'].includes(event.code)&&this.open)this.choose('next');
+      else if(this.phase==='select'&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){
+        const axis=['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(event.code)?'x':'y';
+        this.moveSelection(axis,['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1);
+      }
       else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){this.selection+=['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1;this.focusSelection();}
       else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
@@ -218,7 +259,16 @@ export class GameShell {
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();
     if(!this.active){
-      if((keys.up||keys.down)&&(!this.navRepeat||edge('up')||edge('down'))){this.selection+=keys.up?-1:1;this.focusSelection();this.navRepeat=.22;}
+      if(this.phase==='select'){
+        const direction=keys.left?'left':keys.right?'right':keys.up?'up':keys.down?'down':null;
+        if(direction&&(!this.navRepeat||edge(direction))){
+          this.moveSelection(direction==='left'||direction==='right'?'x':'y',
+            direction==='left'||direction==='up'?-1:1);
+          this.navRepeat=.19;
+        }
+      } else if((keys.up||keys.down)&&(!this.navRepeat||edge('up')||edge('down'))){
+        this.selection+=keys.up?-1:1;this.focusSelection();this.navRepeat=.22;
+      }
       if(edge('back'))this.back();
       else if(this.open&&edge('left'))this.choose('previous');
       else if(this.open&&edge('right'))this.choose('next');

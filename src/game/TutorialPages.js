@@ -9,7 +9,7 @@ export function tutorialPages() {
     {title:'Welcome to the rooftop',subtitle:'90 seconds. Build a line. Land your combos.',html:table(['Action','Keyboard','Xbox'],[
       ['Steer / trick direction','W A S D','Left stick / D-pad'],['Ollie','Hold Space, then release','Hold A, then release'],
       ['Flip / Grab / Grind','← / → / ↑ arrow keys','X / B / Y'],['Air rotation','Q / E','LB / RB'],
-      ['Vert exit / switch stance','Left Ctrl / Right Ctrl','LT / RT'],['Camera 1–4','1 / 2 / 3 / 4','Click right stick to cycle'],
+      ['Vert exit / switch stance','Left Ctrl / Right Ctrl','LT / RT'],['Camera 1–3','1 / 2 / 3','Click right stick to cycle'],
       ['Skip song','Backspace','View / Select'],['Pause','Esc','Menu / Start'],
     ])+'<p>WASD chooses direction; arrow keys perform tricks. W = Up, S = Down, A = Left, D = Right. W+A / W+D = upper diagonals; S+A / S+D = lower diagonals. Xbox uses the same direction on the left stick or D-pad. Start Game is 90 seconds. Options → Practice has no time limit.</p>'},
     {title:'Flip tricks',subtitle:'Hold direction + ← / Xbox X. Tap again early to upgrade.',html:table(['Direction: keyboard / stick','One tap','Two taps','Three taps'],
@@ -26,7 +26,7 @@ export function tutorialPages() {
       '<p>Start a manual first, then enter the button pair quickly. Balance with W/S or stick up/down. Manuals connect landed tricks into a longer combo.</p>'},
     {title:'Walls, cameras & your run',subtitle:'Land clean. Keep your combo going.',html:table(['Action','Keyboard','Xbox'],[
       ['Wall Ride','Hold ↑ against a wall in the air','Hold Y against a wall in the air'],['Wall Plant','Space when hitting a wall in the air','A when hitting a wall in the air'],
-      ['Wallie','Space during a Wall Ride','A during a Wall Ride'],['Follow / Classic / Fixed / First person','1 / 2 / 3 / 4','Click right stick to cycle'],
+      ['Wallie','Space during a Wall Ride','A during a Wall Ride'],['Follow / Classic / Fixed','1 / 2 / 3','Click right stick to cycle'],
       ['Look around','Drag mouse','Right stick'],['Tutorial / Practice / music / deck','Pause → menu options','Menu → choose with stick + A'],
     ])+'<p>Clean landings bank points. A bail loses the current combo, then respawns you on nearby flat ground with three flashes. The timer stops at 00:00; Practice keeps going.</p>'},
   ];

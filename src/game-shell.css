@@ -75,3 +75,31 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 .loadout-status{min-height:1.2cqw;font-size:1cqw;color:#ffd27a;margin:0}
 @media(max-height:680px){.loadout-shell{justify-content:flex-start}.rider-portrait{height:9cqw}.loadout-shell header h2{font-size:4.5cqw}}
 @media(max-width:650px){.loadout-screen .shell-content{width:100vw;aspect-ratio:auto;height:100dvh;border-radius:0}.loadout-shell{padding:18px;gap:10px}.loadout-shell header h2{font-size:32px}.loadout-shell header small,.loadout-shell header p,.loadout-heading span{font-size:9px}.loadout-heading>b{font-size:15px}.loadout-roster{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.rider-portrait{height:19vh}.loadout-character strong{font-size:17px}.loadout-character small{font-size:9px}.loadout-boards{gap:5px}.loadout-deck b{font-size:9px}.loadout-locations{gap:5px}.loadout-location strong{font-size:10px}.loadout-location small{font-size:9px}.loadout-shell footer button{font-size:13px!important}.loadout-status{font-size:11px}}
+
+/* Grid navigation and explicit A/Enter/Click confirmations for Build Your Line. */
+.loadout-screen .loadout-boards{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:.5cqw .8cqw}
+.loadout-screen .loadout-deck{min-height:3.05cqw;padding:.4cqw .6cqw!important;gap:.6cqw}
+.loadout-screen .loadout-deck b{font-size:1.12cqw}
+.loadout-screen .rider-portrait{height:9.4cqw}
+.loadout-screen .loadout-character{position:relative}
+.loadout-screen .loadout-character.is-chosen:after{
+  content:'✓ SELECTED';position:absolute;right:.4cqw;top:.3cqw;
+  background:#1f3b2b;color:#e4ff93;border-radius:.3cqw;
+  font:900 .83cqw 'DM Sans',Arial,sans-serif;padding:.25cqw .4cqw;
+}
+.loadout-screen .loadout-deck.is-chosen:after{content:'✓';color:#eaff94;font-weight:900}
+#game-shell.loadout-screen button.selected:not(.is-chosen):not([disabled]){
+  outline:3px solid #ffffff;outline-offset:-3px;
+  background-color:#204352!important;box-shadow:0 0 1.1cqw #bdefff77!important;
+}
+#game-shell.loadout-screen button.is-chosen.selected{outline:3px solid #fff5c1;outline-offset:-3px}
+#game-shell.loadout-screen [data-action="confirmLoadout"]:disabled{
+  background:#385357!important;color:#bdcdcb!important;opacity:.7;cursor:not-allowed;
+}
+.loadout-screen .loadout-shell{gap:.65cqw}
+@media(max-width:650px){
+  .loadout-screen .loadout-boards{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .loadout-screen .loadout-deck{min-height:42px;padding:4px!important;flex-direction:column;gap:2px}
+  .loadout-screen .loadout-deck b{font-size:8px}
+  .loadout-screen .rider-portrait{height:17vh}
+}
