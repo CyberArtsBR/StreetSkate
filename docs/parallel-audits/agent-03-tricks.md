@@ -33,4 +33,8 @@
 - Suggested integration playtests: rail contact height on narrow deck slides; quick double-tap grind upgrades after >=0.2 s; manual rides across mixed polygon boundaries; concave curved rails; near-stop rail exits; rail-to-rail transitions after deliberate Ollie Out.
 
 ## Validation
-The new tests are intended for `npm test`. The pull-request workflow runs `npm test`, `npm run verify:physics`, `npx vite build` and browser smoke. Actual results must be recorded from the CI checks; do not interpret a PR being opened as tests passing.
+- PR #9 GitHub Actions run: https://github.com/CyberArtsBR/StreetSkate/actions/runs/37917946701
+- **360 tests executed: 359 passed, 1 failed. All 15 new Agent 03 tests passed.**
+- The sole failure is `tests/ground-motor.test.mjs` ("ground steering owns the complete park carve curve", assertion near line 102). Neither that test nor `src/game/core/GroundMotor.js` is changed in this branch. It must be handled by the separate ground-physics owner/integrator rather than editing unowned files.
+- Because `npm test` failed, this CI workflow skipped `npm run verify:physics`, `npx vite build`, and browser smoke. **Do not claim the build or physics verification passed.**
+- Subsequent documentation commits may rerun CI; use the current PR checks for the latest status.
