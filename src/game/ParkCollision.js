@@ -30,6 +30,17 @@ export class ParkCollision {
     this._normal = new THREE.Vector3();
     this._sphere = new THREE.Sphere(new THREE.Vector3(), 0.04);
     this._sphereTriangles = [];
+    // Body solver scratch is reused across substeps instead of allocating new
+    // vectors/candidate arrays for each of the (up to five) solver iterations.
+    this._capsuleTriangles = [];
+    this._moveBefore = new THREE.Vector3();
+    this._moveAxis = new THREE.Vector3();
+    this._moveStart = new THREE.Vector3();
+    this._moveEnd = new THREE.Vector3();
+    this._movePreviousCenter = new THREE.Vector3();
+    this._moveNormal = new THREE.Vector3();
+    this._moveTangent = new THREE.Vector3();
+    this._sphereCandidateNormal = new THREE.Vector3();
     this._probeResult = { point: new THREE.Vector3(), normal: new THREE.Vector3(), distance: 0, fraction: 1 };
     this._sweepResult = { point: new THREE.Vector3(), normal: new THREE.Vector3(), distance: 0, fraction: 1 };
     root.updateMatrixWorld(true);
@@ -118,7 +129,7 @@ export class ParkCollision {
   }
 
   /** Small finite sphere sweep used only by nose/tail clearance probes. */
-  sweepSolidSphere(from, to, radius, pointOut, normalOut, ignoreRail = null) {
+  sweepSolidSphere(from, to, radius, pointOut, normalOut, ignoreRail = null, maxAbsNormalY = Infinity) {
     this._motion.copy(to).sub(from);
     const distance = this._motion.length();
     if (distance < EPS) return null;
@@ -132,7 +143,8 @@ export class ParkCollision {
       if (ignoreRail && hit.object.userData.railId === ignoreRail) continue;
       this.normal(hit, normalOut);
       if (normalOut.dot(this._direction) > 0) normalOut.negate();
-      if (normalOut.y > 0.72 || normalOut.dot(this._direction) > -0.04) continue;
+      if (normalOut.y > 0.72 || normalOut.dot(this._direction) > -0.04
+        || Math.abs(normalOut.y) > maxAbsNormalY) continue;
       const contactDistance = Math.max(0, hit.distance - radius);
       if (contactDistance > distance) continue;
       pointOut.copy(hit.point);
@@ -154,8 +166,16 @@ export class ParkCollision {
       for (const triangle of this._sphereTriangles) {
         if (ignoreRail && triangle.railId === ignoreRail) continue;
         const hit = this.blocks.triangleSphereIntersect(this._sphere, triangle);
-        if (!hit || hit.depth < 1e-6 || (deepest && hit.depth <= deepest.depth)) continue;
-        deepest = hit;
+        if (!hit || hit.depth < 1e-6) continue;
+        // Reject floor/bank contacts BEFORE choosing the deepest penetration.
+        // Otherwise a shallow wall inside the same sphere can be hidden by
+        // a stronger ground overlap, causing deck/ledge tunnelling.
+        this._sphereCandidateNormal.copy(hit.normal);
+        if (this._sphereCandidateNormal.dot(this._direction) > 0) this._sphereCandidateNormal.negate();
+        if (this._sphereCandidateNormal.y > 0.72
+          || this._sphereCandidateNormal.dot(this._direction) > -0.04
+          || Math.abs(this._sphereCandidateNormal.y) > maxAbsNormalY) continue;
+        if (!deepest || hit.depth > deepest.depth) deepest = hit;
       }
       if (!deepest) continue;
       normalOut.copy(deepest.normal);
@@ -234,35 +254,38 @@ export class ParkCollision {
   move(from, desired, velocity, { fromUp = UP, toUp = UP, forward = new THREE.Vector3(0, 0, -1), grounded = false, ignoreRail = null } = {}) {
     const position = from.clone();
     const travel = desired.clone().sub(from);
+    const before = this._moveBefore;
+    const axis = this._moveAxis;
+    const candidates = this._capsuleTriangles;
     const steps = Math.max(1, Math.ceil((travel.length() + fromUp.distanceTo(toUp) * 1.5) / 0.09));
     const increment = travel.multiplyScalar(1 / steps);
     const contacts = [];
     for (let step = 1; step <= steps; step++) {
-      const before = position.clone();
+      before.copy(position);
       position.add(increment);
-      const axis = fromUp.clone().lerp(toUp, step / steps).normalize();
+      axis.copy(fromUp).lerp(toUp, step / steps).normalize();
+      // The rider capsule never doubles as a deck support shape.
+      this._moveStart.copy(position).addScaledVector(axis, 0.27);
+      this._moveEnd.copy(position).addScaledVector(axis, 1.48);
+      this._movePreviousCenter.copy(before).addScaledVector(axis, 0.875);
       for (let iteration = 0; iteration < 5; iteration++) {
-        // Only the rider/body capsule lives here. The old grounded deck capsule
-        // was intentionally removed; wheel + nose/tail probes own board contact.
-        const shape = { start: position.clone().addScaledVector(axis, 0.27), end: position.clone().addScaledVector(axis, 1.48), radius: RADIUS, height: 0.875 };
         let deepest = null;
-        this.capsule.set(shape.start, shape.end, shape.radius);
-        const candidates = [];
+        this.capsule.set(this._moveStart, this._moveEnd, RADIUS);
+        candidates.length = 0;
         this.blocks.getCapsuleTriangles(this.capsule, candidates);
         for (const triangle of candidates) {
           if (ignoreRail && triangle.railId === ignoreRail) continue;
-          const previousCenter = before.clone().addScaledVector(axis, shape.height);
-          const face = triangle.faceNormal.dot(previousCenter.sub(triangle.a)) < 0
+          const face = triangle.faceNormal.dot(this._moveNormal.copy(this._movePreviousCenter).sub(triangle.a)) < 0
             ? new THREE.Triangle(triangle.c, triangle.b, triangle.a) : triangle;
           const hit = this.blocks.triangleCapsuleIntersect(this.capsule, face);
           if (!hit || hit.depth < 0.00001 || (deepest && hit.depth <= deepest.depth)) continue;
           deepest = { ...hit, railId: triangle.railId };
         }
         if (!deepest) break;
-        let hitNormal = deepest.normal.clone();
+        const hitNormal = this._moveNormal.copy(deepest.normal);
         let depth = deepest.depth + SKIN;
         if (grounded) {
-          const tangent = hitNormal.clone().projectOnPlane(toUp);
+          const tangent = this._moveTangent.copy(hitNormal).projectOnPlane(toUp);
           const length = tangent.length();
           if (length > 0.12) {
             hitNormal.copy(tangent).divideScalar(length);
@@ -274,9 +297,13 @@ export class ParkCollision {
           }
         }
         position.addScaledVector(hitNormal, depth);
+        // Recompute the capsule after each penetration correction. Reusing
+        // outdated shape endpoints caused repeated contacts at one location.
+        this._moveStart.copy(position).addScaledVector(axis, 0.27);
+        this._moveEnd.copy(position).addScaledVector(axis, 1.48);
         const into = velocity.dot(hitNormal);
         if (into < 0) velocity.addScaledVector(hitNormal, -into);
-        contacts.push({ ...deepest, normal: hitNormal, distance: 0 });
+        contacts.push({ ...deepest, normal: hitNormal.clone(), distance: 0 });
       }
     }
     return { position, contacts };
