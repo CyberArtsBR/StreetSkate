@@ -133,6 +133,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       candidate.dispose();
       throw new Error('GLB requires a rigged humanoid avatar; missing bones: '+missing.join(', '));
     }
+    // Header validity and named hip/ankle bones aren't enough for IK. A GLB
+    // without complete elbow/knee chains cannot be safely animated in-game.
+    const ik = candidate.rigAudit?.ik;
+    if (ik && (!ik.fullLegIK || !ik.fullArmIK)) {
+      candidate.dispose();
+      throw new Error('GLB avatar needs complete thigh → calf → foot and upper arm → forearm → hand joints on both sides.');
+    }
     candidate.deckHeight = this.board.deckHeight;
     const previous = this.rider;
     this.visual.add(candidate.root);
