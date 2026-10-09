@@ -67,16 +67,19 @@ export function transitionFrequency(state) {
 }
 
 export function springStep(channel, target, frequency, dt) {
-  const safeDt = Math.max(0, Math.min(0.05, dt || 0));
-  const omega = Math.max(0.01, frequency) * Math.PI * 2;
+  const safeTarget = Number.isFinite(target) ? target : (Number.isFinite(channel.value) ? channel.value : 0);
+  if (!Number.isFinite(channel.value)) channel.value = safeTarget;
+  if (!Number.isFinite(channel.velocity)) channel.velocity = 0;
+  const safeDt = Number.isFinite(dt) ? Math.max(0, Math.min(0.05, dt)) : 0;
+  const omega = Math.max(0.01, Number.isFinite(frequency) ? frequency : 6) * Math.PI * 2;
   const x = omega * safeDt;
   const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
-  const change = channel.value - target;
+  const change = channel.value - safeTarget;
   const temp = (channel.velocity + omega * change) * safeDt;
   channel.velocity = (channel.velocity - omega * temp) * decay;
-  channel.value = target + (change + temp) * decay;
+  channel.value = safeTarget + (change + temp) * decay;
   if (!Number.isFinite(channel.value) || !Number.isFinite(channel.velocity)) {
-    channel.value = target;
+    channel.value = safeTarget;
     channel.velocity = 0;
   }
   return channel.value;
