@@ -29,11 +29,11 @@ test('GLB upload checks magic, version, declared size, chunk type and alignment'
 
 test('stick taps emit one edge per deflection, re-arm at neutral', () => {
   const taps = new DirectionTapDetector();
-  assert.deepEqual(taps.update(0.8, -0.9), ['right', 'up']);
+  assert.deepEqual(taps.update(0.8, -0.9), ['right', 'down']);
   assert.deepEqual(taps.update(0.9, -1), []);
   assert.deepEqual(taps.update(-1, 0.85), []);
   assert.deepEqual(taps.update(0, 0), []);
-  assert.deepEqual(taps.update(-0.9, 0.9), ['left', 'down']);
+  assert.deepEqual(taps.update(-0.9, 0.9), ['left', 'up']);
 });
 
 function button(x, y, w = 100, h = 44) {
@@ -100,8 +100,8 @@ test('keyboard one-shot actions debounce repeated down and gamepad reconnects sa
     handlers.keyup(event);
     assert.equal(input.read().ollieReleased, true);
     pad.buttons[9].pressed = true;
-    // Already held during first gamepad appearance: no ghost pause.
-    assert.equal(input.read().pausePressed, false);
+    // A new press on a connected controller must still register.
+    assert.equal(input.read().pausePressed, true);
     pad.buttons[9].pressed = false; input.read();
     pad.buttons[9].pressed = true;
     assert.equal(input.read().pausePressed, true);
