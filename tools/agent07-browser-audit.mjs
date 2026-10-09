@@ -9,7 +9,7 @@ try {
     deviceScaleFactor: 1 });
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForFunction(() => window.streetSkate?.ready === true,
-    { timeout: 120000 });
+    null, { timeout: 120000 });
   const result = await page.evaluate(async () => {
     const { renderer, scene, park, manifest } = window.streetSkate;
     const samples = [];
