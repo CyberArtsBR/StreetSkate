@@ -172,7 +172,11 @@ try{
   await page.locator('body[data-screen="playing"]').waitFor();
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
   await page.waitForFunction(()=>document.querySelector('#app')?.dataset.paused==='true');
-  assert.equal(await page.locator('#pause-overlay').isVisible(),true);
+  // GameShell owns the pause menu. Its legacy #pause-overlay is intentionally
+  // hidden by game-shell.css, so require the *actual* visible pause controls.
+  await page.locator('body[data-screen="pause"]').waitFor();
+  assert.equal(await page.locator('#game-shell').isVisible(),true);
+  assert.equal(await page.locator('[data-action="resume"]').isVisible(),true);
   await page.evaluate(()=>window.streetSkate.setPaused(false));
   await page.waitForFunction(()=>document.querySelector('#app')?.dataset.paused==='false');
  });
