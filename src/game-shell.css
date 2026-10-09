@@ -285,3 +285,10 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
     position:static;transform:none!important;min-width:0
   }
 }
+
+/* The tutorial's poster navigation must remain inside any viewport, including 800x450.
+   Reserve actual room under the 16:9 artwork; don't crop or squash the poster. */
+#game-shell.tutorial-screen .shell-content{width:min(1500px,96vw,calc((100dvh - 130px)*16/9));overflow:visible}
+#game-shell .tutorial-poster > footer{position:absolute;top:calc(100% + 8px);bottom:auto;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;min-height:44px}
+@media(max-height:500px){#game-shell.tutorial-screen .shell-content{width:min(96vw,calc((100dvh - 125px)*16/9))}}

@@ -175,7 +175,12 @@ try{
   await page.locator('[data-action="tutorial"]').click();
   await page.locator('body[data-screen="tutorial"]').waitFor();
   assert.equal(await page.locator('[data-action="skipTutorial"]').count(),1);
-  await page.locator('[data-action="next"]').click(); // Poster is image-only; icons appear on the control tables.
+  const next=page.locator('[data-action="next"]');
+  const nextBox=await next.boundingBox();
+  const viewport=page.viewportSize();
+  assert.ok(nextBox && viewport && nextBox.y>=0 && nextBox.y+nextBox.height<=viewport.height,
+    'Poster next button must be fully visible at short heights');
+  await next.click(); // Poster is image-only; icons appear on the control tables.
   assert.ok(await page.locator('.xbox-input.xbox-a').count()>0,'Tutorial must show colored Xbox A');
   await page.screenshot({path:join(out,'tutorial-800.png'),fullPage:true});
   await page.locator('[data-action="skipTutorial"]').click();
