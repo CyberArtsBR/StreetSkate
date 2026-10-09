@@ -47,7 +47,7 @@ Existing tests provide additional coverage in:
 - `tests/unified-ramp-camera-feel.test.mjs`
 - `tests/yaw-stable-presentation.test.mjs`
 
-**CI gate to verify on PR:** `npm test`, `npm run verify:physics`, `npx vite build`, and browser smoke through `.github/workflows/phase1-core-ci.yml`. Local execution in the authoring environment was unavailable (no repo checkout or installed `three` package); do not consider these tests passed until CI publishes successful results.
+**CI result (PR #10, Phase 1 Core CI run 37918019507):** `npm test` ran 362 cases: **360 passed, 2 failed**. **All 17 Agent 06 camera tests passed.** The two failures were outside this branch's owned and modified paths: `tests/grind-manual.test.mjs:76` (`projectedGrindSpeed`, expected 0.21 but received 8.5) and `tests/ground-motor.test.mjs:93` (park carve curve assertion). Agent 03 and Agent 01 own those respective systems; they were left unchanged. The overall CI workflow is **red**, so `npm run verify:physics`, `npx vite build`, and browser smoke were **skipped** rather than verified. Local execution was unavailable because the authoring environment has no repository checkout or installed `three` dependency.
 
 ## Manual browser QA checklist
 
