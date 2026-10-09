@@ -1,5 +1,6 @@
 import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
+import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
 import { characterPortrait } from './CharacterPortraits.js';
 
@@ -34,12 +35,9 @@ export class GameShell {
       // GLB 2.0 starts with a 12-byte header followed by a JSON chunk.
       // Reject malformed uploads before passing their object URL to the loader.
       let header;
-      try { header=new DataView(await file.slice(0,20).arrayBuffer()); }
+      try { header=await file.slice(0,20).arrayBuffer(); }
       catch { this.selectError='Unable to read the GLB file.';this.render();return; }
-      if(header.byteLength<20 || header.getUint32(0,true)!==0x46546c67
-        || header.getUint32(4,true)!==2 || header.getUint32(8,true)!==file.size
-        || header.getUint32(16,true)!==0x4e4f534a
-        || header.getUint32(12,true)<2 || header.getUint32(12,true)+20>file.size) {
+      if(!isValidGlbHeader(header,file.size)) {
         this.selectError='Invalid GLB 2.0 header or JSON chunk.';this.render();return;
       }
       const next=URL.createObjectURL(file);
