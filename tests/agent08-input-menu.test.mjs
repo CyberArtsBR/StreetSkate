@@ -117,3 +117,56 @@ test('keyboard one-shot actions debounce repeated down and gamepad reconnects sa
     else delete globalThis.navigator;
   }
 });
+
+
+test('pause and resume preserve gameplay state and add an input grace window', () => {
+  const calls = [];
+  const shell = Object.create(GameShell.prototype);
+  shell.phase = 'playing';
+  shell.actions = { pause: value => calls.push(value) };
+  shell.setScreen = phase => { shell.phase = phase; };
+  shell.pause();
+  assert.equal(shell.phase, 'pause');
+  assert.deepEqual(calls, [true]);
+  shell.resume();
+  assert.equal(shell.phase, 'playing');
+  assert.equal(shell.inputGrace, 0.18);
+  assert.deepEqual(calls, [true, false]);
+  shell.syncPause(true);
+  assert.equal(shell.phase, 'pause');
+  shell.syncPause(false);
+  assert.equal(shell.phase, 'playing');
+  assert.deepEqual(calls, [true, false], 'sync callback never double-pauses simulation');
+});
+
+test('menu gamepad A is edge-triggered, not repeatedly selected while held', () => {
+  const oldDocument = globalThis.document;
+  const oldNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const pad = { connected: true, axes: [0, 0],
+    buttons: Array.from({ length: 17 }, () => ({ pressed: false })) };
+  globalThis.document = { hasFocus: () => true };
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { getGamepads: () => [pad] }, configurable: true,
+  });
+  try {
+    const shell = Object.create(GameShell.prototype);
+    shell.phase = 'select'; shell.padFocused = false;
+    shell.previousPad = {}; shell.navRepeat = 0; shell.inputGrace = 0;
+    shell.music = { unlock() {}, next() {} };
+    const btn = { clicks: 0, click() { this.clicks++; } };
+    shell.menuButtons = () => [btn];
+    shell.update(0.016);
+    pad.buttons[0].pressed = true;
+    shell.update(0.016);
+    shell.update(0.016);
+    shell.update(0.016);
+    assert.equal(btn.clicks, 1);
+    pad.buttons[0].pressed = false; shell.update(0.016);
+    pad.buttons[0].pressed = true; shell.update(0.016);
+    assert.equal(btn.clicks, 2);
+  } finally {
+    globalThis.document = oldDocument;
+    if (oldNavigator) Object.defineProperty(globalThis, 'navigator', oldNavigator);
+    else delete globalThis.navigator;
+  }
+});
