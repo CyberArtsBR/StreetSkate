@@ -56,7 +56,7 @@ async function stats(stage){
   const deltas=[];let last=performance.now();const began=last;
   while(performance.now()-began<1300){
    const t=await Promise.race([
-    new Promise(resolve=>requestAnimationFrame(resolve)),
+    new Promise(resolve=>requestAnimationFrame(()=>resolve(performance.now()))),
     new Promise(resolve=>setTimeout(()=>resolve(null),600))
    ]);
    if(t===null)break; // background tabs or context loss must not hang QA
@@ -151,6 +151,11 @@ try{
  await checked('loadout and tutorial navigation, timed session',async()=>{
   await chooseLoadout();
   await finishTutorial();
+  // The virtual GitHub runner has no hardware GPU: exercise live gameplay at
+  // a practical software-raster viewport; menu layout was checked at 1440x900.
+  // Keep the >3-frame liveness assertion unchanged. Do not use these FPS
+  // samples as end-user hardware performance results.
+  await page.setViewportSize({width:800,height:450});
   await stats('timed-1');
   await page.screenshot({path:join(out,'timed-session.png'),fullPage:true});
  });
