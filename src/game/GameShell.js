@@ -1,228 +1,136 @@
-import { TUTORIAL_PAGES } from './TutorialPages.js';
+import { tutorialPages } from './TutorialPages.js';
 import { MusicPlayer } from './MusicPlayer.js';
 
-/** Controller-first 16:9 frontend around the existing immutable skate simulation. */
+const CAMERAS=['follow','classic','fixed','firstperson'];
+const CAMERA_LABELS=['Follow','Classic','Fixed','First person'];
 export class GameShell {
-  constructor({ app, ready, startRun, pauseGame, resumeGame, getScore, setCameraMode, openTricks }) {
-    this.app = app;
-    this.ready = ready;
-    this.startRun = startRun;
-    this.pauseGame = pauseGame;
-    this.resumeGame = resumeGame;
-    this.getScore = getScore;
-    this.setCameraMode = setCameraMode;
-    this.openTricks = openTricks;
-    this.music = new MusicPlayer();
-    this.screen = 'title';
-    this.practice = false;
-    this.remaining = 90;
-    this.page = 0;
-    this.tutorialReturn = 'title';
-    this.optionsReturn = 'title';
-    this.selected = 0;
-    this.padPrevious = {};
-    this.navCooldown = 0;
-    this.root = document.createElement('section');
-    this.root.className = 'ch-shell';
-    this.root.setAttribute('aria-label','Chimp Hawk Underground menu');
-    app.append(this.root);
-    this.timer = document.createElement('div');
-    this.timer.className = 'ch-timer';
-    this.timer.innerHTML = '<small>RUN TIME</small><strong>01:30</strong>';
-    app.append(this.timer);
-    this.root.addEventListener('click', event => {
-      const control = event.target.closest('[data-ch-action]');
-      if (control) this.act(control.dataset.chAction);
-    });
-    window.addEventListener('pointerdown', () => this.music.unlock(), { passive: true });
-    window.addEventListener('keydown', event => this.onKey(event), true);
+  constructor(actions) {
+    this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
+    this.selection=0;this.previousPad={};this.navRepeat=0;this.tutorialSeen=false;this.page=0;
+    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
+    this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
+    this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
+    document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
+    this.timer=document.createElement('div');this.timer.id='run-timer';document.querySelector('#app').append(this.timer);
+    this.song=document.createElement('div');this.song.id='now-playing';document.body.append(this.song);
+    this.music=new MusicPlayer((title,note)=>{this.song.textContent=`♫ ${title} · Backspace / View to skip${note?' · '+note:''}`;});
+    window.addEventListener('keydown',e=>this.key(e),true);
     this.render();
   }
-
-  isPlaying() { return this.screen === 'playing'; }
-  isPause() { return this.screen === 'pause'; }
-  isBlocking() { return this.screen !== 'playing'; }
-  activateAudio() { this.music.unlock(); }
-
-  start(practice = false) {
-    if (!this.ready()) return;
-    this.practice = practice;
-    this.remaining = practice ? Infinity : 90;
-    this.startRun(practice);
-    this.music.next();
-    this.screen = 'playing';
+  get active(){return this.phase==='playing';}
+  get open(){return this.phase==='tutorial';}
+  setReady(){this.ready=true;this.render();}
+  setScreen(phase){this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();}
+  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
+  focusSelection(){const buttons=this.menuButtons();this.selection=(this.selection+buttons.length)%Math.max(1,buttons.length);buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));buttons[this.selection]?.focus({preventScroll:true});}
+  button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
+  render(){
+    document.body.dataset.screen=this.phase;this.root.hidden=this.active;
+    this.timer.hidden=!this.active;this.updateTimer();
+    this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':'menu-screen';
+    if(this.active)return;
+    let title='',body='';
+    if(this.phase==='title') {
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
+    } else if(this.phase==='pause') {
+      title='PAUSED';body=this.button('RESUME','resume')+this.button('TUTORIAL','tutorial')+this.button('OPTIONS','options')+this.button('RESTART RUN','restart')+this.button('MAIN MENU','title');
+    } else if(this.phase==='options') {
+      title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
+        +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
+        +this.button(`MUSIC · ${Math.round(this.music.audio.volume*100)}%`,'volume')
+        +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
+        +this.button('DECK · '+['SUNSET','OCEAN','AQUA','LIME','GOLD','NEBULA','GRAPHITE','PEARL'][this.finishIndex],'deck')
+        +this.button('BACK','back');
+    } else if(this.phase==='results') {
+      title='TIME’S UP';body=`<p class="result-score">${this.finalScore.toLocaleString()}<small>POINTS BANKED</small></p>`
+        +this.button('RUN IT AGAIN · 90 SEC','start')+this.button('PRACTICE','practice')+this.button('MAIN MENU','title');
+    } else if(this.phase==='tutorial') {
+      const page=this.pages[this.page];
+      const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}<span>LB / RB OR LEFT / RIGHT · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
+      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
+    }
+    this.content.innerHTML=this.phase==='title'||this.phase==='tutorial'?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${title}</h2>${body}</div>`;
+    for(const button of this.menuButtons()) {button.onclick=()=>this.choose(button.dataset.action);button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};}
+    if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
+    this.focusSelection();
+  }
+  begin(practice=false){
+    if(!this.ready)return;
+    if(!this.tutorialSeen){this.pendingMode=practice?'practice':'timed';this.openTutorial();return;}
+    this.start(practice);
+  }
+  start(practice){
+    this.practice=practice;this.remaining=90;this.inputGrace=.3;this.cameraIndex=0;
+    this.music.next();this.setScreen('playing');this.actions.start(practice);this.actions.camera('follow');
+  }
+  pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
+  resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
+  syncPause(value){if(value&&this.active)this.setScreen('pause');else if(!value&&this.phase==='pause')this.setScreen('playing');}
+  openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.actions.pause(true);this.setScreen('tutorial');}
+  closeTutorial(){
+    this.tutorialSeen=true;
+    if(this.pendingMode){const practice=this.pendingMode==='practice';this.pendingMode=null;this.start(practice);}
+    else if(this.tutorialReturn==='playing')this.resume();
+    else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
+  }
+  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='title')this.choose('launcher');}
+  choose(action){
     this.music.unlock();
-    this.render();
+    switch(action){
+      // Same game-selection destination used by CyberArtsBR/Skate's launcher.
+      case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
+      case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
+      case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
+      case 'tutorial':this.openTutorial();break;
+      case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
+      case 'camera':this.cameraIndex=(this.cameraIndex+1)%4;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'volume':this.music.setVolume(this.music.audio.volume>=.99?0:Math.min(1,this.music.audio.volume+.1));this.render();break;
+      case 'sound':this.sound=!this.sound;this.actions.sound(this.sound);this.render();break;
+      case 'deck':this.finishIndex=(this.finishIndex+1)%8;this.actions.deck(this.finishIndex);this.render();break;
+      case 'title':this.actions.pause(true);this.setScreen('title');break;
+      case 'back':this.back();break;
+      case 'previous':this.page=Math.max(0,this.page-1);this.render();break;
+      case 'next':this.page=Math.min(this.pages.length-1,this.page+1);this.render();break;
+      case 'closeTutorial':this.closeTutorial();break;
+    }
   }
-
-  pause() {
-    if (!this.isPlaying()) return;
-    this.pauseGame();
-    this.screen = 'pause';
-    this.render();
-  }
-
-  resume() {
-    if (!this.isPause()) return;
-    this.resumeGame();
-    this.screen = 'playing';
-    this.render();
-  }
-
-  openTutorial(origin = 'title') {
-    this.tutorialReturn = origin;
-    this.page = 0;
-    this.screen = 'tutorial';
-    this.render();
-  }
-
-  act(action) {
+  key(event){
+    if(/INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))return;
+    if(event.code==='Backspace'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)this.music.next();return;}
+    if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else this.openTutorial();}return;}
+    if(this.active)return;
     this.music.unlock();
-    if (action === 'start') { this.openTutorial('start'); return; }
-    if (action === 'practice') { this.start(true); return; }
-    if (action === 'begin') { this.start(false); return; }
-    if (action === 'resume') { this.resume(); return; }
-    if (action === 'pause') { this.pause(); return; }
-    if (action === 'options') { this.optionsReturn = this.screen; this.screen = 'options'; this.render(); return; }
-    if (action === 'tutorial') { this.openTutorial(this.screen); return; }
-    if (action === 'tricks') { this.openTricks(); return; }
-    if (action === 'next') {
-      if (this.page < TUTORIAL_PAGES.length-1) { this.page++; this.render(); }
-      else if (this.tutorialReturn === 'start') this.start(false);
-      else { this.screen = this.tutorialReturn === 'pause' ? 'pause' : 'title'; this.render(); }
-      return;
-    }
-    if (action === 'previous') { this.page = Math.max(0,this.page-1); this.render(); return; }
-    if (action === 'back') {
-      if (this.screen === 'tutorial') {
-        this.screen = this.tutorialReturn === 'start' ? 'title' : this.tutorialReturn;
-      } else if (this.screen === 'options') this.screen = this.optionsReturn;
-      else if (this.screen === 'results') this.screen='title';
-      else if (this.screen === 'pause') { this.resume(); return; }
-      this.render(); return;
-    }
-    if (action === 'quit') { this.pauseGame(); this.screen='title'; this.render(); return; }
-    if (action === 'music') { this.music.next(); this.render(); return; }
-    if (action === 'camera') { this.setCameraMode(); this.render(); return; }
-    if (action === 'retry') { this.openTutorial('start'); return; }
-  }
-
-  onKey(event) {
-    if (event.code === 'Backspace' && !/INPUT|TEXTAREA/.test(event.target?.tagName)) {
-      event.preventDefault(); this.music.unlock(); this.music.next(); return;
-    }
-    if (this.isPlaying()) {
-      if (event.code === 'Escape' && !event.repeat) {
-        event.preventDefault(); event.stopPropagation(); this.pause();
-      }
-      return;
-    }
-    const key = event.code;
-    if (['ArrowDown','ArrowUp','Enter','Space','Escape','KeyW','KeyS'].includes(key)) {
-      event.preventDefault(); event.stopPropagation();
-      if (event.repeat) return;
-      if (key === 'ArrowDown' || key === 'KeyS') this.navigate(1);
-      else if (key === 'ArrowUp' || key === 'KeyW') this.navigate(-1);
-      else if (key === 'Escape') this.act('back');
-      else this.confirm();
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space','Enter','Escape'].includes(event.code)){
+      event.preventDefault();event.stopImmediatePropagation();if(event.repeat)return;
+      if(event.code==='Escape')this.back();
+      else if(['ArrowLeft','KeyA'].includes(event.code)&&this.open)this.choose('previous');
+      else if(['ArrowRight','KeyD'].includes(event.code)&&this.open)this.choose('next');
+      else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'].includes(event.code)){this.selection+=['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1;this.focusSelection();}
+      else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
   }
-
-  navigate(step) {
-    const buttons = [...this.root.querySelectorAll('button[data-ch-action]:not(:disabled)')];
-    if (!buttons.length) return;
-    this.selected = (this.selected+step+buttons.length)%buttons.length;
-    buttons[this.selected].focus({ preventScroll:true });
-  }
-
-  confirm() {
-    const buttons = [...this.root.querySelectorAll('button[data-ch-action]:not(:disabled)')];
-    buttons[this.selected]?.click();
-  }
-
-  pollGamepad(dt) {
-    this.navCooldown = Math.max(0,this.navCooldown-dt);
-    const pad = [...(navigator.getGamepads?.()||[])].find(p=>p?.connected);
-    if (!pad) { this.padPrevious = {}; return; }
-    const held = key => !!pad.buttons[key]?.pressed;
-    const edge = key => held(key) && !this.padPrevious[key];
-    const wasPlaying = this.isPlaying();
-    if (wasPlaying) {
-      if (edge(9)) this.pause();
-    } else {
-      if (edge(0)) this.confirm();
-      if (edge(1)) this.act('back');
-      if (edge(9) && this.screen === 'pause') this.act('resume');
-      const direction = (held(13) || (pad.axes[1]||0)>0.65 ? 1 : 0)
-        - (held(12) || (pad.axes[1]||0)<-0.65 ? 1 : 0);
-      if (direction && this.navCooldown<=0) { this.navigate(direction); this.navCooldown=0.2; }
+  updateTimer(){this.timer.textContent=this.practice?'PRACTICE · ∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;this.timer.classList.toggle('time-low',!this.practice&&this.remaining<=15);}
+  update(dt){
+    this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
+    if(!document.hasFocus())return;
+    const pad=[...(navigator.getGamepads?.()||[])].find(p=>p?.connected);
+    const b=i=>!!pad?.buttons[i]?.pressed;
+    const keys={a:b(0),back:b(1),select:b(8),start:b(9),up:b(12)||(pad?.axes[1]||0)<-.6,down:b(13)||(pad?.axes[1]||0)>.6,left:b(14)||b(4),right:b(15)||b(5)};
+    const edge=k=>keys[k]&&!this.previousPad[k];
+    if(Object.keys(keys).some(edge))this.music.unlock();
+    if(edge('select'))this.music.next();
+    if(!this.active){
+      if((keys.up||keys.down)&&(!this.navRepeat||edge('up')||edge('down'))){this.selection+=keys.up?-1:1;this.focusSelection();this.navRepeat=.22;}
+      if(edge('back'))this.back();
+      else if(this.open&&edge('left'))this.choose('previous');
+      else if(this.open&&edge('right'))this.choose('next');
+      else if(edge('a'))this.menuButtons()[this.selection]?.click();
+      else if(edge('start')&&this.phase==='pause')this.resume();
     }
-    // View/Select is handled here on menus and during gameplay.
-    if (edge(8)) this.music.next();
-    this.padPrevious = Object.fromEntries(Array.from({length:17},(_,i)=>[i,held(i)]));
-  }
-
-  tick(dt, canSimulate) {
-    this.pollGamepad(dt);
-    if (!this.isPlaying() || !canSimulate) return;
-    if (!this.practice) {
-      this.remaining = Math.max(0,this.remaining-dt);
-      if (this.remaining <= 0) {
-        this.pauseGame();
-        this.screen='results';
-        this.render();
-      }
+    this.previousPad=keys;
+    if(this.active&&!this.practice&&document.hasFocus()){
+      this.remaining=Math.max(0,this.remaining-dt);this.updateTimer();
+      if(!this.remaining){this.finalScore=this.actions.score();this.actions.pause(true);this.music.next();this.setScreen('results');}
     }
-    this.updateTimer();
-  }
-
-  updateTimer() {
-    const seconds = Math.ceil(this.remaining);
-    this.timer.querySelector('strong').textContent = this.practice ? '∞' :
-      String(Math.floor(seconds/60)).padStart(2,'0') + ':' +
-      String(seconds%60).padStart(2,'0');
-  }
-
-  render() {
-    this.root.hidden = this.isPlaying();
-    this.app.dataset.chScreen = this.screen;
-    this.timer.hidden = !this.isPlaying();
-    this.updateTimer();
-    if (this.isPlaying()) return;
-    const button = (action,label,primary=false) =>
-      '<button type="button" data-ch-action="'+action+'" class="'+(primary?'primary':'')+'">'+label+'</button>';
-    let content = '';
-    if (this.screen === 'title') {
-      content = '<p class="ch-eyebrow">THE CHIMPIONS · ROOFTOP SKATE SESSIONS</p><h1>CHIMP HAWK<br><em>UNDERGROUND</em></h1><p class="ch-sub">MAKE YOUR LINE. OWN THE SKYLINE.</p>'
-        + button('start', this.ready() ? 'START GAME · 90 SEC' : 'LOADING PARK…',true)
-        + button('options','OPTIONS') + button('tutorial','HOW TO PLAY')
-        + '<p class="ch-mini">A / ENTER SELECT · ↑↓ NAVIGATE · SELECT / BACKSPACE MUSIC</p>';
-    } else if (this.screen === 'options') {
-      content = '<p class="ch-eyebrow">SETTINGS</p><h2>OPTIONS</h2><p class="ch-sub">Practice has no timer or score deadline.</p>'
-        + button('practice','PRACTICE · UNLIMITED',true)
-        + button('camera','CYCLE CAMERA') + button('music','NEXT TRACK') + button('back','BACK');
-    } else if (this.screen === 'pause') {
-      content = '<p class="ch-eyebrow">SESSION PAUSED</p><h2>PAUSE MENU</h2>'
-        + button('resume','RESUME',true) + button('tutorial','HOW TO PLAY')
-        + button('tricks','TRICK BOOK') + button('options','OPTIONS')
-        + button('music','NEXT TRACK') + button('quit','MAIN MENU');
-    } else if (this.screen === 'tutorial') {
-      const p = TUTORIAL_PAGES[this.page];
-      content = '<p class="ch-eyebrow">'+p.kicker+'</p><h2>'+p.title+'</h2><div class="ch-tutorial">'
-        + p.rows.map(([key,value])=>'<div><b>'+key+'</b><span>'+value+'</span></div>').join('')
-        + '</div><p class="ch-tip">'+p.tip+'</p>'
-        + '<p class="ch-page">'+(this.page+1)+' / '+TUTORIAL_PAGES.length+'</p>'
-        + button('previous','PREVIOUS') + button('next',this.page===TUTORIAL_PAGES.length-1 && this.tutorialReturn==='start' ? 'START 90-SECOND RUN' : 'NEXT',true)
-        + button('back','BACK');
-    } else if (this.screen === 'results') {
-      content = '<p class="ch-eyebrow">TIME IS UP</p><h2>RUN COMPLETE</h2>'
-        + '<p class="ch-result">'+Number(this.getScore()||0).toLocaleString()+' POINTS</p>'
-        + button('retry','PLAY AGAIN',true) + button('practice','PRACTICE') + button('quit','MAIN MENU');
-    }
-    this.root.innerHTML = '<div class="ch-menu"><div class="ch-menu-content">'+content+'</div><p class="ch-track">♫ '+this.music.trackName+'</p></div>';
-    const buttons = [...this.root.querySelectorAll('button:not(:disabled)')];
-    this.selected = 0;
-    // Leave pointer interactions unfocused, but enable predictable controller focus.
-    if (buttons.length && this.padPrevious[0]) buttons[0].focus({preventScroll:true});
   }
 }

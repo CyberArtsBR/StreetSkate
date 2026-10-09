@@ -132,7 +132,22 @@ export function stepBalance(state, {
   comboDuration = 0,
   correction = 0,
   steering = 0,
+  rail = false,
 }) {
+  if (rail) {
+    const ramp = clamp(duration / 2.5, 0, 1);
+    const pressure = difficulty * (0.8 + ramp * 0.7) + clamp(speed / 23, 0, 1) * 0.35;
+    // An unstable balance point: neutral input runs out in a few seconds, while
+    // holding one direction continually overshoots and falls off the other side.
+    const drift = state.bias * (0.52 + ramp * 0.24) + state.value * 1.15;
+    const wave = Math.sin(duration * 4.8 + state.phase) * 0.34;
+    state.velocity += ((drift + wave) * pressure + state.bias * (state.disturbance || 0) * 0.8
+      - clamp(correction, -1, 1) * 3.4) * dt;
+    state.velocity *= Math.exp(-1.35 * dt);
+    state.value += state.velocity * dt;
+    state.disturbance *= Math.exp(-2.6 * dt);
+    return { value: state.value, velocity: state.velocity, failed: Math.abs(state.value) >= 1, pressure, ramp };
+  }
   const ramp = clamp((duration - 0.55) / 2.4, 0, 1);
   const speedTerm = clamp(speed / 14, 0, 1);
   const comboTerm = clamp(comboDuration / 24, 0, 1);

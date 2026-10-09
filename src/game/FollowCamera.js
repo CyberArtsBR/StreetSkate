@@ -37,8 +37,8 @@ export const THPS_CAMERA = Object.freeze({
   classicVertHeight: 4.4,
   classicGrindZoom: 0.94,
   classicTrickZoom: 0.92,
-  landingHoldTime: 0.62,
-  returnReframeRate: 9,
+  landingHoldTime: 0.9,
+  returnReframeRate: 18,
 });
 
 function wrapAngle(value) {
@@ -147,12 +147,14 @@ export class FollowCamera {
   }
 
   setMode(mode, player = null) {
-    this.mode = ['follow', 'classic', 'fixed', 'first-person'].includes(mode) ? mode : 'follow';
+    this.mode = ['follow', 'classic', 'fixed', 'firstperson'].includes(mode) ? mode : 'follow';
+    this.camera.fov = this.mode === 'firstperson' ? 78 : 58;
+    this.camera.updateProjectionMatrix();
     if (player) this.snap(player);
   }
 
   snap(player) {
-    this.clearanceCache = { fixedAxis: this.mode === 'fixed' || this.mode === 'follow' };
+    this.clearanceCache = { fixedAxis: this.mode === 'fixed' };
     this.initialized = false;
     this.wasReturning = false;
     this.returnHold = 0;
@@ -172,17 +174,9 @@ export class FollowCamera {
       previousDirection: this.direction,
       initialized: this.initialized,
     });
-    if (this.mode === 'first-person') {
-      const look = state.travelDirection.clone().setY(0).normalize();
-      const riderHeight = 1.64;
-      this.camera.position.copy(state.position).addScaledVector(UP,riderHeight);
-      this.camera.lookAt(state.position.clone().addScaledVector(UP,riderHeight).addScaledVector(look,6));
-      this.direction.copy(look); this.initialized = true;
-      if (player?.visual) player.visual.visible = false;
-      return;
-    }
     const classic = this.mode !== 'fixed';
-    const highFollow = this.mode === 'follow';
+    const firstPerson = this.mode === 'firstperson';
+    const highFollow = this.mode === 'follow' || firstPerson;
     const returning = state.transitionReturning;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
@@ -191,7 +185,14 @@ export class FollowCamera {
         if (highFollow) { this.lookYaw = 0; this.lookTilt = 0; this.lookHold = 0; }
       }
       if (returning) this.returnHold = THPS_CAMERA.landingHoldTime;
-      else this.returnHold = Math.max(0, this.returnHold - dt);
+      else {
+        // Keep the chosen return side through touchdown. Release only into
+        // matching downhill travel or deliberate player steering, never a stale
+        // uphill heading from the coping contact.
+        const aligned = state.travelDirection.dot(this.vertDirection) > 0.5;
+        if (!highFollow || aligned || Math.abs(input.steer || 0) > 0.25 || state.grindActive || input.vertExit)
+          this.returnHold = Math.max(0, this.returnHold - dt);
+      }
       // High Follow anticipates the downhill return as soon as vert air begins.
       // Classic retains its original ramp-side framing. Trick spins steer neither.
       if (returning || this.returnHold > 0) {
@@ -206,7 +207,7 @@ export class FollowCamera {
       const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
-      const highFrame = highFollow ? highFollowFraming(state) : null;
+      const highFrame = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }) : null;
       const distance = highFollow ? highFrame.distance
         : returning ? THPS_CAMERA.classicVertDistance
         : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
@@ -234,6 +235,16 @@ export class FollowCamera {
       this.height = THPS_CAMERA.height;
     }
     this.wasReturning = returning;
+    if (firstPerson) {
+      const look = this.direction.clone().applyAxisAngle(UP, this.lookYaw);
+      const eye = state.position.clone().addScaledVector(UP, 1.18 - (player.charge || 0) * 0.3);
+      this.camera.position.copy(eye);
+      this.target.copy(eye).addScaledVector(look, 12).addScaledVector(UP, -0.35 - this.lookTilt * 6);
+      this.camera.lookAt(this.target);
+      if (player?.visual) player.visual.visible = false;
+      this.initialized = true;
+      return;
+    }
     if (!this.initialized) this.followCenter = state.position.clone();
     else {
       const horizontal = 1 - Math.exp(-THPS_CAMERA.positionFollowRate * dt);
@@ -249,7 +260,7 @@ export class FollowCamera {
     }
     const viewDirection = this.direction.clone();
     if (classic) viewDirection.applyAxisAngle(UP, this.lookYaw);
-    const lookAheadTarget = highFollow ? highFollowFraming(state).lookAhead : classic && !returning ? 0.55 : 0;
+    const lookAheadTarget = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }).lookAhead : classic && !returning ? 0.55 : 0;
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
@@ -263,6 +274,9 @@ export class FollowCamera {
     // Frame with the smoothed tripod, but protect the actual rider: tracking lag
     // must not disguise a camera inside the face when an obstacle shortens the arm.
     const riderAnchor = state.position.clone().addScaledVector(UP, THPS_CAMERA.anchorHeight);
+    // A clear view may rise or shorten, but High Follow never orbits sideways
+    // to get around the coping during landing.
+    this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     let resolvedPosition = resolveCameraClearance(player?.surface, riderAnchor,
       this.position, this.camera.position, this.clearanceCache);
     const eyeOffset = resolvedPosition.clone().sub(riderAnchor);

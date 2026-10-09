@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createSurfaceMaterials, createGraffitiMaterial } from './SurfaceMaterials.js';
+import { createRooftopCity } from './RooftopCity.js';
 
 // Metres, Y up. Every riding surface is also its collision surface; paint,
 // lighting and scenery are deliberately excluded from the collision model.
 export function createSolarDockPark() {
   const park = new THREE.Group();
   const collision = new THREE.Group();
-  park.name = 'Solar Dock / desert skate terminal';
+  park.name = 'Chimp Hawk / sunset rooftop';
   collision.name = 'Solar Dock / authored collision';
   const rails = [];
   const batches = new Map();
@@ -20,6 +21,7 @@ export function createSolarDockPark() {
     steel: new THREE.MeshStandardMaterial({ color: '#87999b', metalness: 0.75, roughness: 0.3 }),
     sand: new THREE.MeshStandardMaterial({ color: '#ae8060', roughness: 1, flatShading: true }),
     paint: new THREE.MeshStandardMaterial({ color: '#eee7d2', roughness: 0.9 }),
+    guardGlass: new THREE.MeshStandardMaterial({ color: '#86bbc9', roughness: 0.15, transparent: true, opacity: 0.16, depthWrite: false }),
   };
   const proxyMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 
@@ -305,25 +307,21 @@ export function createSolarDockPark() {
   // Perimeter: flush painted apron and a visible low wall at the playable limit.
   for (const x of [-53.8, 53.8]) box(x, 0.4, -8, 0.4, 0.8, 148, 'graphite', 'solid');
   for (const z of [-81.8, 65.8]) box(0, 0.4, z, 108, 0.8, 0.4, 'graphite', 'solid');
+  // Continuous safety railing: collidable infill, visible uprights and three
+  // horizontal bars. It stays outside the established riding boundary.
+  for (const x of [-53.8,53.8]) {
+    for (let z=-81.8;z<=65.8;z+=3.075) box(x,1.55,z,.095,1.7,.095,'steel');
+    for (const y of [1.05,1.7,2.4]) tube([x,y,-81.8],[x,y,65.8],.045,'steel');
+    box(x,1.55,-8,.08,1.7,147.6,'guardGlass','solid');
+  }
+  for (const z of [-81.8,65.8]) {
+    for (let x=-53.8;x<=53.8;x+=3.075) box(x,1.55,z,.095,1.7,.095,'steel');
+    for (const y of [1.05,1.7,2.4]) tube([-53.8,y,z],[53.8,y,z],.045,'steel');
+    box(0,1.55,z,107.6,1.7,.08,'guardGlass','solid');
+  }
   for (const x of [-52.5, 52.5]) box(x, 0.009, -8, 0.14, 0.012, 144, 'amber');
   for (const z of [-80.5, 64.5]) box(0, 0.009, z, 105, 0.012, 0.14, 'amber');
 
-  // Graphic floor markings and large terminal signs, all visual-only.
-  function sign(text, subtext, position, width, ground = false) {
-    const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#25383b'; ctx.fillRect(0, 0, 1024, 256);
-    ctx.fillStyle = '#edab38'; ctx.fillRect(0, 0, 18, 256);
-    ctx.font = 'bold 100px sans-serif'; ctx.fillStyle = '#eee7d2'; ctx.fillText(text, 48, 126);
-    ctx.font = '28px sans-serif'; ctx.fillStyle = '#a3ceca'; ctx.fillText(subtext, 52, 204);
-    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width / 4), new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9, side: THREE.DoubleSide }));
-    mesh.position.set(...position); if (ground) mesh.rotation.x = -Math.PI / 2;
-    if (!ground) box(position[0], position[1], position[2] - 0.1, width, width / 4, 0.18, 'graphite', 'solid');
-    park.add(mesh);
-  }
-  sign('CHIMP HAWK', 'UNDERGROUND / SKYLINE ROOFTOP', [0, 5, -76], 26);
-  for (const x of [-11.5, 11.5]) box(x, 2.5, -76.2, 0.25, 5, 0.25, 'turquoise', 'solid');
   function mural(word, position, width, height, yaw = 0, seed = 15) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), createGraffitiMaterial(word, seed));
     mesh.position.set(...position); mesh.rotation.y = yaw;
@@ -363,7 +361,7 @@ export function createSolarDockPark() {
   muralGeometry.dispose();
   for (let z = -47; z <= 47; z += 8) box(17.2, 0.012, z, 0.12, 0.015, 3, 'paint');
 
-  // Skyline replaces the former low-poly desert surroundings.
+  park.add(createRooftopCity());
 
   let visualTriangles = 0;
   for (const [material, geometries] of batches) {
@@ -371,7 +369,7 @@ export function createSolarDockPark() {
     geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, materials[material]);
     mesh.name = `Solar Dock / ${material}`;
-    mesh.userData.castShadow = material !== 'paint' && material !== 'sand';
+    mesh.userData.castShadow = !['paint','sand','guardGlass'].includes(material);
     park.add(mesh);
     visualTriangles += geometry.attributes.position.count / 3;
     for (const source of geometries) source.dispose();
@@ -388,7 +386,7 @@ export function createSolarDockPark() {
   park.traverse(mesh => { if (mesh.isMesh) visualTriangles += (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3; });
 
   return { park, collision, manifest: {
-    name: 'SKYLINE ROOFTOP', theme: 'Sunset city skyscraper', visualTriangles,
+    name: 'CHIMP HAWK', theme: 'Sunset cloud rooftop', visualTriangles,
     dimensions: '108 × 148 m · 4 SKATE ZONES', transitionScale: 1,
     spawn: [0, 0.15, 41], rails,
     playableRegions: [{ minX: -53.3, maxX: 53.3, minZ: -81.3, maxZ: 65.3 }],
@@ -400,7 +398,7 @@ export function createSolarDockPark() {
       { id: 'rail', label: 'Long rail', position: [-48, 0.15, -3], heading: Math.PI },
     ],
     views: {
-      overview: { position: [122, 110, 145], target: [0, 0, -8], caption: 'Skyline rooftop · Golden hour', index: '01' },
+      overview: { position: [122, 110, 145], target: [0, 0, -8], caption: 'Solar Dock · Desert skate terminal', index: '01' },
       bowl: { position: [3, 28, 12], target: [-28, -1.5, -24], caption: 'Orbit pool · Continuous transitions', index: '02' },
       street: { position: [22, 23, 47], target: [0, 0, 8], caption: 'Street terminal · Build your line', index: '03' },
       top: { position: [0, 173, -7.99], target: [0, 0, -8], caption: 'Four zones. One connected park.', index: '—' },

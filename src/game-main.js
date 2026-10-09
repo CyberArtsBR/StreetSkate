@@ -14,9 +14,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { surfaceTexturesReady } from './park/SurfaceMaterials.js';
 import { loadSolarSky } from './park/SolarSky.js';
-import { createTrickGuide } from './game/TrickGuide.js';
 import { GameShell } from './game/GameShell.js';
-import { createRooftopCity } from './park/RooftopCity.js';
 import './style.css';
 import './game-shell.css';
 
@@ -94,44 +92,31 @@ let loaded = false;
 let paused = false;
 let lastInputState = {};
 const input = new SkateInput(renderer.domElement);
-const debugOverlay = createDebugOverlay({
+const debugOverlay = new URLSearchParams(location.search).get('debug') === '1' ? createDebugOverlay({
   button: document.querySelector('#debug-overlay'),
   panel: document.querySelector('#debug-panel'),
-});
+}) : { update() {}, toggle() {} };
 const clock = new THREE.Clock();
 const skateAudio = new SkateAudio();
 window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: true });
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
-const daylightColor = legacyPark ? '#25363d' : '#dc9281';
-let pausedBeforeTrickGuide = false;
-const trickGuide = createTrickGuide({
-  button: document.querySelector('#trick-guide-button'),
-  onOpen: () => { pausedBeforeTrickGuide = paused; setPaused(true); input.enabled = false; input.clear(); },
-  onClose: () => { input.clear(); input.enabled = loaded && mode === 'skate'; setPaused(pausedBeforeTrickGuide || !document.hasFocus()); },
-});
-
+const daylightColor = legacyPark ? '#25363d' : '#c1d1cf';
 const gameShell = new GameShell({
-  app, ready: () => loaded,
-  startRun: () => {
-    if (!loaded) return;
-    skater.reset(); setMode('skate'); setPaused(false);
-    input.clear(); input.enabled = true; followCamera.snap(skater);
-    renderer.domElement.focus({ preventScroll:true });
+  start: () => {
+    if (!skater) return;
+    skater.reset(new THREE.Vector3(...manifest.spawn), 0);
+    skater.spawn.set(...manifest.spawn); skater.spawnHeading = 0;
+    setMode('skate'); input.read(); input.clear(); followCamera.snap(skater);
   },
-  pauseGame: () => { setPaused(true); input.clear(); input.enabled = false; },
-  resumeGame: () => {
-    setPaused(false); input.clear(); input.enabled = true;
-    renderer.domElement.focus({ preventScroll:true });
-  },
-  getScore: () => skater?.score || 0,
-  setCameraMode: () => toggleCameraMode(),
-  openTricks: () => document.querySelector('#trick-guide-button').click(),
+  pause: value => setPaused(value),
+  camera: mode => setCameraMode(mode),
+  score: () => skater?.score || 0,
+  sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
+  deck: index => skater?.board?.setFinish(index),
 });
-window.addEventListener('keydown', event => {
-  const cameras = { Digit1:'follow', Digit2:'classic', Digit3:'fixed', Digit4:'first-person' };
-  if (loaded && gameShell.isPlaying() && cameras[event.code]) setCameraMode(cameras[event.code]);
-});
+gameShell.sound = skateAudio.enabled;
+document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
 function applyLighting() {
   sun.intensity = dusk ? 0.65 : solarSky ? 2.1 : 2.8;
@@ -175,6 +160,7 @@ function setExploreView(name, instant = false) {
 function setCameraMode(nextMode) {
   if (!followCamera) return;
   followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
+  gameShell.cameraIndex = ['follow','classic','fixed','firstperson'].indexOf(followCamera.mode);
   const button = document.querySelector('#camera-mode');
   button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
   button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
@@ -184,7 +170,7 @@ function setCameraMode(nextMode) {
 }
 
 function toggleCameraMode() {
-  const modes = ['follow', 'classic', 'fixed', 'first-person'];
+  const modes = ['follow', 'classic', 'fixed', 'firstperson'];
   setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
 }
 
@@ -207,6 +193,8 @@ function goToSpot(id) {
 function setPaused(value) {
   paused = Boolean(value) && mode === 'skate';
   app.dataset.paused = String(paused);
+  input.clear();
+  gameShell.syncPause(paused);
   if (paused) {
     skateAudio.silence();
     input.clear();
@@ -266,6 +254,8 @@ function updateHud() {
 }
 
 function showError(error) {
+  gameShell.loadError = true;
+  gameShell.render();
   const loading = document.querySelector('#loading');
   loading.querySelector('p').innerHTML = 'The game could not continue.<span id="load-progress"></span>';
   loading.querySelector('#load-progress').textContent = error?.message || 'Reload the game to try again.';
@@ -305,8 +295,9 @@ async function loadGame() {
     scene.background.set(daylightColor);
     scene.fog.color.set(daylightColor);
     scene.fog.density = legacyPark ? 0.005 : 0.0014;
-    floor.position.y = legacyPark ? -3.18 : -6;
-    floor.material.color.set(legacyPark ? '#31454b' : '#b58e6c');
+    floor.position.y = legacyPark ? -3.18 : -100;
+    floor.visible = legacyPark;
+    floor.material.color.set(legacyPark ? '#31454b' : '#232b38');
     if (!legacyPark) {
       ambient.intensity = 0.9;
       renderer.toneMappingExposure = 0.94;
@@ -331,20 +322,12 @@ async function loadGame() {
       }
     });
     scene.add(park);
-    if (!legacyPark) {
-      scene.add(createRooftopCity()); floor.visible = false;
-      sun.color.set('#ffd0a6'); sun.intensity = 1.85;
-      ambient.color.set('#ffe0d1');
-      scene.fog.color.set('#b87e88'); scene.fog.density = 0.0018;
-      document.querySelector('.edition').textContent = 'SKYLINE ROOFTOP / GOLDEN HOUR';
-    }
     document.querySelector('#load-progress').textContent = 'Loading TheanchoURi and skateboard';
 
     skater = await new StreetSkater({ collision, spawn: manifest.spawn, rails: manifest.rails,
       playableRegions: manifest.playableRegions }).load();
     scene.add(skater.root);
     followCamera = new FollowCamera(camera);
-    // Every new run uses Follow unless the player explicitly cycles cameras.
     setCameraMode('follow');
 
     const debugTransitions = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -399,7 +382,8 @@ async function loadGame() {
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
-    setPaused(true); input.enabled = false; gameShell.render();
+    setPaused(true);
+    gameShell.setReady();
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2', rampTuning,
@@ -427,7 +411,7 @@ document.querySelectorAll('button[data-view]').forEach((button) => button.addEve
   setExploreView(button.dataset.view);
 }));
 document.querySelector('#reset').onclick = () => {
-  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); if (gameShell.isPlaying()) setPaused(false); }
+  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); setPaused(false); }
   else setExploreView('overview');
 };
 document.querySelector('#topview').onclick = () => {
@@ -458,7 +442,7 @@ window.addEventListener('resize', () => {
 function suspendSkating() {
   skateAudio.silence();
   input.clear();
-  if (loaded && mode === 'skate') { if (gameShell.isPlaying()) gameShell.pause(); else setPaused(true); }
+  if (loaded && mode === 'skate') setPaused(true);
 }
 window.addEventListener('blur', suspendSkating);
 window.addEventListener('gamepaddisconnected', suspendSkating);
@@ -474,27 +458,30 @@ setExploreView('overview', true);
 loadGame();
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const realDelta = clock.getDelta();
+  const dt = Math.min(realDelta, 0.1);
   const elapsed = clock.elapsedTime;
   if (document.hidden) return;
-  gameShell.tick(dt, loaded && mode === 'skate' && !paused && document.hasFocus() && !trickGuide.open);
+  const wasPlaying = gameShell.active;
+  gameShell.update(realDelta);
 
   // Never silently freeze on the last airborne frame when another overlay/window
   // takes focus. Make the suspension explicit and require a deliberate resume.
-  if (loaded && mode === 'skate' && !document.hasFocus() && !paused) gameShell.pause();
+  if (loaded && mode === 'skate' && !document.hasFocus() && !paused) setPaused(true);
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     lastInputState = {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
     };
-    // Start and Escape are consumed centrally by GameShell, avoiding a double-toggle.
-    if (state.cameraModePressed && !trickGuide.open && gameShell.isPlaying()) toggleCameraMode();
-    if (!paused && !trickGuide.open && gameShell.isPlaying()) {
-      const recovering = skater.bailTime > 0;
-      skater.update(dt, state, elapsed);
-      if (recovering && skater.bailTime <= 0) followCamera.snap(skater);
-      else followCamera.update(skater, dt, state);
+    if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
+    if (state.cameraModePressed && gameShell.active) toggleCameraMode();
+    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed','firstperson'][state.cameraModeIndex]);
+    if (!paused && gameShell.active) {
+      const respawn = skater.respawnSerial;
+      skater.update(dt, gameShell.inputGrace > 0 ? {} : state, elapsed);
+      if (skater.respawnSerial !== respawn) followCamera.snap(skater);
+      followCamera.update(skater, dt, state);
       if (state.reset) followCamera.snap(skater);
     }
     updateHud();
@@ -513,6 +500,6 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
-  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.isPlaying() && !trickGuide.open && document.hasFocus());
+  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
   renderer.render(scene, camera);
 });

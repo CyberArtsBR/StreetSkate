@@ -20,6 +20,12 @@ function horizontalUnit(source, fallback = null) {
  * side -> deck forward adjusted for fakie -> world -Z fallback.
  */
 export function resolveCameraTravelDirection(player, previousDirection = null, initialized = true) {
+  // Landing contacts can leave canonical travel pointing uphill for a frame.
+  // Follow actual, meaningful downhill movement after re-entry instead.
+  if (player?.grounded && Math.abs(player?.normal?.y || 0) > 0.25) {
+    const groundVelocity = player.velocity?.clone?.().setY(0);
+    if (groundVelocity?.lengthSq() > 0.64) return groundVelocity.normalize();
+  }
   const persistent = horizontalUnit(player?.travelDirection);
   if (persistent) return persistent;
 

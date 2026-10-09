@@ -7,7 +7,7 @@ import { directionKey, grindFor } from './TrickCatalog.js';
 import { constrainToPark } from './ParkBoundaries.js';
 import { flipTurns } from '../character/TrickMotion.js';
 import { groundForwardFromHeading } from './core/GroundMotor.js';
-import { safeRespawnPoint } from './SafeRespawn.js';
+import { nearbyFlatRespawn } from './SafeRespawn.js';
 
 export const MOVEMENT_STATE = Object.freeze({
   GROUND: 'GROUND',
@@ -72,6 +72,7 @@ export class StreetPhysics {
     this.airTime = 0; this.accumulator = 0; this.coyote = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
     this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
+    this.respawnTimer = 0; this.bailDuration = 1.25;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
@@ -79,7 +80,6 @@ export class StreetPhysics {
     this.takeoffOllieRequested = null;
     this.contactCooldown = 0; this.grindIntentTime = 0;
     this.lastWheelSupport = null;
-    this.respawnFlash = 0;
     this.tricks.reset();
     this.groundDirection();
   }
@@ -301,9 +301,25 @@ export class StreetPhysics {
 
     if (this.movementState === MOVEMENT_STATE.BAIL || this.bailTime > 0) {
       this.bailTime -= dt;
-      if (this.bailTime <= 0) { const score = this.score; const spot = safeRespawnPoint(this.surface,this.bailOrigin || this.position,this.spawn); this.reset(spot,this.spawnHeading || 0); this.score = score; this.respawnFlash = 0.90; }
+      this.bailVelocity ||= new THREE.Vector3();
+      this.bailVelocity.y -= PHYSICS.gravity * dt;
+      const next = this.position.clone().addScaledVector(this.bailVelocity, dt);
+      const support = this.surface.ground(this.position, 0.3, Math.max(0.4, this.position.y - next.y + 0.2));
+      if (support && next.y <= support.point.y + 0.015) {
+        next.y = support.point.y + 0.015; this.bailVelocity.y = 0;
+        this.bailVelocity.x *= Math.exp(-5 * dt); this.bailVelocity.z *= Math.exp(-5 * dt);
+      }
+      this.position.copy(this.surface.move(this.position, next, this.bailVelocity, { grounded: false }).position);
+      if (this.bailTime <= 0) {
+        const score = this.score, heading = this.heading, stance = this.stance;
+        const safe = nearbyFlatRespawn(this);
+        this.reset(safe, heading); this.score = score; this.stance = stance;
+        this.respawnTimer = 1.8; this.contactCooldown = 0.6;
+        this.respawnSerial = (this.respawnSerial || 0) + 1;
+      }
       return;
     }
+    this.respawnTimer = Math.max(0, (this.respawnTimer || 0) - dt);
 
     if (this.grabState && input.grabHeld && !this.grounded && !this.flipState && !this.grind && !this.wallRide) {
       this.grabState.heldTime += dt;
@@ -625,8 +641,10 @@ export class StreetPhysics {
   }
 
   bail(message) {
-    this.bailOrigin = this.position.clone();
-    this.velocity.set(0, 0, 0); this.bailTime = 0.9;
+    if (this.bailTime > 0 || this.respawnTimer > 0) return;
+    this.bailVelocity = this.velocity.clone().clampLength(0, 8);
+    this.velocity.set(0, 0, 0); this.bailDuration = 1.25; this.bailTime = this.bailDuration;
+    this.flipState = null; this.grabState = null;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
     this.setMovementState(MOVEMENT_STATE.BAIL);
     this.tricks.cancelCombo();

@@ -92,18 +92,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       new StreetBoard('/assets/rider/skateboard.glb').load(),
       new UnrealRider('/assets/rider/TheanchoURi.glb').load(),
     ]);
-    this.visual.add(this.board.root,this.rider.root);
+    this.visual.add(this.board.root, this.rider.root);
     this.flashMaterials = [];
-    this.visual.traverse(object => {
-      if (!object.isMesh || !object.material) return;
-      const variants = Array.isArray(object.material) ? object.material : [object.material];
-      variants.forEach((original,i) => {
-        if (!original) return;
-        const clone = original.clone();
-        if (Array.isArray(object.material)) object.material[i] = clone;
-        else object.material = clone;
-        this.flashMaterials.push({material:clone,opacity:clone.opacity,transparent:clone.transparent,depthWrite:clone.depthWrite});
-      });
+    this.visual.traverse(mesh => {
+      if (!mesh.isMesh) return;
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
+        if (!this.flashMaterials.some(item => item.material === material)) this.flashMaterials.push({ material,
+          opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
     });
     this.rider.deckHeight = this.board.deckHeight;
     this.setBoardContactRig(this.board.contactRig);
@@ -247,7 +242,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;
-    const bailProgress = this.bailTime > 0 ? clamp(1 - this.bailTime / 0.9, 0, 1) : 0;
+    const bailProgress = this.bailTime > 0 ? clamp(1 - this.bailTime / this.bailDuration, 0, 1) : 0;
     const common = {
       presentation: this.presentation,
       flipState: this.flipState,
@@ -270,6 +265,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       dt: delta,
     };
     this.board?.update({ ...common, airborne: !this.grounded && !this.grind });
+    if (this.rider) this.rider.root.rotation.set(0, 0, 0);
     this.rider?.update({
       ...common,
       board: this.board,
@@ -282,12 +278,18 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       pumpState: this.presentation.pumpState,
     });
     this.applyWallImpactPose(this.wallImpactPoseWeight());
-    if (this.respawnFlash > 0) this.respawnFlash = Math.max(0,this.respawnFlash-delta);
-    const flash = this.respawnFlash > 0 && Math.floor((0.9-this.respawnFlash)/0.15)%2===1;
-    for (const entry of this.flashMaterials || []) {
-      entry.material.opacity = entry.opacity*(flash ? 0.22 : 1);
-      entry.material.transparent = flash || entry.transparent;
-      entry.material.depthWrite = flash ? false : entry.depthWrite;
+    if (this.rider && this.bailTime > 0) {
+      const fall = THREE.MathUtils.smoothstep(bailProgress, 0, 0.58);
+      // UnrealRider owns the sideways tumble; only add forward pitch here.
+      this.rider.root.rotation.x = 0.32 * fall;
+      this.rider.root.position.y += 0.16 * fall;
+    }
+    const flashing = this.respawnTimer > 0 && Math.floor((1.8 - this.respawnTimer) / 0.3) % 2 === 0;
+    for (const saved of this.flashMaterials || []) {
+      const transparent = flashing || saved.transparent;
+      if (saved.material.transparent !== transparent) { saved.material.transparent = transparent; saved.material.needsUpdate = true; }
+      saved.material.opacity = flashing ? 0.22 : saved.opacity;
+      saved.material.depthWrite = flashing ? false : saved.depthWrite;
     }
     this.balanceHud?.update(this.balanceMode(), this.balanceValue());
     this.updateDebugViewer();

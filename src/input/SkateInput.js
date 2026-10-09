@@ -118,6 +118,7 @@ export class SkateInput {
       switchStancePressed: just('ControlRight') || edge('switchStance'),
       pausePressed: just('Escape') || edge('pause'),
       cameraModePressed: (just('KeyC') && !held('ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight')) || edge('cameraMode'),
+      cameraModeIndex: just('Digit1','Numpad1') ? 0 : just('Digit2','Numpad2') ? 1 : just('Digit3','Numpad3') ? 2 : just('Digit4','Numpad4') ? 3 : null,
       reset: just('KeyR'),
       cameraX: axis(pad?.axes[2]),
       cameraY: axis(pad?.axes[3]),

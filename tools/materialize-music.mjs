@@ -1,13 +1,12 @@
-import { readdirSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, parse } from 'node:path';
+import { statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { TRACKS } from '../src/game/MusicPlayer.js';
 
-// Discover every MP3 actually present at build time; never hardcode missing names.
-const root = join(process.cwd(), 'public', 'audio', 'music');
-mkdirSync(root, { recursive: true });
-const names = readdirSync(root).filter(name => /\.mp3$/i.test(name)).sort();
-const tracks = names.map(name => ({
-  title: parse(name).name,
-  src: '/audio/music/' + encodeURIComponent(name),
-}));
-writeFileSync(join(root,'playlist.json'), JSON.stringify({ tracks }, null, 2) + '\n');
-console.log('Soundtrack manifest:', tracks.length, 'MP3 tracks');
+// The build manifest and runtime shuffle bag use the same original seven files.
+const root = join(process.cwd(), 'public', 'media');
+const tracks = TRACKS.map(([title, filename]) => {
+  if (statSync(join(root, filename)).size < 1024) throw new Error('Missing soundtrack: ' + filename);
+  return { title, src: '/media/' + filename };
+});
+writeFileSync(join(root, 'playlist.json'), JSON.stringify({ tracks }, null, 2) + '\n');
+console.log('Soundtrack manifest:', tracks.length, 'original MP3 tracks');

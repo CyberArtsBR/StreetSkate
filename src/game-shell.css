@@ -1,26 +1,39 @@
-/* 16:9 controller-first overlay: the running park remains the menu's live background. */
-.ch-shell{position:absolute;inset:0;z-index:22;display:grid;place-items:center;background:rgba(7,12,21,.62);backdrop-filter:blur(5px)}
-.ch-shell[hidden],.ch-timer[hidden]{display:none!important}
-.ch-menu{position:relative;aspect-ratio:16/9;width:min(100vw,177.7778vh);max-height:100vh;overflow:auto;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:4% 7%;border:1px solid rgba(255,232,178,.17);background:linear-gradient(100deg,rgba(5,11,22,.92) 0%,rgba(6,13,28,.78) 51%,rgba(70,38,62,.12) 100%),radial-gradient(circle at 80% 25%,rgba(251,121,68,.24),transparent 47%);box-shadow:0 0 100px rgba(0,0,0,.24) inset}
-.ch-menu-content{width:min(630px,74%);display:flex;flex-wrap:wrap;align-items:center;gap:10px}
-.ch-menu h1,.ch-menu h2{width:100%;margin:4px 0 12px;color:#fff8db;font-family:Impact,'Arial Black',sans-serif;font-size:clamp(45px,7.2vw,112px);line-height:.91;letter-spacing:-.025em;text-shadow:0 8px 0 #1b1a25,0 15px 24px #000}
-.ch-menu h1 em{font-style:normal;color:#ffbd56}.ch-menu h2{font-size:clamp(34px,4.5vw,72px)}
-.ch-eyebrow{width:100%;margin:0;color:#ffcc77;font-weight:900;font-size:11px;letter-spacing:.22em}
-.ch-sub{width:100%;color:#f2ddcd;font-size:clamp(11px,1.1vw,16px);letter-spacing:.12em;margin:0 0 18px}
-.ch-menu button{font:800 clamp(11px,1.1vw,16px)/1.1 Arial,sans-serif;letter-spacing:.08em;border:1px solid #f7d18f88;color:#ffefdc;background:#161e2bd9;border-radius:5px;padding:13px 17px;min-height:43px;transition:background .12s,transform .12s}
-.ch-menu button.primary,.ch-menu button:is(:focus-visible,:hover){background:#ffbf5c;color:#18202e;transform:translateY(-2px);outline:2px solid #fff4da;outline-offset:2px}
-.ch-mini{width:100%;font-size:10px;letter-spacing:.1em;color:#bec4c8;margin-top:20px}
-.ch-track{position:absolute;right:5%;bottom:4%;font-size:10px;color:#eac6a1;background:#15172599;padding:9px 13px;border-radius:3px}
-.ch-tutorial{width:100%;display:flex;flex-direction:column;gap:6px;max-height:43vh;overflow:auto}
-.ch-tutorial>div{display:flex;gap:15px;justify-content:space-between;align-items:center;padding:9px 12px;background:#1b2938a3;border:1px solid #abb0aa24}
-.ch-tutorial b{min-width:38%;font:900 clamp(10px,1vw,13px) Arial,sans-serif;color:#ffc268}
-.ch-tutorial span{flex:1;font:500 clamp(10px,.95vw,13px) Arial,sans-serif;color:#f4f1e7}
-.ch-tip{font-size:12px;line-height:1.5;color:#ffe4b5;margin:8px 0}
-.ch-page{width:100%;margin:0;color:#aabbc7;font-size:10px;letter-spacing:2px}
-.ch-result{font:900 clamp(27px,4vw,60px) Impact,sans-serif;color:#ffcc72;margin:15px 0;width:100%}
-.ch-timer{position:absolute;top:26px;left:50%;transform:translateX(-50%);z-index:15;padding:10px 23px;border-radius:6px;background:#101827c9;border:1px solid #ffc4778c;display:flex;align-items:center;gap:16px;pointer-events:none}
-.ch-timer small{font-size:9px;color:#e2bb8e;letter-spacing:2px;font-weight:800}.ch-timer strong{font:900 29px Impact,sans-serif;color:#ffedc3}
-#app[data-ch-screen]:not([data-ch-screen='playing']) .topbar,#app[data-ch-screen]:not([data-ch-screen='playing']) .skate-hud{opacity:0;pointer-events:none}
-#app[data-ch-screen] .toolbar,#app[data-ch-screen] .bottom,#app[data-ch-screen] .intro,#app[data-ch-screen] .view-caption,#app[data-ch-screen] .spot-nav,#app[data-ch-screen] .controls-card,#app[data-ch-screen] #pause-overlay,#app[data-ch-screen] #debug-panel{display:none!important}
-#app[data-ch-screen='playing'] #viewport:after{background:linear-gradient(0deg,rgba(8,12,23,.60),transparent 19%)}
-@media(max-width:700px){.ch-menu{padding:6% 5%;}.ch-menu-content{width:95%}.ch-menu h1{font-size:clamp(30px,8.5vw,66px)}.ch-menu h2{font-size:clamp(26px,7vw,55px)}.ch-track{display:none}.ch-tutorial{max-height:30vh}.ch-tutorial>div{padding:5px 8px}.ch-menu button{padding:7px 10px;min-height:33px}.ch-tip{display:none}.ch-timer{top:12px;padding:5px 10px}}
+/* Player-facing menus. Development controls remain available only in code. */
+.topbar,.intro,.toolbar,.bottom,.view-caption,.controls-card,.spot-nav,.customize-bar,#pause-overlay,#debug-panel{display:none!important}
+#app{min-height:0}#viewport:after{background:linear-gradient(0deg,#080a1566,transparent 23%)}
+.skate-hud{bottom:26px!important}.skate-hud .ride-state small{font-size:9px}
+body:not([data-screen='playing']) .skate-hud,body:not([data-screen='playing']) #trick-feedback,body:not([data-screen='playing']) #balance-hud{display:none!important}
+#game-shell{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;background:#070915a8;backdrop-filter:blur(7px)}
+#game-shell[hidden]{display:none}#game-shell .title-art{display:none}
+#game-shell.title-screen{background:#100d1c;backdrop-filter:none}
+.title-screen .shell-content{position:relative;width:min(100vw,calc(100dvh * 16 / 9));height:min(100dvh,calc(100vw * 9 / 16));background:url('/media/title-screen.png') center/contain no-repeat}
+.title-menu{position:absolute;right:5%;top:51%;width:36%;min-height:36%;padding:1.2% 1.5%;box-sizing:border-box;background:linear-gradient(145deg,#100d1ffa,#24172ff5);border:1px solid #ed70ac88;box-shadow:0 0 35px #da28896b;border-radius:12px;display:grid;gap:clamp(5px,1vh,13px)}
+.title-menu>p{font-size:clamp(8px,1.05vw,15px);letter-spacing:.22em;margin:0 0 4px;color:#ffcd78}
+#game-shell button{border:1px solid #ffffff3d;border-radius:5px;background:#221b30;color:#f7eff8;font:800 clamp(11px,1.25vw,20px)/1.25 'DM Sans',Arial,sans-serif;letter-spacing:.04em;padding:clamp(9px,1.5vh,18px) 18px;text-align:left;transition:background .12s,transform .12s;cursor:pointer}
+#game-shell button.selected,#game-shell button:hover{background:#f3188b;color:#fff;border-color:#ffb4dc;box-shadow:0 0 22px #ec1b7966;transform:translateX(3px)}
+#game-shell button:disabled{opacity:.5;cursor:wait}#game-shell button:focus-visible{outline:2px solid #ffcc58;outline-offset:3px}
+.menu-footnote{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:max-content;max-width:95vw;font-size:clamp(8px,1vw,13px);letter-spacing:.1em;padding:8px 14px;background:#090715cb;border-radius:5px;text-align:center}
+.menu-card{width:min(440px,80vw);padding:28px;background:#120f20f5;border:1px solid #ff509177;border-radius:14px;box-shadow:0 20px 80px #0007;display:grid;gap:10px}
+.menu-card>small{font-size:10px;letter-spacing:.14em;color:#ffc849}.menu-card h2{font-family:'Barlow Condensed',Arial,sans-serif;font-size:48px;margin:0 0 8px}
+.result-score{font-size:48px;font-weight:800;margin:0 0 12px;color:#ffca50}.result-score small{display:block;font-size:12px;letter-spacing:.14em;color:#ded6db}
+#run-timer{position:absolute;right:30px;top:25px;z-index:3;font:800 40px/1.1 'Barlow Condensed',Arial,sans-serif;color:white;background:#120e21b8;border:1px solid #fff4;border-radius:8px;padding:10px 18px;min-width:82px;text-align:center;text-shadow:0 2px 10px #000}
+#run-timer.time-low{color:#ff5078;border-color:#ff5078}#now-playing{position:fixed;left:18px;top:15px;z-index:70;max-width:min(680px,70vw);font-size:11px;letter-spacing:.025em;color:#f2deec;background:#100a18c9;padding:8px 12px;border-radius:5px;pointer-events:none}
+.tutorial-screen .shell-content{width:min(1120px,96vw,calc(88dvh * 16 / 9));aspect-ratio:16/9;background:#f7f0df;color:#182831;border:2px solid #f8b541;border-radius:12px;overflow:hidden;container-type:inline-size;box-shadow:0 25px 100px #0009}
+.tutorial-frame{height:100%;display:grid;grid-template-rows:auto 1fr auto;padding:2.2cqw;box-sizing:border-box;gap:1cqw}
+.tutorial-frame header small{font-size:1.05cqw;letter-spacing:.12em;color:#9a386b}.tutorial-frame h2{font-size:3.4cqw;line-height:1;margin:.5cqw 0}.tutorial-frame header p{font-size:1.3cqw;margin:.6cqw 0 0}
+.tutorial-body{min-height:0;overflow:auto}.tutorial-body table{width:100%;border-collapse:collapse;font-size:1.25cqw}.tutorial-body th{text-align:left;background:#203c40;color:#fff}.tutorial-body td,.tutorial-body th{padding:.65cqw .8cqw;border-bottom:1px solid #8b9e9e55}.tutorial-body tbody tr:nth-child(even){background:#e6e5d8}.tutorial-body p{font-size:1.23cqw;line-height:1.45;margin:.9cqw 0 0;padding:.65cqw;background:#f6d77577}
+.tutorial-frame footer{display:flex;align-items:center;justify-content:space-between;gap:1cqw}.tutorial-frame footer span{font-size:.9cqw;font-weight:700}.tutorial-frame footer button{font-size:1.2cqw!important;padding:.8cqw 1.1cqw!important}
+@media(max-width:700px){#now-playing{font-size:8px;left:6px;top:6px;padding:5px;max-width:68vw}#run-timer{font-size:26px;right:12px;top:10px;padding:8px}.menu-card{padding:18px;gap:7px}.menu-card h2{font-size:32px}.title-menu{right:4%;width:38%;border-radius:5px}.title-menu button{padding:7px 10px!important}.menu-footnote{font-size:7px;bottom:3px}.skate-hud{bottom:15px!important}}
+/* Hit targets follow the baked artwork. No duplicated button labels. */
+#game-shell button.art-hit{position:absolute;background:transparent;border:2px solid transparent;border-radius:7px;padding:0;transform:none;box-shadow:none}
+#game-shell button.art-hit.selected,#game-shell button.art-hit:hover{background:transparent;border-color:#ffe395;box-shadow:0 0 26px #ff3fa999,inset 0 0 15px #fff3;transform:none}
+#game-shell .art-start{left:61.5%;top:54.5%;width:29.5%;height:12.4%}
+#game-shell .art-back{left:62.2%;top:69.1%;width:29.3%;height:8.3%}
+.title-tools{position:absolute;right:2%;bottom:5%;display:flex;gap:10px}
+#game-shell .title-tools button{font-size:clamp(9px,1vw,15px);padding:9px 14px;background:#100d1dd9}
+.title-status{position:absolute;left:62%;top:80%;font-size:clamp(11px,1.2vw,18px);background:#100d1ddd;padding:5px 10px;border-radius:4px}.title-status:empty{display:none}
+.tutorial-screen .shell-content{position:relative;width:min(1500px,96vw,calc(81dvh * 16 / 9));overflow:visible}
+.tutorial-poster{width:100%;height:100%;position:relative}.tutorial-poster img{display:block;width:100%;height:100%;object-fit:contain;border-radius:10px}
+.tutorial-poster footer{position:absolute;top:calc(100% + 8px);left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:12px;color:white;background:#100d1ddd;padding:7px;border-radius:5px}
+.tutorial-poster footer span{font-size:clamp(8px,1vw,13px)}.tutorial-poster footer button{font-size:clamp(10px,1.1vw,16px)!important;padding:8px 14px!important}
+body[data-screen='tutorial'] .menu-footnote{display:none}
