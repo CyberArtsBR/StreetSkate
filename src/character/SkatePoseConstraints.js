@@ -37,7 +37,7 @@ export function outwardKneePole(restPole, outwardSign, compression=0) {
   const sign=outwardSign<0?-1:1;
   const rest=restPole?.isVector3 && restPole.lengthSq()>1e-7 ? restPole:new THREE.Vector3(0,-0.35,0.22);
   // Keep relaxed knees near the rest pose; widen the knee pole for real crouches.
-  const lateral=Math.max(0.085+0.09*C(compression,0,1),rest.x*sign);
+  const lateral=Math.max(0.085+0.12*C(compression,0,1),rest.x*sign);
   const forward=Math.abs(rest.z)>=0.12?rest.z:0.22;
   return new THREE.Vector3(sign*lateral,C(rest.y,-0.6,-0.04),C(forward,-0.48,0.48));
 }
