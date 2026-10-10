@@ -13,7 +13,9 @@ export function halfPipePose({ charge = 0, air = 0, vert = false, verticalVeloci
   landing = 0, speed = 0, grab = 0 } = {}) {
   const airborne = clamp(air);
   const anticipation = smooth(-verticalVelocity / 12) * airborne;
-  const preload = 0.24 + 0.08 * clamp(speed);
+  // The old 24-32% preload forced a squat even while idling or cruising.
+  // Crouch now follows deliberate charge, air, grab and landing states only.
+  const preload = 0;
   const aerialCrouch = vert ? 0.94 - anticipation * 0.16 : 0.70 - anticipation * 0.12;
   const flightCompression = 0.62 + aerialCrouch * 0.36;
   const compression = clamp(Math.max(
