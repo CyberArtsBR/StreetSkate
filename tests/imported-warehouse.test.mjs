@@ -29,8 +29,11 @@ test('visible ramp faces, including joined and transformed additions, have match
   scene.traverse(mesh => {
     if (!mesh.isMesh) return;
     const name = warehouseObjectName(mesh);
+    // The beveled edge bands decorate ramp lips; the actual ramp core and
+    // skateable skin carry board contacts.
+    if (/Side_Edge_Band/.test(name)) return;
     const joined = mesh.parent?.userData?.name?.includes(' / ')
-      && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
+      && /Side_Wood_Core|Back_Panel/.test(name);
     if (!joined && !/Skateable_Surface|Surface_Plywood|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*(?:Transition|Floor)/.test(name)) return;
     const geometry = mesh.geometry, p = geometry.attributes.position, index = geometry.index;
     let count = 0;

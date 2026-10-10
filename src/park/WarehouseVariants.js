@@ -23,7 +23,7 @@ const VARIANTS = Object.freeze({
   },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
-    url: '/assets/warehouse/urban-warehouse.glb?v=f8c834b2',
+    url: '/assets/warehouse/urban-warehouse.glb?v=813cbf0c',
     exposure: 1.1,
     light: '#ffe4cb',
     ambient: '#d8e1e9',

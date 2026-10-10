@@ -51,9 +51,11 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
-      && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
-    if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
-      || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
+      && /Side_Wood_Core|Back_Panel/.test(name);
+    // Decorative bevel/edge-band meshes are visual accents, not support
+    // surfaces. Treating them as wheel contact snags quarter-pipe transitions,
+    // particularly on the revised Blender export.
+    if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay|Side_Edge_Band/.test(name)) return;
     const rideable = joinedRamp || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Side_Wood_Core|Concrete_or_wood_support|Hubba_Solid/.test(name);
     const tube = /___tube/.test(name);
     const solid = /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door/.test(name);
