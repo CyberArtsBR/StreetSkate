@@ -4,15 +4,17 @@ const clamp = THREE.MathUtils.clamp;
 
 export const VERT_RETURN = Object.freeze({
   radialGain: 6,
-  maxRadialSpeed: 1.8,
-  acceleration: 12,
+  maxRadialSpeed: 2.4,
+  acceleration: 14,
   lateralDrag: 1.8,
-  lateralCorridor: 0.75,
-  maxLateralSpeed: 1.1,
-  maxPlaneError: 1.4,
-  contactCorridor: 1.35,
-  approachHeight: 1.25,
-  minimumAssist: 0.12,
+  lateralCorridor: 0.80,
+  maxLateralSpeed: 1.4,
+  // A return should not completely disengage after a modest off-axis arc.
+  // Corrections stay acceleration-limited, preserving momentum and gravity.
+  maxPlaneError: 3.4,
+  contactCorridor: 1.55,
+  approachHeight: 2.1,
+  minimumAssist: 0.18,
 });
 
 /**
@@ -41,8 +43,10 @@ export function resolveVertReturnVelocity(air, position, velocity, dt) {
   const descending = velocity.y <= 0;
   const proximity = clamp((VERT_RETURN.approachHeight - heightAboveLip)
     / VERT_RETURN.approachHeight, 0, 1);
+  // Begin bringing the rider back before the final metre of descent instead
+  // of waiting until an unrecoverable late wall impact.
   const assist = descending
-    ? Math.max(VERT_RETURN.minimumAssist, proximity)
+    ? Math.max(0.32, proximity)
     : VERT_RETURN.minimumAssist;
 
   const maxStep = VERT_RETURN.acceleration * assist * dt;
