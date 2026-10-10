@@ -1,44 +1,79 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { FollowCamera } from '../src/game/FollowCamera.js';
-import { ParkCollision } from '../src/game/ParkCollision.js';
+import { FollowCamera, THPS_CAMERA } from '../src/game/FollowCamera.js';
+import { resolveCameraClearance } from '../src/game/CameraClearance.js';
 
-test('default follow stays third person along a wall blocking its chase arm', () => {
-  const root = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(60, 30, 1), new THREE.MeshBasicMaterial());
-  wall.position.set(0, 10, 0.5);
-  root.add(wall);
-  const player = {
-    position: new THREE.Vector3(0, 2, -0.35),
-    travelDirection: new THREE.Vector3(1, 0, 0),
+function rider() {
+  return {
+    position: new THREE.Vector3(0, 1, 0),
+    velocity: new THREE.Vector3(0, 0, -8),
+    forward: new THREE.Vector3(0, 0, -1),
+    travelDirection: new THREE.Vector3(0, 0, -1),
+    normal: new THREE.Vector3(0, 1, 0),
+    wallRide: { normal: new THREE.Vector3(1, 0, 0) },
     grounded: false,
-    wallRide: { normal: new THREE.Vector3(0, 0, -1) },
-    surface: new ParkCollision(root),
-    visual: new THREE.Group(),
+    visual: { visible: true },
+    surface: {
+      // The straight rear axis is blocked regardless of camera elevation.
+      // Eyes displaced toward the open (+X) side can see the rider.
+      camera(from, eye) {
+        const arm = eye.clone().sub(from);
+        return arm.x < 1.2
+          ? from.clone().add(arm.setLength(Math.min(arm.length(), 1.05)))
+          : eye.clone();
+      },
+    },
   };
-  const camera = new THREE.PerspectiveCamera(58);
+}
+
+function controller(player, mode = 'follow') {
+  const camera = new THREE.PerspectiveCamera(58, 16 / 9, .1, 1000);
   const follow = new FollowCamera(camera);
-  follow.occlusionDistance = 0.2;
-  // Enter the wallride while the camera is still turning from the approach.
-  follow.direction.set(0, 0, -1);
-  follow.initialized = true;
-  follow.followCenter = player.position.clone();
-  for (let frame = 0; frame < 90; frame++) {
-    follow.update(player, 1 / 60);
-    assert.equal(follow.mode, 'follow');
-    assert.equal(camera.fov, 58);
-    assert.equal(player.visual.visible, true);
-    const anchor = player.position.clone().add(new THREE.Vector3(0, 1.15, 0));
-    assert.ok(camera.position.distanceTo(anchor) >= 3.3);
-    assert.ok(camera.position.z < 0, 'camera must remain outside the wall');
-    assert.ok(player.surface.camera(anchor, camera.position).distanceTo(camera.position) < 1e-6);
-    player.position.x += 0.05;
-  }
-  player.wallRide = null;
-  for (let frame = 0; frame < 60; frame++) follow.update(player, 1 / 60);
-  assert.equal(player.visual.visible, true);
-  assert.equal(follow.mode, 'follow');
+  follow.setMode(mode, player);
+  return follow;
+}
+
+test('wallride stays in the original follow camera with the rider visible', () => {
+  const p = rider();
+  const c = controller(p);
+  const anchor = p.position.clone().add(new THREE.Vector3(0, THPS_CAMERA.anchorHeight, 0));
+  assert.equal(c.mode, 'follow');
+  assert.equal(p.visual.visible, true);
+  assert.ok(c.direction.z < -.99, 'camera heading flipped during wallride');
+  assert.ok(c.camera.position.x > 1.2, 'eye remained inside the wall');
+  assert.ok(c.camera.position.distanceTo(anchor) >= 3.3 - 1e-8,
+    'wallride wrongly collapsed into first-person distance');
 });
 
+test('camera exits wallride without a lingering one-metre eye distance', () => {
+  const p = rider();
+  const c = controller(p);
+  p.wallRide = null;
+  p.surface = { camera(_from, eye) { return eye.clone(); } };
+  c.occlusionDistance = 1.05; // forced prior occlusion state
+  c.update(p, 1 / 60, {});
+  const anchor = p.position.clone().add(new THREE.Vector3(0, THPS_CAMERA.anchorHeight, 0));
+  assert.ok(c.camera.position.distanceTo(anchor) >= 2.35 - 1e-8);
+  assert.equal(c.mode, 'follow');
+});
 
+test('wallride probe never teleports through a completely sealed obstacle', () => {
+  const anchor = new THREE.Vector3(0, 1, 0);
+  const desired = new THREE.Vector3(0, 6, 9);
+  const surface = { camera(from, eye) {
+    const arm = eye.clone().sub(from);
+    return from.clone().add(arm.setLength(Math.min(arm.length(), 1.0)));
+  } };
+  const resolved = resolveCameraClearance(surface, anchor, desired, null, {
+    fixedAxis: true, minimumDistance: 3.3, wallNormal: new THREE.Vector3(1, 0, 0),
+  });
+  assert.ok(resolved.distanceTo(anchor) <= 1 + 1e-9);
+});
+
+test('wallride side probing does not modify the contact normal supplied by physics', () => {
+  const p = rider();
+  const original = p.wallRide.normal.clone();
+  controller(p);
+  assert.deepEqual(p.wallRide.normal.toArray(), original.toArray());
+});
