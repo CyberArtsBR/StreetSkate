@@ -12,6 +12,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { graffitiToneForTrick } from './game/GraffitiTypography.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
@@ -316,7 +317,18 @@ function updateHud() {
   if (paused) state = 'PAUSED';
   document.querySelector('#state-value').textContent = state;
   document.querySelector('#score-value').textContent = skater.score.toLocaleString();
-  document.querySelector('#trick-feedback').textContent = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
+  const trickNode = document.querySelector('#trick-feedback');
+  const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
+  // Do not reset the pop animation on every render frame.
+  if (trickNode.textContent !== trickLabel) {
+    trickNode.textContent = trickLabel;
+    trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
+    trickNode.classList.remove('graffiti-pop');
+    if (trickLabel) {
+      void trickNode.offsetWidth;
+      trickNode.classList.add('graffiti-pop');
+    }
+  }
   document.querySelector('#state-value').classList.toggle('air', !skater.grounded || Boolean(skater.grind));
 }
 
