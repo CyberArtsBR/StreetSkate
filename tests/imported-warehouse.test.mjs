@@ -6,6 +6,8 @@ import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/par
 import { createWarehousePark } from '../src/park/WarehousePark.js';
 import { prepareParkRuntime } from '../src/game/ParkRegistry.js';
 import { compileTransitionMetadata } from '../src/game/transitions/TransitionMetadata.js';
+import { grindProfile } from '../src/game/SkateSystems.js';
+import { resolveMagneticGrindCapture } from '../src/game/core/GrindCaptureController.js';
 
 const scene = await loadGeometry('public/assets/warehouse/urban-warehouse.glb');
 const world = createWarehousePark({ textures: false });
@@ -29,8 +31,9 @@ test('visible ramp faces, including joined and transformed additions, have match
   scene.traverse(mesh => {
     if (!mesh.isMesh) return;
     const name = warehouseObjectName(mesh);
+    if (/Side_Edge_Band/.test(name)) return; // decoration, not wheel collision
     const joined = mesh.parent?.userData?.name?.includes(' / ')
-      && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
+      && /Side_Wood_Core|Back_Panel/.test(name);
     if (!joined && !/Skateable_Surface|Surface_Plywood|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*(?:Transition|Floor)/.test(name)) return;
     const geometry = mesh.geometry, p = geometry.attributes.position, index = geometry.index;
     let count = 0;
@@ -70,4 +73,37 @@ test('all 34 visible rail tubes have world-space grind paths and all coping has 
   const copings = imported.rails.filter(r => /coping/.test(r.name));
   assert.ok(copings.every(r => r.transition));
   assert.equal(compileTransitionMetadata(imported.rails).length, copings.length);
+});
+
+test('map4: each visible rail family supports a realistic airborne approach', () => {
+  const unreachable = [];
+  const profile = grindProfile('50-50');
+  let approaches = 0;
+  for (const rail of runtime.railNetwork.rails) {
+    // Tiny lip edges cannot accommodate both 50-50 trucks.
+    if (rail.length < .85) continue;
+    const samples = [.25, .5, .75];
+    let accepted = 0;
+    for (const frac of samples) {
+      const sample = runtime.railNetwork.sample(rail, rail.length * frac);
+      const along = sample.tangent.clone().setY(0);
+      if (along.lengthSq() < .1) continue;
+      along.normalize();
+      const side = new THREE.Vector3(along.z, 0, -along.x);
+      // Approach 18cm beside the tube, 13cm above the trucks' resting height.
+      const pos = sample.point.clone().addScaledVector(side, .18);
+      pos.y = sample.point.y + rail.radius + profile.clearance + .13;
+      const velocity = along.clone().multiplyScalar(6).addScaledVector(side, -.9);
+      velocity.y = -.6;
+      approaches++;
+      const hit = resolveMagneticGrindCapture({
+        position: pos, forward: along, velocity,
+        railNetwork: runtime.railNetwork, trick: { name: '50-50' },
+      });
+      if (hit) accepted++;
+    }
+    if (!accepted) unreachable.push(rail.name);
+  }
+  assert.ok(approaches > 60, 'too few imported rail approaches tested');
+  assert.deepEqual(unreachable, [], 'visible rails should not be magnetic dead zones');
 });
