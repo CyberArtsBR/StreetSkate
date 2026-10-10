@@ -354,8 +354,10 @@ function refreshLocationUi() {
     spotNav.append(button);
   }
   spotNav.hidden = !manifest.spots?.length;
-  document.title = `Chimp Hawk Underground — ${currentWorld.id === 'foundry' ? 'The Foundry' : currentWorld.id === 'legacy' ? 'Legacy park' : 'Rooftop'}`;
-  document.querySelector('.edition').textContent = currentWorld.id === 'foundry' ? 'THE FOUNDRY' : currentWorld.id === 'legacy' ? 'LEGACY PARK' : 'ROOFTOP';
+  const locationTitle = { foundry: 'THE FOUNDRY', legacy: 'LEGACY PARK', rooftop: 'ROOFTOP',
+    'tron-warehouse': 'TRON WAREHOUSE', 'urban-warehouse': 'URBAN WAREHOUSE' }[currentWorld.id] || manifest.name;
+  document.title = `Chimp Hawk Underground — ${locationTitle}`;
+  document.querySelector('.edition').textContent = locationTitle;
   gameShell.setLocation(currentWorld.id);
   transitionDebug?.dispose();
   transitionDebug = null;
