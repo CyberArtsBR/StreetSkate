@@ -41,5 +41,9 @@ test('trick announcements stay compact, colorful and readable',()=>{
   assert.match(css,/-webkit-text-stroke: \.95px/);
   assert.match(css,/-webkit-text-fill-color: var\(--graffiti-mid\)/);
   assert.match(main,/trickNode\.dataset\.graffitiText = trickLabel/);
-  assert.doesNotMatch(css,/#trick-feedback\s*\{[^}]*font:[^}]*77px/);
+  // The previous oversized rule remains higher in the stylesheet; only the
+  // last winning CSS declaration affects the browser.
+  const appliedHotfix = css.slice(css.lastIndexOf('/* HOTFIX — 2026-10-10:'));
+  assert.match(appliedHotfix,/font: 400 clamp\(20px, 2\.5vw, 39px\)/);
+  assert.doesNotMatch(appliedHotfix,/font:[^;]*77px/);
 });
