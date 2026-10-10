@@ -165,7 +165,11 @@ export class GraphicsPipeline {
     const originalBackground = this.scene.background;
     const originalFog = this.scene.fog;
     const originalOverride = this.scene.overrideMaterial;
+    const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
     try {
+      // Reuse the preceding shadow atlas; do not recalculate costly maps twice
+      // per frame merely to produce a small actor-only glow mask.
+      this.renderer.shadowMap.autoUpdate = false;
       this.scene.background = null;
       this.scene.fog = null;
       this.scene.overrideMaterial = null;
@@ -183,6 +187,7 @@ export class GraphicsPipeline {
       this.scene.background = originalBackground;
       this.scene.fog = originalFog;
       this.scene.overrideMaterial = originalOverride;
+      this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
     }
   }
 
