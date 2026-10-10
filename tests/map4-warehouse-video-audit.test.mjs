@@ -43,7 +43,7 @@ test('map4: Blender stair tread/landing and riser have distinct collision roles'
   const scene = new THREE.Group();
   for (const [name,x] of [
     ['Stair_Tread_07',-4], ['Stair_Riser_07',-2],
-    ['Stairs_Landing',0], ['Quarter_Side_Wood_Core',2],
+    ['Stairs_Landing',0], ['Quarter_Side_Wood_Core',2], ['Side_Edge_Band',6],
   ]) {
     const o = new THREE.Mesh(new THREE.BoxGeometry(1.2,.25,1.2));
     o.userData.name='04_FLOW_LAB / '+name;
@@ -69,5 +69,6 @@ test('map4: Blender stair tread/landing and riser have distinct collision roles'
   assert.match(labels,/Stair_Tread_07/);
   assert.match(labels,/Stairs_Landing/);
   assert.doesNotMatch(labels,/Stair_Riser_07/);
+  assert.doesNotMatch(labels,/Side_Edge_Band/);
   assert.ok(imported.collision.children.some(o=>o.userData.surface==='solid'));
 });
