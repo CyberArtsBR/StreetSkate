@@ -290,6 +290,10 @@ export class FollowCamera {
     const minArm = state.wallRideActive ? 3.3 : 2.35;
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     this.clearanceCache.minimumDistance = minArm;
+    // Wallride contact normals identify the open side of the wall; passing
+    // them only to the collision solver preserves Follow/Classic camera mode.
+    this.clearanceCache.wallNormal = state.wallRideActive
+      ? player?.wallRide?.normal : null;
     const resolvedPosition = resolveCameraClearance(
       player?.surface, riderAnchor, this.position, this.camera.position, this.clearanceCache,
     );
@@ -306,7 +310,10 @@ export class FollowCamera {
       this.occlusionDistance = THREE.MathUtils.lerp(this.occlusionDistance, clearDistance,
         1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
     }
-    const safeDistance = Math.min(clearDistance, this.occlusionDistance);
+    // Never keep a one-metre first-person-looking arm while an actually
+    // collision-verified third-person point is already available. Do not
+    // extrapolate if the world is too narrow to offer this clearance.
+    const safeDistance = Math.min(clearDistance, Math.max(minArm, this.occlusionDistance));
     if (clearDistance > 1e-8) eyeOffset.multiplyScalar(safeDistance / clearDistance);
     this.occlusionActive = clipped || safeDistance < clearDistance - 0.02;
     this.camera.position.copy(riderAnchor).add(eyeOffset);
