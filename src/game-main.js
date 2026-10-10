@@ -12,6 +12,8 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
+import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
 import './game-shell.css';
 
@@ -53,7 +55,7 @@ const sun = new THREE.DirectionalLight('#fff1d9', 2.8);
 sun.position.set(-25, 45, 10);
 sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -48, right: 48, top: 45, bottom: -45, near: 1, far: 130 });
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.07;
 sun.shadow.radius = 2;
@@ -67,6 +69,10 @@ floor.rotation.x = -Math.PI / 2;
 floor.position.y = -3.18;
 floor.receiveShadow = true;
 scene.add(floor);
+
+const graphicsPipeline = new GraphicsPipeline(renderer, scene, camera);
+const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
+let graphicsPreset = loadGraphicsPreset(graphicsStorage);
 
 const views = {
   overview: { position: [66, 62, 80], target: [-1, 0, 0], caption: 'The whole playground', index: '01' },
@@ -111,6 +117,7 @@ const gameShell = new GameShell({
   },
   pause: value => setPaused(value),
   camera: mode => setCameraMode(mode),
+  graphics: name => applyGraphicsPreset(name),
   score: () => skater?.score || 0,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
@@ -121,7 +128,23 @@ const gameShell = new GameShell({
 });
 gameShell.sound = skateAudio.enabled;
 skateAudio.setMasterVolume(gameShell.music.masterVolume);
+applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
+
+function applyGraphicsPreset(name) {
+  graphicsPreset = normalizedGraphicsPreset(name);
+  graphicsPipeline.setQuality(graphicsPreset, {
+    devicePixelRatio: window.devicePixelRatio,
+    maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
+    maxSamples: renderer.capabilities.maxSamples || 2,
+  });
+  gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
+  storeGraphicsPreset(graphicsStorage, graphicsPreset);
+  if (currentWorld) {
+    graphicsPipeline.setWorld(currentWorld.park);
+    applyLighting();
+  }
+}
 
 function applyLighting() {
   if (!currentWorld) return;
@@ -134,9 +157,11 @@ function applyLighting() {
   ambient.color.set(settings.ambientSky);
   ambient.groundColor.set(settings.ambientGround);
   ambient.intensity = dusk ? 0.4 : settings.ambientIntensity;
-  renderer.toneMappingExposure = settings.exposure;
+  renderer.toneMappingExposure = settings.exposure * (graphicsPipeline.settings?.exposureMultiplier || 1);
   scene.environment = sky?.environment?.texture || environment.texture;
-  scene.environmentIntensity = dusk ? 0.22 : settings.environmentIntensity;
+  scene.environmentIntensity = (dusk ? 0.22 : settings.environmentIntensity) *
+    ((graphicsPipeline.settings?.environmentIntensity || .84) / .84);
+  scene.backgroundBlurriness = graphicsPipeline.settings?.environmentBlur || 0;
   if (sky) {
     scene.background = solarSky.background;
     scene.backgroundIntensity = dusk ? 0.22 : settings.backgroundIntensity;
@@ -145,8 +170,11 @@ function applyLighting() {
     scene.backgroundIntensity = 1;
   }
   const fogColor = dusk ? '#383e50' : settings.fogColor;
-  scene.fog = settings.fogNear != null ? new THREE.Fog(fogColor, settings.fogNear, settings.fogFar)
-    : new THREE.FogExp2(fogColor, settings.fogDensity);
+  const qualityFog = graphicsPipeline.settings?.fogDensity || .0042;
+  const fogRange = settings.fogNear != null
+    ? qualityFogDistance(settings.fogNear, settings.fogFar, qualityFog) : null;
+  scene.fog = fogRange ? new THREE.Fog(fogColor, fogRange.near, fogRange.far)
+    : new THREE.FogExp2(fogColor, settings.fogDensity * qualityFog / .0042);
   sun.target.position.set(...settings.center);
   sun.position.set(...settings.keyPosition);
   const extent = settings.shadowExtent;
@@ -321,7 +349,7 @@ async function ensureWorldEnvironment(world) {
 }
 
 function prepareWorldVisuals(world) {
-  const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const anisotropy = graphicsPipeline.settings?.anisotropy || Math.min(8, renderer.capabilities.getMaxAnisotropy());
   world.park.traverse(object => {
     if (!object.isMesh) return;
     object.castShadow = object.userData.castShadow !== false;
@@ -384,6 +412,7 @@ function commitWorld(world, runtime) {
     currentWorld = world;
     ({ park, collision, manifest } = world);
     scene.add(park);
+    graphicsPipeline.setWorld(park);
     applyLighting();
     refreshLocationUi();
     input.clear(); tween = null; lastInputState = {};
@@ -396,6 +425,7 @@ function commitWorld(world, runtime) {
       ({ park, collision, manifest } = previousWorld);
       bindParkRuntime(skater, previousRuntime);
       skater.reset(previousPosition, previousHeading); skater.score = previousScore;
+      graphicsPipeline.setWorld(park);
       applyLighting(); refreshLocationUi(); followCamera.snap(skater);
     }
     throw error;
@@ -457,6 +487,7 @@ async function loadGame() {
     currentWorld = initialWorld;
     ({ park, collision, manifest } = initialWorld);
     scene.add(park, sun.target);
+    graphicsPipeline.setWorld(park);
     skater.spawnHeading = Number(manifest.spawnHeading) || 0;
     skater.reset(skater.spawn, skater.spawnHeading);
     applyLighting();
@@ -539,6 +570,7 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  graphicsPipeline.resize(innerWidth, innerHeight);
 });
 function suspendSkating() {
   skateAudio.silence();
@@ -603,5 +635,5 @@ renderer.setAnimationLoop(() => {
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
   updateWorldVisibility();
-  renderer.render(scene, camera);
+  graphicsPipeline.render();
 });

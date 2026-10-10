@@ -315,3 +315,10 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 @media(max-width:650px){
   .loadout-screen .loadout-locations{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Gameplay-safe graphics picker: matches the controller-first menu system. */
+.menu-card .graphics-details{font-size:11px;line-height:1.5;color:#b9d6dc;margin:2px 0 5px;letter-spacing:.02em}
+.menu-card .graphics-details b{color:#e8f7ff}
+.menu-card button[aria-pressed="true"]{border-color:#7cebd9!important;background:#143b47!important;color:#e7fdf7!important}
+#game-shell.menu-screen:has(.graphics-details) .menu-card{width:min(520px,92vw);max-height:95dvh;overflow-y:auto;gap:7px;padding:18px}
+#game-shell.menu-screen:has(.graphics-details) button[data-action="graphicsSet"]{padding:9px 12px}
