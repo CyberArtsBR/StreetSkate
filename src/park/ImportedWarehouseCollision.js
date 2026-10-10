@@ -54,9 +54,12 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
       && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
     if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
       || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
-    const rideable = joinedRamp || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Side_Wood_Core|Concrete_or_wood_support|Hubba_Solid/.test(name);
+    // The revised Blender map names bank/stair parts independently: their
+    // landings and treads require support, while risers are vertical solids.
+    const stairDeck = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
+    const rideable = joinedRamp || stairDeck || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Side_Wood_Core|Concrete_or_wood_support|Hubba_Solid/.test(name);
     const tube = /___tube/.test(name);
-    const solid = /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door/.test(name);
+    const solid = /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {
