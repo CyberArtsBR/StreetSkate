@@ -51,9 +51,11 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
-      && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
-    if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
-      || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
+      && /Side_Wood_Core|Back_Panel/.test(name);
+    // Edge bands are decorative millimetre-thin strips, not riding ramps.
+    // Joined/exported bands used to become rideable and snag four-wheel
+    // support at quarter walls and stair-side banks.
+    if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay|Side_Edge_Band/.test(name)) return;
     // The revised Blender map names bank/stair parts independently: their
     // landings and treads require support, while risers are vertical solids.
     const stairDeck = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
