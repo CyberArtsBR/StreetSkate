@@ -483,6 +483,9 @@ async function loadGame() {
     skater = await new StreetSkater({ collision: initialWorld.collision, spawn: initialWorld.manifest.spawn,
       rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions }).load();
     scene.add(skater.root);
+    // Actor-only bloom: visual contains the skateboard and currently selected GLB rider.
+    // Keeping the group reference automatically tracks later character hot-swaps.
+    graphicsPipeline.setGlowTarget(skater.visual);
     followCamera = new FollowCamera(camera);
     currentWorld = initialWorld;
     ({ park, collision, manifest } = initialWorld);

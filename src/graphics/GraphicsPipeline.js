@@ -40,6 +40,32 @@ const CAS_SHADER = {
   `,
 };
 
+
+// Add ONLY the actor/board bloom buffer over the normally lit environment.
+// The environment never contributes to this texture.
+const SELECTIVE_BLOOM_COMPOSITE = {
+  uniforms: {
+    tDiffuse: { value: null },
+    bloomTexture: { value: null },
+    bloomMix: { value: .38 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D bloomTexture;
+    uniform float bloomMix;
+    varying vec2 vUv;
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      vec3 actorGlow = texture2D(bloomTexture, vUv).rgb;
+      gl_FragColor = vec4(base.rgb + actorGlow * bloomMix, base.a);
+    }
+  `,
+};
+
 export class GraphicsPipeline {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
@@ -61,8 +87,24 @@ export class GraphicsPipeline {
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.ssr = null; // Heavy pass is allocated only on an SSR-enabled preset.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1,1), .25, .22, 1.1);
-    this.composer.addPass(this.bloom);
+
+    // A separate HDR composer renders only skater+skateboard light contribution.
+    // Non-target geometry is temporarily black (depth-occluding, not glowing);
+    // no warehouse floor, ramp, sky, light fixture or environment gets bloom.
+    const bloomTarget = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false,
+    });
+    this.bloomComposer = new EffectComposer(renderer, bloomTarget);
+    this.bloomComposer.renderToScreen = false;
+    this.bloomComposer.addPass(new RenderPass(scene, camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1,1), .25, .24, .88);
+    this.bloomComposer.addPass(this.bloom);
+    this.blackoutMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.glowRoot = null;
+
+    this.bloomComposite = new ShaderPass(SELECTIVE_BLOOM_COMPOSITE);
+    this.bloomComposite.enabled = false;
+    this.composer.addPass(this.bloomComposite);
     this.cas = new ShaderPass(CAS_SHADER);
     this.composer.addPass(this.cas);
     this.composer.addPass(new OutputPass());
@@ -103,6 +145,50 @@ export class GraphicsPipeline {
     this.world = world;
     this.refreshSSRTargets();
     this.updateMaterials();
+  }
+
+  // StreetSkater.visual always contains ONLY the active rider and board.
+  // Keeping the root rather than a static mesh list automatically handles
+  // runtime rider GLB swaps and changes to the skateboard finish.
+  setGlowTarget(root) {
+    this.glowRoot = root;
+  }
+
+  renderSelectiveBloom() {
+    if (!this.glowRoot?.parent) return false;
+    const allowed = new Set();
+    this.glowRoot.traverse(object => {
+      if (object.isMesh) allowed.add(object);
+    });
+    if (!allowed.size) return false;
+    const replaced = [];
+    const originalBackground = this.scene.background;
+    const originalFog = this.scene.fog;
+    const originalOverride = this.scene.overrideMaterial;
+    const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
+    try {
+      // Reuse the preceding shadow atlas; do not recalculate costly maps twice
+      // per frame merely to produce a small actor-only glow mask.
+      this.renderer.shadowMap.autoUpdate = false;
+      this.scene.background = null;
+      this.scene.fog = null;
+      this.scene.overrideMaterial = null;
+      // Dark geometry still writes depth: rider bloom cannot appear through walls.
+      this.scene.traverse(object => {
+        if (!object.isMesh || allowed.has(object)) return;
+        replaced.push([object, object.material]);
+        object.material = this.blackoutMaterial;
+      });
+      this.bloomComposer.render();
+      this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
+      return true;
+    } finally {
+      for (const [object, material] of replaced) object.material = material;
+      this.scene.background = originalBackground;
+      this.scene.fog = originalFog;
+      this.scene.overrideMaterial = originalOverride;
+      this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+    }
   }
 
   updateMaterials() {
@@ -155,10 +241,13 @@ export class GraphicsPipeline {
       console.warn('SSR unavailable on this GPU; falling back to environment reflections.', error);
       if (this.ssr) this.ssr.enabled = false;
     }
-    this.bloom.enabled = settings.bloomStrength > 0;
+    this.bloomComposite.enabled = settings.bloomStrength > 0;
     this.bloom.strength = settings.bloomStrength * settings.vfxScale;
     this.bloom.radius = .24;
-    this.bloom.threshold = 1.06;
+    this.bloom.threshold = .88;
+    // The isolated buffer also contains the lit actor silhouette. Keep the
+    // additive contribution conservative to avoid bleaching character colors.
+    this.bloomComposite.uniforms.bloomMix.value = .32;
     this.cas.uniforms.strength.value = settings.sharpen;
     this.updateMaterials();
     this.resize(this.width, this.height);
@@ -171,16 +260,14 @@ export class GraphicsPipeline {
     if (!this.settings) return;
     this.composer.setPixelRatio(this.settings.pixelRatio);
     this.composer.setSize(this.width, this.height);
+    this.bloomComposer.setPixelRatio(this.settings.pixelRatio * this.settings.bloomScale);
+    this.bloomComposer.setSize(this.width, this.height);
     const sw = Math.max(1, Math.round(this.width * this.settings.pixelRatio));
     const sh = Math.max(1, Math.round(this.height * this.settings.pixelRatio));
     const samples = this.settings.msaaSamples;
     this.composer.renderTarget1.samples = samples;
     this.composer.renderTarget2.samples = samples;
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
-    this.bloom.setSize(
-      Math.max(1, Math.floor(sw * this.settings.bloomScale)),
-      Math.max(1, Math.floor(sh * this.settings.bloomScale)),
-    );
   }
 
   render() {
@@ -189,7 +276,13 @@ export class GraphicsPipeline {
       return;
     }
     try {
+      if (this.bloomComposite.enabled) {
+        const validBloom = this.renderSelectiveBloom();
+        this.bloomComposite.enabled = validBloom;
+      }
       this.composer.render();
+      // Re-enable on the next frame after a transient/no-rider loading state.
+      this.bloomComposite.enabled = this.settings.bloomStrength > 0;
     } catch (error) {
       console.warn('Post-processing failed; disabling it for stable skating.', error);
       this.faulted = true;
@@ -201,6 +294,9 @@ export class GraphicsPipeline {
   dispose() {
     this.ssr?.dispose();
     this.bloom.dispose();
+    this.bloomComposite.dispose();
+    this.bloomComposer.dispose();
+    this.blackoutMaterial.dispose();
     this.cas.dispose();
     this.composer.dispose();
   }
