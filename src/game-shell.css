@@ -1,6 +1,8 @@
 /* Player-facing menus. Development controls remain available only in code. */
 .topbar,.intro,.toolbar,.bottom,.view-caption,.controls-card,.spot-nav,.customize-bar,#pause-overlay,#debug-panel{display:none!important}
-#app{min-height:0}#viewport:after{background:linear-gradient(0deg,#080a1566,transparent 23%)}
+#app{min-height:0}
+/* Keep the gameplay canvas unobstructed: HUD text provides its own contrast. */
+#viewport:after{display:none}
 .skate-hud{bottom:26px!important}.skate-hud .ride-state small{font-size:9px}
 body:not([data-screen='playing']) .skate-hud,body:not([data-screen='playing']) #trick-feedback,body:not([data-screen='playing']) #balance-hud{display:none!important}
 #game-shell{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;background:#070915a8;backdrop-filter:blur(7px)}
