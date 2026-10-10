@@ -84,7 +84,9 @@ test('return steering remains bounded and engaged through moderate lateral drift
 test('continuing a real near-vertical ramp uses the saved normal; flat wall approach does not', () => {
   const scene = new THREE.Group();
   const ramp = new THREE.Mesh(new THREE.PlaneGeometry(5,5),new THREE.MeshBasicMaterial());
-  ramp.rotation.y = Math.PI/2;
+  ramp.rotation.order = 'YXZ';
+  ramp.rotation.x = -0.018;
+  ramp.rotation.y = Math.PI/2; // rideable steep facet retains a small upward normal
   ramp.userData.surface='rideable';
   scene.add(ramp);
   const surface=new ParkCollision(scene);
