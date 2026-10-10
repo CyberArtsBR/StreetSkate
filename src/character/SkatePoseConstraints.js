@@ -7,7 +7,8 @@ export function riderCrouchOffset(compression, grabWeight = 0) {
   const kneeBend=C(Number.isFinite(compression)?compression:0,0,1);
   // One consistent drop for ollie charge, vert tuck and grab. Grabbing is an
   // upper-body reach, not a second whole-character crouch animation.
-  return 0.025 + kneeBend * 0.185;
+  // At zero compression, keep the imported character's upright hip height.
+  return kneeBend * 0.185;
 }
 
 /** Keep the hips physically above the board rather than just hiding clipping. */
@@ -35,7 +36,8 @@ export function ensurePelvisDeckClearance(model, pelvis, board, minimum = 0.405)
 export function outwardKneePole(restPole, outwardSign, compression=0) {
   const sign=outwardSign<0?-1:1;
   const rest=restPole?.isVector3 && restPole.lengthSq()>1e-7 ? restPole:new THREE.Vector3(0,-0.35,0.22);
-  const lateral=Math.max(0.13+0.075*C(compression,0,1),rest.x*sign);
+  // Keep relaxed knees near the rest pose; widen the knee pole for real crouches.
+  const lateral=Math.max(0.085+0.09*C(compression,0,1),rest.x*sign);
   const forward=Math.abs(rest.z)>=0.12?rest.z:0.22;
   return new THREE.Vector3(sign*lateral,C(rest.y,-0.6,-0.04),C(forward,-0.48,0.48));
 }
@@ -56,9 +58,9 @@ export function boundedHandReach(shoulder, desired, armLength, margin=0.035) {
 export function neutralHandOffset(outwardSign, frontArm=false, compression=0, air=0, balance=0) {
   const sign=outwardSign<0?-1:1;
   return new THREE.Vector3(
-    sign*(0.14+0.035*C(compression,0,1)),
-    -0.36-0.035*C(compression,0,1)+0.045*C(air,0,1)+0.05*C(balance,-1,1)*sign,
-    (frontArm?0.095:-0.065)+0.06*C(balance,-1,1)
+    sign*(0.085+0.045*C(compression,0,1)),
+    -0.35-0.055*C(compression,0,1)+0.045*C(air,0,1)+0.05*C(balance,-1,1)*sign,
+    (frontArm?0.055:-0.045)+0.06*C(balance,-1,1)
   );
 }
 
