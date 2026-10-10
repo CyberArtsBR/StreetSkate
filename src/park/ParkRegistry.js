@@ -5,7 +5,8 @@
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', name: 'SKYLINE ROOFTOP', subtitle: 'Sunset cloud skatepark', available: true, selectable: true }),
   Object.freeze({ id: 'foundry', name: 'THE FOUNDRY', subtitle: 'Industrial skate warehouse', available: true, selectable: true }),
-  Object.freeze({ id: 'coming-soon-2', name: 'COMING SOON', subtitle: 'New location', available: false, selectable: true }),
+  Object.freeze({ id: 'tron-warehouse', name: 'TRON WAREHOUSE', subtitle: 'Electric neon / cyber skatepark', available: true, selectable: true }),
+  Object.freeze({ id: 'urban-warehouse', name: 'URBAN WAREHOUSE', subtitle: 'Steel ramps / black rubber / graffiti', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
@@ -160,11 +161,23 @@ async function loadFoundry({ scope, signal }) {
   return world;
 }
 
+async function loadWarehouseVariant({ scope, signal }, id) {
+  const { createWarehouseVariant } = await import('./WarehouseVariants.js');
+  assertNotAborted(signal);
+  const world = await createWarehouseVariant(id);
+  scope.trackWorld(world, { disposeTextures: true });
+  await world.ready;
+  assertNotAborted(signal);
+  return world;
+}
+
 export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyLoader = loadLegacy, foundryLoader = loadFoundry } = {}) {
   const registry = new ParkRegistry();
   for (const definition of PARK_DEFINITIONS) {
     const load = definition.id === 'rooftop' ? rooftopLoader :
-      definition.id === 'legacy' ? legacyLoader : definition.id === 'foundry' ? foundryLoader : undefined;
+      definition.id === 'legacy' ? legacyLoader : definition.id === 'foundry' ? foundryLoader :
+      ['tron-warehouse', 'urban-warehouse'].includes(definition.id)
+        ? params => loadWarehouseVariant(params, definition.id) : undefined;
     registry.register({ ...definition, ...(load ? { load } : {}) });
   }
   return registry;
