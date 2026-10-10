@@ -453,3 +453,55 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 @media(prefers-reduced-motion:reduce) {
   #trick-feedback.graffiti-pop { animation:none; }
 }
+
+/* HOTFIX — 2026-10-10: earlier text was 77px with 3px black fill stroke.
+   Keep colorful source-inspired lettering but make it small and readable. */
+#trick-feedback {
+  top: clamp(54px, 7.2vh, 76px);
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: min(760px, 83vw);
+  padding: .04em .2em .28em;
+  font: 400 clamp(20px, 2.5vw, 39px) / 1.12 'Bangers', Impact, 'Arial Black', sans-serif;
+  letter-spacing: .022em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--graffiti-mid);
+  -webkit-text-fill-color: var(--graffiti-mid);
+  -webkit-text-stroke: .95px #101126;
+  paint-order: stroke fill;
+  background: none;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  filter: none;
+  text-shadow: 1px 2px 0 #170d32, 2px 3px 0 #100b1e, 3px 4px 2px #020408b0;
+}
+/* The bright gradient is a second, clean glyph fill placed above the thin
+   outlined base, not a transparent text fill overwhelmed by a huge shadow. */
+#trick-feedback::after {
+  content: attr(data-graffiti-text);
+  position: absolute;
+  inset: .04em .2em auto;
+  color: var(--graffiti-mid);
+  background: linear-gradient(174deg, var(--graffiti-top) 8%, var(--graffiti-mid) 48%, var(--graffiti-bottom) 94%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  paint-order: normal;
+  pointer-events: none;
+}
+#trick-feedback[data-graffiti-text=""]::after { content: none; }
+@media (max-width: 650px) {
+  #trick-feedback {
+    top: clamp(49px, 9vh, 67px);
+    max-width: 90vw;
+    font-size: clamp(18px, 4.2vw, 28px);
+    text-shadow: 1px 2px 0 #1d1232, 2px 3px 1px #06050c;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #trick-feedback { will-change: auto; }
+}
