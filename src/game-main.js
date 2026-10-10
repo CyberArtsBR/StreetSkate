@@ -322,6 +322,7 @@ function updateHud() {
   // Do not reset the pop animation on every render frame.
   if (trickNode.textContent !== trickLabel) {
     trickNode.textContent = trickLabel;
+    trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
     trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
     trickNode.classList.remove('graffiti-pop');
     if (trickLabel) {
