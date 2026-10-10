@@ -38,6 +38,25 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
     }
   };
 
+  // A wallride can place the regular rear camera arm inside the wall.
+  // Keep the same chase rig and sightline, but offer eyes displaced along
+  // the wall's outward normal. Every option is collision-probed before use.
+  // This is intentionally independent of fixedAxis: Follow mode should not
+  // switch to a first-person view or rotate 180 degrees to escape a wall.
+  const wallNormal = cache?.wallNormal?.clone?.();
+  if (wallNormal) {
+    wallNormal.y = 0;
+    if (wallNormal.lengthSq() > 1e-8) {
+      wallNormal.normalize();
+      for (const offset of [1.5, 3.5, 5.5]) {
+        for (const lift of [0, 2, 4]) {
+          consider(desired.clone().addScaledVector(wallNormal, offset)
+            .addScaledVector(UP, lift), 0.25 + offset * 0.06 + lift * 0.08);
+        }
+      }
+    }
+  }
+
   if (cache?.arm && !cache.fixedAxis) consider(anchor.clone().add(cache.arm), 0.25);
   if (previousEye && !cache?.fixedAxis) consider(previousEye.clone(), 0.35);
 
