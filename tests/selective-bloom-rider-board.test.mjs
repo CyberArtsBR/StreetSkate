@@ -21,6 +21,7 @@ function fixture(shouldThrow = false) {
   let called=0;
   const pipeline=Object.create(GraphicsPipeline.prototype);
   pipeline.scene=scene;
+  pipeline.renderer={shadowMap:{autoUpdate:true}};
   pipeline.blackoutMaterial=darkMaterial;
   pipeline.glowRoot={
     parent:{}, 
@@ -50,6 +51,7 @@ test('bloom masks environment, preserves rider and skateboard, restores scene',(
   assert.equal(scene.background,background);
   assert.equal(scene.fog,fog);
   assert.equal(scene.overrideMaterial,override);
+  assert.equal(pipeline.renderer.shadowMap.autoUpdate,true);
   meshes.forEach((m,i)=>assert.equal(m.material,materials[i]));
   assert.deepEqual(pipeline.bloomComposite.uniforms.bloomTexture.value,{id:'actor-bloom-only'});
 });
@@ -60,6 +62,7 @@ test('renderer errors never leave warehouse materials black or clear the sky',()
   assert.equal(scene.background,background);
   assert.equal(scene.fog,fog);
   assert.equal(scene.overrideMaterial,override);
+  assert.equal(pipeline.renderer.shadowMap.autoUpdate,true);
   meshes.forEach((m,i)=>assert.equal(m.material,materials[i]));
 });
 
