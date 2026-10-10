@@ -348,7 +348,21 @@ export class ParkCollision {
       up.clone().multiplyScalar(-radius)]) {
       this._cameraRay.set(from.clone().add(offset), direction); this._cameraRay.far = length;
       this._cameraHits.length = 0;
-      const hit = this._cameraRay.intersectObjects(this.meshes, false, this._cameraHits)[0];
+      let hit = this._cameraRay.intersectObjects(this.meshes, false, this._cameraHits)[0];
+      // During a ramp-wall landing the camera anchor can begin *inside*
+      // a thin solid. The very first ray hit is then an EXIT face, not an
+      // occluder between the rider and the chase eye. Ignoring only a nearby
+      // outward-facing exit allows the third-person rig to recover while an
+      // approach toward a wall still blocks normally.
+      const nearExit = Math.max(0.32, radius + 0.12);
+      if (hit && hit.distance < nearExit && this.normal(hit, this._normal).dot(direction) > 0.45) {
+        this._cameraRay.firstHitOnly = false;
+        this._cameraHits.length = 0;
+        const hits = this._cameraRay.intersectObjects(this.meshes, false, this._cameraHits);
+        hit = hits.find(candidate => !(candidate.distance < nearExit
+          && this.normal(candidate, this._normal).dot(direction) > 0.45));
+        this._cameraRay.firstHitOnly = true;
+      }
       if (hit) clearance = Math.min(clearance, Math.max(0, hit.distance - radius));
     }
     return from.clone().addScaledVector(direction, clearance);
