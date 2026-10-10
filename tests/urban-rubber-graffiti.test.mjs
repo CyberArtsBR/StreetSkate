@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { batchWarehouseVisuals } from '../src/park/WarehouseVariants.js';
 import { isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from '../src/park/UrbanRubberFloor.js';
 import { graffitiToneForTrick } from '../src/game/GraffitiTypography.js';
+import { loadGeometry } from '../tools/load-geometry.mjs';
 
 test('only Map 4 authored floor names match the material swap', () => {
   for (const name of [
@@ -29,6 +30,19 @@ test('the actual Map 4 GLB contains at least one named floor for the rubber swap
   assert.ok(matchingNodes.some(node => /Premium_White_Marble_Floor/i.test(node.name)),
     'Expected exported premium marble floor to be overridden');
   assert.ok(matchingNodes.length > 0);
+});
+
+test('real Map 4 visual scene batches the exported marble objects into rubber meshes', async () => {
+  const world = await loadGeometry('public/assets/warehouse/urban-warehouse.glb');
+  const rubber = new THREE.MeshStandardMaterial({ color: '#343b40' });
+  const batched = batchWarehouseVisuals(world, 'Urban QA rubber test', { rubberMaterial:rubber });
+  assert.ok(batched.rubberFloorMeshes >= 1,
+    'Runtime scene mesh names must route to rubber, not just JSON node labels');
+  assert.ok(batched.park.children.some(mesh => mesh.material === rubber),
+    'At least one visual batch must use the rubber material');
+  assert.ok(batched.park.children.some(mesh => mesh.material !== rubber),
+    'Ramps and architectural materials must remain separate');
+  assert.ok(batched.visualTriangles > 1000,'Original mesh topology should be retained');
 });
 
 test('world-space tiled rubber floor UVs never change the actual floor geometry', () => {
