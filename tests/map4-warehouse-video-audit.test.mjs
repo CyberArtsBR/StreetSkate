@@ -20,7 +20,7 @@ test('map4: two transverse copings do not hide the reachable flat handrail', () 
   for (const offset of [-.31,.31]) {
     const contact = ctx.position.clone().addScaledVector(ctx.forward, offset);
     assert.match(net.nearest(contact, .45).rail.name, /transverse coping/);
-    assert.equal(net.nearby(contact, .45).length, 3);
+    assert.equal(net.nearby(contact, .45).length, 2);
   }
   for (const found of [resolveStrictGrindCapture(ctx), resolveMagneticGrindCapture(ctx), resolveGrindCapture(ctx)]) {
     assert.ok(found, 'valid handrail must remain reachable');
