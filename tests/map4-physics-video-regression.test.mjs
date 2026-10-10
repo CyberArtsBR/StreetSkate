@@ -5,6 +5,7 @@ import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysi
 import { TransitionController, VERT_LAUNCH_ENVELOPE } from '../src/game/transitions/TransitionController.js';
 import { VERT_RETURN, resolveVertReturnVelocity } from '../src/game/transitions/VertReturnFlight.js';
 import { ParkCollision } from '../src/game/ParkCollision.js';
+import { StableBoardContactSkillStreetPhysics } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/park/ImportedWarehouseCollision.js';
 import { loadGeometry } from '../tools/load-geometry.mjs';
 
@@ -111,4 +112,27 @@ test('imported Map 4 side cores are solid, not wheel-support surfaces', async ()
   assert.doesNotMatch(names,/Side_Wood_Core|Back_Panel|Concrete_or_wood_support/);
   assert.match(names,/Skateable_Surface/);
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='solid'));
+});
+
+test('one-frame last-wheel release keeps authored coping identity for a return', () => {
+  const edge=lipEdge();
+  const calls=[];
+  const runtime={
+    grounded:true,
+    position:new THREE.Vector3(0,2.9,.25),
+    normal:new THREE.Vector3(0,.2,.9799).normalize(),
+    velocity:new THREE.Vector3(0,4,-7),
+    transitions:{approachAt(){return edge;}},
+    takeoff(impulse,transition){calls.push({impulse,transition});},
+  };
+  StableBoardContactSkillStreetPhysics.prototype.releaseRisingRamp.call(runtime);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].transition,edge);
+  runtime.velocity.y=-2;
+  StableBoardContactSkillStreetPhysics.prototype.releaseRisingRamp.call(runtime);
+  assert.equal(calls[1].transition,null,'falling beside a wall must not be captured');
+  runtime.velocity.y=4;
+  runtime.normal.set(0,1,0);
+  StableBoardContactSkillStreetPhysics.prototype.releaseRisingRamp.call(runtime);
+  assert.equal(calls[2].transition,null,'flat seams cannot become vert launches');
 });
