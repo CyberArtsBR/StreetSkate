@@ -299,3 +299,17 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 
 /* Preview of the actual warehouse environment. */
 .loadout-screen .loadout-location[data-location="foundry"]{background:linear-gradient(90deg,#102124ed,#10212475),url("/assets/warehouse/preview.webp") center 55%/cover}
+
+/* Four official locations: readable in the 16:9 selector and on phones. */
+.loadout-screen .loadout-locations{grid-template-columns:repeat(4,minmax(0,1fr))}
+.loadout-screen .loadout-location[data-location="tron-warehouse"]{
+  background:linear-gradient(135deg,#0a1725,#12425a 75%,#061321);
+  border-color:#45cce7aa;
+}
+.loadout-screen .loadout-location[data-location="urban-warehouse"]{
+  background:linear-gradient(135deg,#17191b,#4b3524 75%,#212426);
+  border-color:#e49a4c99;
+}
+@media(max-width:650px){
+  .loadout-screen .loadout-locations{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

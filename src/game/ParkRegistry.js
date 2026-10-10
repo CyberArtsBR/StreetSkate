@@ -31,6 +31,24 @@ export const PARK_REGISTRY = Object.freeze({
       keyColor: '#ffe6bf', keyIntensity: 2.2, keyPosition: [25, 35, 10],
       shadowExtent: 82, environmentIntensity: 0.38, roofCutawayHeight: 18.5 },
   },
+  'tron-warehouse': {
+    name: 'Tron Warehouse',
+    create: async () => (await import('../park/WarehouseVariants.js')).createWarehouseVariant('tron-warehouse'),
+    presentation: { center: [0, 0, 0], sky: false, exposure: .94, background: '#111d30',
+      fogColor: '#111d30', fogNear: 100, fogFar: 225, ambientSky: '#b2d8ff',
+      ambientGround: '#0b1e36', ambientIntensity: 1.35,
+      keyColor: '#a4eaff', keyIntensity: 2.3, keyPosition: [25, 35, 10],
+      shadowExtent: 82, environmentIntensity: .3, roofCutawayHeight: 18.5 },
+  },
+  'urban-warehouse': {
+    name: 'Urban Warehouse',
+    create: async () => (await import('../park/WarehouseVariants.js')).createWarehouseVariant('urban-warehouse'),
+    presentation: { center: [0, 0, 0], sky: false, exposure: 1.1, background: '#3f4549',
+      fogColor: '#3f4549', fogNear: 100, fogFar: 225, ambientSky: '#d8e1e9',
+      ambientGround: '#544434', ambientIntensity: 1.6,
+      keyColor: '#ffe4cb', keyIntensity: 2.6, keyPosition: [25, 35, 10],
+      shadowExtent: 82, environmentIntensity: .38, roofCutawayHeight: 18.5 },
+  },
   legacy: {
     name: 'Legacy park',
     create: async () => {
