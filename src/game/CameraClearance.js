@@ -16,6 +16,15 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
   if (direct.distanceTo(anchor) >= minimum) return direct;
 
   const arm = desired.clone().sub(anchor);
+  // During wallrides the chase axis may point into the contacted wall. Move
+  // its arm onto the playable side while keeping the selected camera mode.
+  if (cache?.wallNormal) {
+    const normal = cache.wallNormal.clone().setY(0).normalize();
+    const outsideArm = arm.clone().addScaledVector(normal,
+      Math.max(0, minimum - arm.dot(normal)));
+    const outside = probe(anchor.clone().add(outsideArm));
+    if (outside.distanceTo(anchor) >= minimum) return outside;
+  }
   if (arm.lengthSq() < 1e-8) arm.set(0, 2, minimum + 1);
   let bestBlocked = direct;
   let bestBlockedDistance = direct.distanceTo(anchor);
@@ -50,6 +59,15 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
     }
     // A good rear-axis view is preferable to orbiting around the rider.
     if (bestSafe && bestPenalty < 0.6) break;
+  }
+  // The preferred follow axis can remain blocked after the wallride ends.
+  // Only when every axis-preserving arm fails, search the playable side so
+  // contact/landing beside a wall cannot leave the lens inside the avatar.
+  if (!bestSafe && cache?.fixedAxis) {
+    for (const degrees of [35, -35, 70, -70, 110, -110, 180]) {
+      consider(arm.clone().applyAxisAngle(UP, degrees * Math.PI / 180).add(anchor), Math.abs(degrees) / 90);
+      if (bestSafe) break;
+    }
   }
   // Fully enclosed: return the furthest verified clearance point, even when
   // less than minimum. There is no safe way to fabricate space in geometry.

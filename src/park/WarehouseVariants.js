@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWarehousePark } from './WarehousePark.js';
+import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -21,14 +22,14 @@ const VARIANTS = Object.freeze({
   },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
-    url: '/assets/warehouse/urban-warehouse.glb',
+    url: '/assets/warehouse/urban-warehouse.glb?v=f8c834b2',
     exposure: 1.1,
     light: '#ffe4cb',
     ambient: '#d8e1e9',
     ground: '#544434',
     background: '#3f4549',
     floor: '#24272a',
-    theme: 'Black rubber / steel / street art warehouse',
+    theme: 'Revised Foundry / marble plaza / expanded ramp lines',
   },
 });
 
@@ -61,7 +62,7 @@ export function batchWarehouseVisuals(root, name) {
     if (materials.length !== 1 || !object.geometry?.attributes?.position) return;
     const geometry = object.geometry.clone();
     geometry.applyMatrix4(object.matrixWorld);
-    const groupName = (object.name || '').split(' / ')[0];
+    const groupName = warehouseObjectName(object).split(' / ')[0];
     const roof = groupName.startsWith('06_ROOF_CUTAWAY');
     const attrs = Object.keys(geometry.attributes).sort().join(',');
     const key = [materials[0].uuid, roof ? 'roof' : 'park', attrs, geometry.index ? 'idx' : 'nonidx'].join(':');
@@ -105,26 +106,43 @@ export async function createWarehouseVariant(id) {
   } catch (error) {
     throw new Error(`${variant.name} needs ${variant.url}; upload the GLB to public/assets/warehouse/ first. ${error.message || ''}`);
   }
-  let batched;
+  const world = createWarehousePark({ textures: false });
+  let batched, imported;
   try {
+    if (id === 'urban-warehouse') imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails);
     batched = batchWarehouseVisuals(gltf.scene, variant.name);
   } catch (error) {
     releaseVisualRoot(gltf.scene);
+    releaseVisualRoot(world.park);
+    releaseVisualRoot(world.collision);
+    if (imported) releaseVisualRoot(imported.collision);
     throw error;
   }
   // All wheel support, solids, bowl transitions, coping metadata and grind
   // paths are inherited from the verified original warehouse.
-  const world = createWarehousePark({ textures: false });
   releaseVisualRoot(world.park);
   world.park = batched.park;
+  if (imported) {
+    releaseVisualRoot(world.collision);
+    world.collision = imported.collision;
+    world.manifest.rails = imported.rails;
+    world.manifest.collisionTriangles = imported.triangles;
+    world.manifest.statistics.collisionTriangles = imported.triangles;
+    world.manifest.statistics.collisionMeshes = imported.collision.children.length;
+    world.manifest.statistics.rails = imported.rails.length;
+    world.manifest.statistics.importedRidingSurfaces = imported.surfaces.length;
+    // Authored Foundry feature locations/lines are stale after Blender edits.
+    world.manifest.features = [];
+    world.manifest.lines = [];
+  }
 
   // Tiny underlay closes visual seams without capping the recessed bowl.
   // Never replace the depressed bowl with a full-height rectangular floor.
-  const filler = new THREE.MeshStandardMaterial({
+  const filler = imported ? null : new THREE.MeshStandardMaterial({
     name: `${id} / seam underlay`, color: variant.floor,
     roughness: .9, metalness: 0, side: THREE.DoubleSide,
   });
-  for (const proxy of world.collision.children) {
+  for (const proxy of imported ? [] : world.collision.children) {
     if (proxy.userData.surface !== 'rideable') continue;
     const patch = new THREE.Mesh(proxy.geometry, filler);
     patch.name = `${id} / rideable seam backup`;

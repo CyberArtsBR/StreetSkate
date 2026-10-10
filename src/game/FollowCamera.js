@@ -290,6 +290,7 @@ export class FollowCamera {
     const minArm = state.wallRideActive ? 3.3 : 2.35;
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     this.clearanceCache.minimumDistance = minArm;
+    this.clearanceCache.wallNormal = player?.wallRide?.normal || null;
     const resolvedPosition = resolveCameraClearance(
       player?.surface, riderAnchor, this.position, this.camera.position, this.clearanceCache,
     );
@@ -306,6 +307,10 @@ export class FollowCamera {
       this.occlusionDistance = THREE.MathUtils.lerp(this.occlusionDistance, clearDistance,
         1 - Math.exp(-THPS_CAMERA.occlusionReleaseRate * dt));
     }
+    // Recover third-person framing immediately when a wallride opens a safe
+    // outward arm; a previous near-zero occlusion must not linger in the head.
+    if (clearDistance >= minArm)
+      this.occlusionDistance = Math.max(minArm, this.occlusionDistance);
     const safeDistance = Math.min(clearDistance, this.occlusionDistance);
     if (clearDistance > 1e-8) eyeOffset.multiplyScalar(safeDistance / clearDistance);
     this.occlusionActive = clipped || safeDistance < clearDistance - 0.02;

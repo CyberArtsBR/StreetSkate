@@ -8,7 +8,7 @@ import { PARK_REGISTRY } from '../src/game/ParkRegistry.js';
 
 const assets = [
   { id: 'tron-warehouse', file: 'tron-warehouse.glb', sha256: '0306579ac6473b57c550920c9c8a39749bcc07fe59697ba149a23d380115abe3' },
-  { id: 'urban-warehouse', file: 'urban-warehouse.glb', sha256: '4d77ce1d7641aceb' },
+  { id: 'urban-warehouse', file: 'urban-warehouse.glb', sha256: 'f8c834b2c5402f24adcfb1ef5aec7f68f4482c7cbd79e3a66ca70a51c8427be7' },
 ];
 const readGlb = file => {
   const path = resolve('public/assets/warehouse', file);
@@ -48,6 +48,6 @@ test('both GLB assets are present, distinct and keep the playable warehouse topo
     return { actual, json };
   });
   assert.notEqual(parsed[0].actual, parsed[1].actual, 'The two maps cannot be identical');
-  assert.ok(parsed[1].json.nodes.some(n => /URBAN \/ GRAFFITI/.test(n.name || '')),
-    'Urban warehouse must include embedded graffiti geometry');
+  assert.ok(parsed[1].json.nodes.some(n => /Premium_White_Marble_Floor/.test(n.name || '')),
+    'Map 4 must use the revised Foundry export');
 });
