@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWarehousePark } from './WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
+import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -29,7 +30,7 @@ const VARIANTS = Object.freeze({
     ground: '#544434',
     background: '#3f4549',
     floor: '#24272a',
-    theme: 'Revised Foundry / marble plaza / expanded ramp lines',
+    theme: 'Revised Foundry / charcoal rubber plaza / expanded ramp lines',
   },
 });
 
@@ -51,22 +52,31 @@ function releaseVisualRoot(root) {
 // The Blender exports contain ~2,000 tiny draw calls. Batch by material,
 // attribute signature and roof visibility without changing vertex positions.
 // Keep roof meshes separate so the game's roof cutaway remains functional.
-export function batchWarehouseVisuals(root, name) {
+export function batchWarehouseVisuals(root, name, { rubberMaterial = null } = {}) {
   root.updateMatrixWorld(true);
   const batches = new Map(), oldGeometry = new Set();
-  let sourceMeshes = 0, visualTriangles = 0;
+  let sourceMeshes = 0, visualTriangles = 0, rubberFloorMeshes = 0;
   root.traverse(object => {
     if (!object.isMesh) return;
     sourceMeshes++;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     if (materials.length !== 1 || !object.geometry?.attributes?.position) return;
+    const groundName = warehouseObjectName(object);
+    const rubberFloor = Boolean(rubberMaterial && (
+      isUrbanRubberFloorName(object.name) || isUrbanRubberFloorName(groundName)
+    ));
     const geometry = object.geometry.clone();
     geometry.applyMatrix4(object.matrixWorld);
-    const groupName = warehouseObjectName(object).split(' / ')[0];
+    if (rubberFloor) {
+      tileUrbanRubberFloorUVs(geometry);
+      rubberFloorMeshes++;
+    }
+    const groupName = groundName.split(' / ')[0];
     const roof = groupName.startsWith('06_ROOF_CUTAWAY');
     const attrs = Object.keys(geometry.attributes).sort().join(',');
-    const key = [materials[0].uuid, roof ? 'roof' : 'park', attrs, geometry.index ? 'idx' : 'nonidx'].join(':');
-    if (!batches.has(key)) batches.set(key, { material: materials[0], roof, geometries: [] });
+    const finalMaterial = rubberFloor ? rubberMaterial : materials[0];
+    const key = [finalMaterial.uuid, roof ? 'roof' : 'park', attrs, geometry.index ? 'idx' : 'nonidx'].join(':');
+    if (!batches.has(key)) batches.set(key, { material: finalMaterial, roof, geometries: [] });
     batches.get(key).geometries.push(geometry);
     oldGeometry.add(object.geometry);
     visualTriangles += (geometry.index?.count || geometry.attributes.position.count) / 3;
@@ -90,7 +100,7 @@ export function batchWarehouseVisuals(root, name) {
   }
   // The batched meshes retain the imported GLB materials/textures.
   for (const geometry of oldGeometry) geometry.dispose();
-  return { park, visualTriangles, sourceMeshes, drawCalls: draws };
+  return { park, visualTriangles, sourceMeshes, drawCalls: draws, rubberFloorMeshes };
 }
 
 export async function createWarehouseVariant(id) {
@@ -108,10 +118,19 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
+  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
     if (id === 'urban-warehouse') imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails);
-    batched = batchWarehouseVisuals(gltf.scene, variant.name);
+    batched = batchWarehouseVisuals(gltf.scene, variant.name, { rubberMaterial });
+    if (rubberMaterial && !batched.rubberFloorMeshes) {
+      throw new Error('Urban warehouse has no recognized rubber floor objects; check the GLB ground mesh names.');
+    }
   } catch (error) {
+    if (rubberMaterial) {
+      rubberMaterial.map?.dispose();
+      rubberMaterial.bumpMap?.dispose();
+      rubberMaterial.dispose();
+    }
     releaseVisualRoot(gltf.scene);
     releaseVisualRoot(world.park);
     releaseVisualRoot(world.collision);
@@ -164,6 +183,7 @@ export async function createWarehouseVariant(id) {
   manifest.statistics = {
     ...manifest.statistics, sourceMeshes: batched.sourceMeshes, visualMeshes: batched.drawCalls,
     visualTriangles: batched.visualTriangles, batchedDrawCalls: batched.drawCalls,
+    rubberFloorMeshes: batched.rubberFloorMeshes,
   };
   manifest.visualTriangles = batched.visualTriangles;
   manifest.environment = {
