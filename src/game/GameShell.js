@@ -5,6 +5,7 @@ import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
 import { characterPortrait, forgetCharacterPortrait } from './CharacterPortraits.js';
+import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -15,7 +16,7 @@ export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
     this.selection=0;this.previousPad={};this.padFocused=false;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
-    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.sound=true;this.finishIndex=0;this.inputGrace=0;
+    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);this.sound=true;this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
@@ -155,12 +156,20 @@ export class GameShell {
     } else if(this.phase==='options') {
       title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
+        +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')
         +this.button('MASTER VOLUME −','volumeDown')
         +this.button('MASTER · '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
         +this.button('MASTER VOLUME +','volumeUp')
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
         +this.button('BACK','back');
+    } else if(this.phase==='graphics') {
+      const preset=GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]];
+      title='GRAPHICS';
+      body='<p class="graphics-details">GPU-safe shadow map: <b>1024² on ALL presets</b>. Bloom and sharpening scale with quality; SSR activates on Ultra and Cinematic.</p>'
+        +GRAPHICS_PRESET_ORDER.map((key,i)=>`<button data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}">${i===this.graphicsIndex?'✓ ':'　'}${GRAPHICS_PRESETS[key].label.toUpperCase()} · ${GRAPHICS_PRESETS[key].pixelRatioCap}× DPR</button>`).join('')
+        +`<p class="graphics-details">CURRENT · ${preset.anisotropy}× filtering · ${preset.bloomStrength?'Bloom ON':'Bloom OFF'} · ${preset.ssr?'SSR ON':'SSR OFF'} · CAS sharpen ${preset.sharpen.toFixed(2)} · GPU capabilities may reduce the effective quality.</p>`
+        +this.button('← BACK TO OPTIONS','back');
     } else if(this.phase==='results') {
       title='TIME’S UP';body=`<p class="result-score">${this.finalScore.toLocaleString()}<small>POINTS BANKED</small></p>`
         +this.button('RUN IT AGAIN · 90 SEC','start')+this.button('PRACTICE','practice')+this.button('MAIN MENU','title');
@@ -242,7 +251,7 @@ export class GameShell {
     else if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     this.music.unlock();
     if(this.selectBusy&&['hero','board','location','upload','confirmLoadout'].includes(action))return;
@@ -259,6 +268,8 @@ export class GameShell {
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'graphicsMenu':this.setScreen('graphics');break;
+      case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'volumeDown':this.adjustMaster(-.1);break;
       case 'volumeUp':this.adjustMaster(.1);break;
       case 'sound':this.sound=!this.sound;this.actions.sound(this.sound);this.render();break;
