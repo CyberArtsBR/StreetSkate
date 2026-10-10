@@ -50,15 +50,17 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
-    const joinedRamp = object.parent?.userData?.name?.includes(' / ')
-      && /Side_Wood_Core|Back_Panel/.test(name);
+    // Authored side cores/back panels are SOLID blockers, not skateable skins.
+    // Treating their upward bevels as floor made four-wheel support jump across
+    // the quarter-pipe's sides and occasionally into the warehouse wall.
+    const stairLanding = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
     // Decorative bevel/edge-band meshes are visual accents, not support
     // surfaces. Treating them as wheel contact snags quarter-pipe transitions,
     // particularly on the revised Blender export.
     if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay|Side_Edge_Band/.test(name)) return;
-    const rideable = joinedRamp || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Side_Wood_Core|Concrete_or_wood_support|Hubba_Solid/.test(name);
+    const rideable = stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
     const tube = /___tube/.test(name);
-    const solid = /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door/.test(name);
+    const solid = /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {

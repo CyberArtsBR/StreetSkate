@@ -1,0 +1,112 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
+import { TransitionController, VERT_LAUNCH_ENVELOPE } from '../src/game/transitions/TransitionController.js';
+import { VERT_RETURN, resolveVertReturnVelocity } from '../src/game/transitions/VertReturnFlight.js';
+import { ParkCollision } from '../src/game/ParkCollision.js';
+import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/park/ImportedWarehouseCollision.js';
+import { loadGeometry } from '../tools/load-geometry.mjs';
+
+function floor() {
+  const scene = new THREE.Group();
+  const ground = new THREE.Mesh(new THREE.BoxGeometry(40, .1, 40), new THREE.MeshBasicMaterial());
+  ground.position.y = -.05;
+  scene.add(ground);
+  return scene;
+}
+function lipEdge() {
+  return {
+    lipPoint: new THREE.Vector3(0, 3, 0),
+    copingTangent: new THREE.Vector3(1, 0, 0),
+    rampInward: new THREE.Vector3(0, 0, 1),
+    deckOutward: new THREE.Vector3(0, 0, -1),
+    surfaceNormal: new THREE.Vector3(0, .24, .970772).normalize(),
+    name: 'Map4 quarter coping',
+  };
+}
+
+test('roof-level vert launch is capped even at maximal ramp speed and boost', () => {
+  const controller = new TransitionController({ rails: [] });
+  const velocity = new THREE.Vector3(0, 9, -16);
+  const air = controller.begin(new THREE.Vector3(0,2.8,.18), velocity, lipEdge(), { launchBoost: 8.5 });
+  assert.equal(air.transferring, false);
+  assert.ok(velocity.y <= VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed + 1e-8);
+  assert.ok(velocity.y > 0);
+  // At gravity=20 this is under 2.81 metres additional ascent above the lip.
+  assert.ok(velocity.y ** 2 / 40 < 2.82);
+});
+
+test('generic quarter lip retains a strong jump but never compounds vertical velocity into a roof launch', () => {
+  const p = new StatefulSkillStreetPhysics({ collision: floor(), spawn: [0,.5,0], rails: [] });
+  p.position.set(0, 1.6, 0);
+  p.normal.set(0,.3,.953939).normalize();
+  p.velocity.set(0, 11, -5);
+  p.grounded = true;
+  p.rampLaunchMemory = 6.1;
+  p.rampLaunchMemoryTime = .25;
+  p.takeoff(0, null);
+  assert.equal(p.transitionAir, null);
+  assert.ok(p.velocity.y <= VERT_LAUNCH_ENVELOPE.maximumPassiveVerticalSpeed + 1e-8);
+  assert.ok(p.velocity.y >= 5, 'arcade air height was deleted');
+});
+
+test('explicit jump preserves extra headroom without creating a high-altitude exploit', () => {
+  const p = new StatefulSkillStreetPhysics({ collision: floor(), spawn: [0,.5,0], rails: [] });
+  p.normal.set(0,.5,.866025).normalize();
+  p.velocity.set(0, 9, -5);
+  p.grounded = true;
+  p.rampLaunchMemory=6;
+  p.rampLaunchMemoryTime=.2;
+  p.takeoff(7.6);
+  assert.ok(p.velocity.y <= VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed + 1e-8);
+  assert.ok(p.velocity.y > VERT_LAUNCH_ENVELOPE.maximumPassiveVerticalSpeed);
+});
+
+test('return steering remains bounded and engaged through moderate lateral drift', () => {
+  const air = { frame: {
+    lipPoint: new THREE.Vector3(0,3,0),
+    returnTarget: new THREE.Vector3(0,3,.3),
+    rampInward: new THREE.Vector3(0,0,1),
+    copingTangent: new THREE.Vector3(1,0,0),
+  }};
+  const position = new THREE.Vector3(.5,4.5,-2.0);
+  const velocity = new THREE.Vector3(.1,-2.4,-.2);
+  const step = resolveVertReturnVelocity(air,position,velocity,1/120);
+  assert.equal(step.guided,true);
+  assert.equal(step.velocity.y, velocity.y, 'return must not create upward energy');
+  assert.ok(step.velocity.clone().sub(velocity).length() <= VERT_RETURN.acceleration/120+.01);
+  assert.ok(step.velocity.z > velocity.z, 'return should correct toward the original wall');
+  const far = resolveVertReturnVelocity(air, new THREE.Vector3(0,5,-15),velocity,1/120);
+  assert.equal(far.guided,false, 'unrelated far-away geometry must not magnetize the rider');
+});
+
+test('continuing a real near-vertical ramp uses the saved normal; flat wall approach does not', () => {
+  const scene = new THREE.Group();
+  const ramp = new THREE.Mesh(new THREE.PlaneGeometry(5,5),new THREE.MeshBasicMaterial());
+  ramp.rotation.y = Math.PI/2;
+  ramp.userData.surface='rideable';
+  scene.add(ramp);
+  const surface=new ParkCollision(scene);
+  const point=new THREE.Vector3(), normal=new THREE.Vector3();
+  const supported=surface.probeRideable(
+    new THREE.Vector3(0.03,0,0), new THREE.Vector3(.99996,.009,0).normalize(),
+    .12,.12,point,normal,
+  );
+  assert.ok(supported, 'last supported ramp facet should remain rideable before the lip');
+  const fromFlat=surface.probeRideable(
+    new THREE.Vector3(0.03,0,0), new THREE.Vector3(0,1,0),
+    .12,.12,point,normal,
+  );
+  assert.equal(fromFlat,null, 'a player on the flat cannot ride straight up a wall');
+});
+
+test('imported Map 4 side cores are solid, not wheel-support surfaces', async () => {
+  const scene=await loadGeometry('public/assets/warehouse/urban-warehouse.glb');
+  const imported=buildImportedWarehouseCollision(scene);
+  const names=imported.surfaces.join(';');
+  assert.ok(imported.rails.length===34);
+  assert.doesNotMatch(names,/Side_Wood_Core|Back_Panel|Concrete_or_wood_support/);
+  assert.match(names,/Skateable_Surface/);
+  assert.ok(imported.collision.children.some(m=>m.userData.surface==='solid'));
+});
