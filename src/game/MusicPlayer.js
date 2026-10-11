@@ -100,7 +100,15 @@ export class MusicPlayer {
   }
 
   unlock() {
-    if (!this.disposed && this.audio.paused && !this.audio.ended) void this.play();
+    if (this.disposed || !this.audio.paused || this.audio.ended) return;
+    // A browser may still be rejecting the original automatic play attempt
+    // when the first trusted click or keydown arrives. Don't discard the only
+    // user activation just because that old promise has not settled yet.
+    if (this.playPending) {
+      this.generation++;
+      this.playPending = null;
+    }
+    void this.play();
   }
 
   setVolume(value) { this.audio.volume = clamp(value); }

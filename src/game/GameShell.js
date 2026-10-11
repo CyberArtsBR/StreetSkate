@@ -1,4 +1,5 @@
 import { tutorialPages } from './TutorialPages.js';
+import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
 import { sessionWarning, countdownCrossing } from './SessionCountdown.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
@@ -13,13 +14,18 @@ import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, DEFAULT_GRAPHICS_PRESET } from
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
+const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+const persist = (key, value) => { try { localStorage.setItem(key, String(value)); } catch {} };
 const CAMERAS=['follow','classic','fixed'];
 const CAMERA_LABELS=['Follow','Classic','Fixed'];
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
-    this.selection=0;this.previousPad={};this.padFocused=false;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
-    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];this.cameraIndex=0;this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);this.sound=true;this.finishIndex=0;this.inputGrace=0;
+    this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
+    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];
+    this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
+    this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
+    this.sound=stored('streetskate.sound','on')!=='off';this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
@@ -94,38 +100,21 @@ export class GameShell {
     if(!buttons.length){this.selection=0;return;}
     this.selection=(this.selection+buttons.length)%buttons.length;
     buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));
-    buttons[this.selection]?.focus({preventScroll:true});
+    const target=buttons[this.selection];
+    target?.focus({preventScroll:true});
+    // Controller focus may be below the fold in the stacked/mobile loadout.
+    // Reveal it without scrolling the entire window or stealing pointer focus.
+    if(['select','pause','options','graphics','results'].includes(this.phase))
+      target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
-  // Spatial controller navigation: left/right stays on the same visual row,
-  // up/down targets the closest item in the row immediately above/below.
+  // Keyboard and gamepad share the same logical layout-aware focus route.
   moveSelection(axis, sign) {
     const buttons=this.menuButtons();
-    // Pointer, keyboard and gamepad can hand focus to the browser between
-    // frames; always navigate from the actual focused card if there is one.
+    if(!buttons.length)return;
     const focusedIndex=buttons.indexOf(document.activeElement);
     if(focusedIndex>=0)this.selection=focusedIndex;
-    const current=buttons[this.selection];
-    if(!current)return;
-    const r=current.getBoundingClientRect();
-    const cx=r.left+r.width/2,cy=r.top+r.height/2;
-    let best=-1,score=Infinity;
-    for(let i=0;i<buttons.length;i++){
-      if(i===this.selection)continue;
-      const box=buttons[i].getBoundingClientRect();
-      const x=box.left+box.width/2-cx,y=box.top+box.height/2-cy;
-      const primary=(axis==='x'?x:y)*sign;
-      const secondary=axis==='x'?y:x;
-      if(primary<=Math.max(4,(axis==='x'?r.width:r.height)*0.12))continue;
-      if(axis==='x'&&Math.abs(secondary)>Math.max(r.height,box.height)*0.85)continue;
-      const candidate=primary+Math.abs(secondary)*1.7;
-      if(candidate<score){best=i;score=candidate;}
-    }
-    if(best>=0){this.selection=best;this.focusSelection();}
-    // DOM-free/flex-list fallback for zero-sized nodes and non-grid menus.
-    else if(this.phase!=='select'&&axis==='y'&&buttons.length>1){
-      this.selection=(this.selection+sign+buttons.length)%buttons.length;
-      this.focusSelection();
-    }
+    this.selection=nextMenuIndex(buttons,this.selection,axis,sign,this.phase==='select');
+    this.focusSelection();
   }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
   render(){
@@ -196,7 +185,14 @@ export class GameShell {
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
-      button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};
+      // Pointer hover must NOT call focus(): it steals controller/keyboard focus,
+       // especially when a vertically scrolling loadout passes under the cursor.
+       button.onfocus=()=>{
+         const buttons=this.menuButtons(),index=buttons.indexOf(button);
+         if(index<0)return;
+         this.selection=index;
+         buttons.forEach((b,i)=>b.classList.toggle('selected',i===index));
+       };
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
@@ -261,8 +257,8 @@ export class GameShell {
     }
   }
   start(practice){
-    this.practice=practice;this.remaining=90;this.inputGrace=.3;this.cameraIndex=0;
-    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera('follow');
+    this.practice=practice;this.remaining=90;this.inputGrace=.3;
+    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
@@ -290,12 +286,12 @@ export class GameShell {
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
-      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'volumeDown':this.adjustMaster(-.1);break;
       case 'volumeUp':this.adjustMaster(.1);break;
-      case 'sound':this.sound=!this.sound;this.actions.sound(this.sound);this.render();break;
+      case 'sound':this.sound=!this.sound;persist('streetskate.sound',this.sound?'on':'off');this.actions.sound(this.sound);this.render();break;
       case 'deck':this.finishIndex=(this.finishIndex+1)%BOARD_CHOICES.length;this.actions.deck(this.finishIndex);this.render();break;
       case 'title':this.actions.pause(true);this.setScreen('title');break;
       case 'back':this.back();break;
@@ -340,6 +336,9 @@ export class GameShell {
     this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
     const focused=document.hasFocus();
     const pad=[...(navigator.getGamepads?.()||[])].find(p=>p?.connected);
+    const padIdentity=pad ? String(pad.index)+':'+String(pad.id) : null;
+    const padChanged=padIdentity!==this.padIdentity;
+    this.padIdentity=padIdentity;
     const b=i=>!!pad?.buttons[i]?.pressed;
     const stickX=pad?.axes?.[0]||0,stickY=pad?.axes?.[1]||0;
     const keys={a:b(0),back:b(1),select:b(8),start:b(9),
@@ -349,7 +348,7 @@ export class GameShell {
     // Read the physical state even when unfocused so regaining focus cannot
     // synthesize a stale edge from a button held while the tab was inactive.
     if(!focused){this.padFocused=false;this.previousPad=keys;this.navRepeat=.22;return;}
-    if(!this.padFocused){this.previousPad=keys;this.padFocused=true;}
+    if(!this.padFocused||padChanged){this.previousPad=keys;this.padFocused=true;}
     const edge=k=>keys[k]&&!this.previousPad[k];
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();

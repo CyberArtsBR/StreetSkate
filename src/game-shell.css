@@ -502,3 +502,41 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   color:#faff68;
   text-shadow:2px 2px 0 #241244,0 0 9px #fb42ba;
 }
+
+/* Agent 08: keyboard/controller accessibility for dense menu and tutorials. */
+#game-shell.menu-screen .shell-content{overscroll-behavior:contain}
+#game-shell.menu-screen .menu-card{max-height:calc(100dvh - 75px);overflow-y:auto;scrollbar-gutter:stable}
+#game-shell .menu-card button:focus-visible,#game-shell .tutorial-frame button:focus-visible{
+  outline:3px solid #fff2a3;outline-offset:2px;
+}
+.tutorial-screen .tutorial-body{
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  line-height:1.4;
+}
+.tutorial-screen .tutorial-body table{
+  font-size:clamp(12px,1.2cqw,16px);
+  line-height:1.4;
+}
+.tutorial-screen .tutorial-frame footer button{
+  min-height:44px;
+}
+@media(max-width:720px){
+  .tutorial-screen .shell-content:has(.tutorial-frame){
+    width:calc(100vw - 16px);
+    height:min(78dvh,730px);
+    aspect-ratio:auto;
+    overflow:hidden;
+  }
+  .tutorial-screen .tutorial-frame{padding:12px;gap:10px}
+  .tutorial-screen .tutorial-frame header small{font-size:11px}
+  .tutorial-screen .tutorial-frame h2{font-size:clamp(24px,6vw,37px)}
+  .tutorial-screen .tutorial-frame header p{font-size:12px}
+  .tutorial-screen .tutorial-frame footer{flex-wrap:wrap;gap:6px}
+  .tutorial-screen .tutorial-frame footer button{
+    flex:1;min-width:0;font-size:12px!important;padding:8px!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  #game-shell button{transition:none!important;scroll-behavior:auto!important}
+}
