@@ -35,7 +35,7 @@ function anchor(rider, board, side, yaw = board._yawHold) {
 }
 
 for (const name of avatars) {
-  test(name + ': pushing, coasting, turning and braking keep the stopped A-pose arms', async () => {
+  test(name + ': pushing, coasting, turning and braking keep relaxed near-body arms', async () => {
     const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
     const board = boardFixture();
     rider.resetPresentation();
@@ -51,8 +51,10 @@ for (const name of avatars) {
           const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
           const direction=wrist.clone().sub(shoulder).normalize();
           assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${state}/${frame}/${side}: folded elbow`);
-          assert.ok(direction.dot(rider.armOutward[side])>.58,`${name}/${state}/${side}: arm against torso`);
-          assert.ok(direction.y<-.7,`${name}/${state}/${side}: arm not in A-pose`);
+          assert.ok(direction.dot(rider.armOutward[side])>.04 && direction.dot(rider.armOutward[side])<.48,`${name}/${state}/${side}: arm should rest near torso, not splay outward`);
+          assert.ok(direction.y<-.86,`${name}/${state}/${side}: resting wrist must hang below shoulder`);
+          const elbowSide=elbow.clone().sub(shoulder.clone().lerp(wrist,.5)).dot(rider.armOutward[side]);
+          assert.ok(elbowSide<.01,`${name}/${state}/${side}: elbow bows outward, bend=${elbowSide}`);
         }
       }
     }
@@ -68,9 +70,11 @@ for (const name of avatars) {
       const wrist=rider.bones['hand_'+side].getWorldPosition(v());
       const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
       const direction=wrist.clone().sub(shoulder).normalize();
-      assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${side}: resting elbow folds outward`);
-      assert.ok(direction.dot(rider.armOutward[side])>.58,`${name}/${side}: A-pose must clear the torso`);
-      assert.ok(direction.y<-.7,`${name}/${side}: resting arms should angle downward`);
+      assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${side}: resting elbow flexes too far`);
+      assert.ok(direction.dot(rider.armOutward[side])>.04 && direction.dot(rider.armOutward[side])<.48,`${name}/${side}: relaxed arms must stay close to torso`);
+      const elbowSide=elbow.clone().sub(shoulder.clone().lerp(wrist,.5)).dot(rider.armOutward[side]);
+      assert.ok(elbowSide<.01,`${name}/${side}: resting elbow bows outward, bend=${elbowSide}`);
+      assert.ok(direction.y<-.86,`${name}/${side}: resting arms should hang down`);
     }
     const idleFlex = ['l', 'r'].map(s => flex(rider, s));
     const crouch = settle(rider, board, { presentation: { state: 'CROUCH' }, crouch: 1 });
