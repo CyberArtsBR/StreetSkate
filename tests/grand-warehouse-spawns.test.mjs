@@ -9,9 +9,11 @@ test('Grand spawn repair leaves ramp transforms alone and picks close four-wheel
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(150,110),new THREE.MeshBasicMaterial());
   floor.rotation.x=-Math.PI/2;
   floor.userData.surface='rideable';world.collision.add(floor);
-  const original=floor.matrix.clone();
+  const originalRotation=floor.rotation.clone();
+  const originalPosition=floor.position.clone();
   ensureGrandWarehouseSpawns(world);
   assert.equal(world.manifest.spots.length,2);
   assert.ok(new THREE.Vector3(...world.manifest.spots[0].position).distanceTo(new THREE.Vector3(...world.manifest.spawn))>2);
-  assert.deepEqual(floor.matrix.elements,original.elements);
+  assert.deepEqual(floor.rotation.toArray(),originalRotation.toArray());
+  assert.deepEqual(floor.position.toArray(),originalPosition.toArray());
 });
