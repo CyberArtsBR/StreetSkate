@@ -135,6 +135,20 @@ export function safeArmGoal(shoulder, requested, outward, head, armLength,
   const arm = goal.clone().sub(shoulder);
   const maximum = armLength * (neutral ? 0.997 : 0.985);
   if (arm.lengthSq() > maximum * maximum) goal.copy(shoulder).addScaledVector(arm.normalize(), maximum);
+  if (neutral && arm.lengthSq() > 1e-10) {
+    // Previous head/body exclusion could shorten a resting hand target to
+    // ~84% of the arm chain, despite requesting a straight A-pose. That
+    // forces the elbow to buckle outward in the AIR rig. Reproject the final
+    // neutral wrist onto the nearly full-length sphere around its shoulder.
+    const direction = goal.clone().sub(shoulder).normalize();
+    goal.copy(shoulder).addScaledVector(direction, maximum);
+    if (head?.isVector3 && goal.distanceTo(head) < Math.max(.14, armLength * .53)) {
+      // Still close to the skull? Aim the fully extended arm safely down
+      // its own anatomical side instead of shortening/re-folding the elbow.
+      direction.copy(side).multiplyScalar(.52).add(new THREE.Vector3(0,-.85,0)).normalize();
+      goal.copy(shoulder).addScaledVector(direction, maximum);
+    }
+  }
   return goal;
 }
 
