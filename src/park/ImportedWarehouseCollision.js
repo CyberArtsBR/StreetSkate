@@ -101,7 +101,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
   };
 
   root.traverse(object => {
-    if (!object.isMesh) return;
+    if (!object.isMesh || object.userData.grandWarehouseExcluded) return;
     const name = warehouseObjectName(object);
     // GLTFLoader removes periods (Cube__0.001 -> Cube__0001) and splits
     // the three SkateLite materials into numbered child Mesh instances.
