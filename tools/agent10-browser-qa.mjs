@@ -249,6 +249,57 @@ try{
   await stats('timed-1');
   await page.screenshot({path:join(out,'timed-session.png'),fullPage:true});
  });
+ await checked('gold/fire/red graffiti score fits on wide and narrow screens',async()=>{
+  const original = await page.evaluate(() => ({
+    feedback: window.streetSkate.skater.feedback,
+    feedbackTime: window.streetSkate.skater.feedbackTime,
+  }));
+  try {
+    const cases = [
+      { tone:'fire', label:'INDY 999999999999', width:800, height:450 },
+      { tone:'gold', label:'50-50 999999999999', width:360, height:640 },
+      { tone:'red', label:'BAIL 999999999999', width:800, height:450 },
+    ];
+    for(const item of cases){
+      await page.setViewportSize({width:item.width,height:item.height});
+      await page.evaluate(label=>{
+        const skater=window.streetSkate.skater;
+        skater.feedback=label;skater.feedbackTime=12;
+      },item.label);
+      await page.waitForFunction(label=>{
+        const node=document.querySelector('#trick-feedback');
+        const imgs=[...node?.querySelectorAll('.graffiti-word img')||[]];
+        return node?.dataset.graffitiText===label && imgs.length>=10 &&
+          imgs.every(img=>img.complete&&img.naturalWidth>0);
+      },item.label,{timeout:30000});
+      await page.waitForTimeout(140);
+      const result=await page.locator('#trick-feedback').evaluate(node=>{
+        const imgs=[...node.querySelectorAll('.graffiti-word img')];
+        const rects=imgs.map(img=>img.getBoundingClientRect());
+        const viewport={width:innerWidth,height:innerHeight};
+        const inside=rects.every(r=>r.width>1 && r.height>1
+          && r.left>=3 && r.right<=innerWidth-3
+          && r.top>=4 && r.bottom<=innerHeight-4);
+        return {inside,count:imgs.length,
+          minX:Math.min(...rects.map(r=>r.left)),
+          maxX:Math.max(...rects.map(r=>r.right)),
+          minY:Math.min(...rects.map(r=>r.top)),
+          maxY:Math.max(...rects.map(r=>r.bottom)),
+          variable:getComputedStyle(imgs[0]).getPropertyValue('--letter-height'),
+          viewport};
+      });
+      assert.ok(result.inside,`cropped ${item.tone} score sprites: ${JSON.stringify(result)}`);
+      await page.screenshot({path:join(out,`hud-${item.tone}-${item.width}.png`),fullPage:true});
+    }
+  }finally{
+    await page.evaluate(original=>{
+      const skater=window.streetSkate.skater;
+      skater.feedback=original.feedback;
+      skater.feedbackTime=original.feedbackTime;
+    },original);
+    await page.setViewportSize({width:800,height:450});
+  }
+ });
  await checked('camera modes, manual pause, focus loss and resume',async()=>{
   for(const mode of ['classic','fixed','follow']){
    await page.evaluate(m=>window.streetSkate.setCameraMode(m),mode);

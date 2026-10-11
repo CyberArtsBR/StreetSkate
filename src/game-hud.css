@@ -47,16 +47,18 @@ body[data-screen='playing'] #now-playing .song-skip{display:none}
 body[data-screen='playing'] #now-playing.song-compact{width:auto;max-width:min(225px,calc(100vw - 150px));padding:6px 9px;border-color:#aab4de20;background:#151b2ec9}
 body[data-screen='playing'] #now-playing.song-compact .song-title{font-size:12px}
 body[data-screen='playing'] #now-playing.song-compact .song-emblem{flex-basis:22px;height:22px}
-body[data-screen='playing'] #trick-feedback{top:clamp(86px,11vh,110px)}
+body[data-screen='playing'] #trick-feedback{top:clamp(125px,18vh,190px)}
 body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{backdrop-filter:none}
 #trick-feedback:not(:empty){
   box-sizing:border-box;
   position:fixed;
   left:50%;
   right:auto;
-  top:clamp(100px,13vh,148px);
+  /* Painted letters have ascenders/drop shadows outside their line boxes.
+     Reserve a safe top lane instead of placing the first row on the edge. */
+  top:clamp(125px,18vh,190px);
   width:max-content;
-  max-width:min(92vw,960px);
+  max-width:calc(100vw - 40px);
   margin:0;
   transform:translateX(-50%);
   overflow:visible;
@@ -70,9 +72,12 @@ body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{ba
   box-shadow:none;
   backdrop-filter:none;
 }
-#trick-feedback .graffiti-art{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 10px;max-width:100%;overflow:visible}
-#trick-feedback .graffiti-word{display:inline-flex;align-items:center;flex-wrap:nowrap;max-width:100%}
-#trick-feedback .graffiti-word img{max-height:clamp(22px,4.1vh,46px);width:auto;max-width:min(6vw,40px);object-fit:contain;filter:drop-shadow(0 2px 2px #000c)}
+#trick-feedback .graffiti-lettering{display:block;max-width:100%;overflow:visible;--letter-height:inherit}
+#trick-feedback .graffiti-art{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:7px 12px;max-width:100%;overflow:visible;padding:8px 12px 14px}
+#trick-feedback .graffiti-word{display:inline-flex;align-items:center;flex-wrap:nowrap;min-width:0;max-width:100%;overflow:visible}
+#trick-feedback .graffiti-word img{display:block;width:calc(var(--letter-height)*.79);height:var(--letter-height);max-width:none;max-height:none;min-width:0;object-fit:contain;filter:drop-shadow(0 2px 2px #000c)}
+/* HUD-only scaled bitmap digits; loadout titles retain their normal sizing. */
+#trick-feedback .graffiti-punctuation{line-height:1.25;padding:.12em .04em;flex-shrink:0}
 /* The legacy duplicate ::after text was independently positioned inside a
    max-content box, clipping the left score digits on long gold/fire combos. */
 #trick-feedback::after{content:none!important}
@@ -93,7 +98,7 @@ body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{ba
 @media(max-height:480px){
   #now-playing{max-width:245px}
   #run-timer{padding:8px 12px}
-  #trick-feedback:not(:empty){top:16%;padding:0}
+  #trick-feedback:not(:empty){top:clamp(90px,19vh,140px);padding:0}
 }
 
 /* Functional menus use real type; decorative loadout graffiti stays intact. */
