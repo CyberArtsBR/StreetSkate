@@ -14,6 +14,7 @@ import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
 import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
+import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
@@ -30,6 +31,10 @@ let artCaptureMap=null;
 // Cache HUD nodes once; unchanged values need no DOM writes at 144 Hz.
 const hud = Object.fromEntries(['speed-value','charge-fill','state-value','score-value','trick-feedback']
   .map(id => [id, document.getElementById(id)]));
+// Bitmap score digits must be measured after layout, not just when the font
+// CSS is first parsed. This is an event-driven resize, not work at 144 FPS.
+const scheduleTrickHudFit = () => requestAnimationFrame(() =>
+  fitGraffitiHud(hud['trick-feedback'], innerWidth, innerHeight));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#25363d');
 scene.fog = new THREE.FogExp2('#25363d', 0.005);
@@ -345,6 +350,10 @@ function updateHud() {
       void trickNode.offsetWidth;
       trickNode.classList.add('graffiti-pop');
     }
+    scheduleTrickHudFit();
+    for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
+      if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+    }
   }
   hud['state-value'].classList.toggle('air', !skater.grounded || Boolean(skater.grind));
 }
@@ -623,6 +632,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   graphicsPipeline.resize(innerWidth, innerHeight);
+  scheduleTrickHudFit();
 });
 function suspendSkating() {
   skateAudio.silence();
