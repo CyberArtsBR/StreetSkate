@@ -85,12 +85,13 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   const direction = lateral.clone().multiplyScalar(Math.sin(spread))
     .add(new THREE.Vector3(0, -Math.cos(spread), 0))
     .addScaledVector(face, 0.025).normalize();
-  // Keep elbows below the verified 22-degree flex safety threshold. The
-  // inward pole, not excess elbow flex, controls the resting silhouette.
-  const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.985);
+  // An almost-straight reach and minimally offset pole avoid the cartoon elbow
+  // bulge the user marked red. The A-pose spread comes from the SHOULDER,
+  // not from bending the joint backward.
+  const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.997);
   const elbow = shoulder.clone().lerp(wrist, 0.5)
-    .addScaledVector(lateral, -armLength * 0.035)
-    .addScaledVector(face, armLength * 0.07);
+    .addScaledVector(lateral, -armLength * 0.012)
+    .addScaledVector(face, armLength * 0.045);
   return { wrist, elbow };
 }
 
@@ -101,7 +102,7 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
  * handled separately and is not shortened by this guard.
  */
 export function safeArmGoal(shoulder, requested, outward, head, armLength,
-  { crossBody = false } = {}) {
+  { crossBody = false, neutral = false } = {}) {
   if (!shoulder?.isVector3 || !requested?.isVector3 ||
       !outward?.isVector3 || !Number.isFinite(armLength) || armLength <= 0)
     return requested?.clone?.() || null;
@@ -111,11 +112,16 @@ export function safeArmGoal(shoulder, requested, outward, head, armLength,
   const goal = requested.clone();
   const relative = goal.clone().sub(shoulder);
   // Keep normal movement hands beside the torso, not across the chest.
-  const minimumOut = armLength * (crossBody ? -0.06 : 0.24);
+  const minimumOut = armLength * (neutral ? 0.42 : crossBody ? -0.03 : 0.24);
   const currentOut = relative.dot(side);
   if (currentOut < minimumOut) goal.addScaledVector(side, minimumOut - currentOut);
+  // On ordinary rolling and airborne recovery poses, arms should remain
+  // below the shoulder plane. Release this rule only for named cross-body
+  // tricks, which are instead protected by the skull exclusion.
+  if (!crossBody && !neutral && goal.y > shoulder.y - armLength * 0.05)
+    goal.y = shoulder.y - armLength * 0.05;
   if (head?.isVector3) {
-    const exclusion = Math.max(0.085, armLength * 0.38);
+    const exclusion = Math.max(0.14, armLength * 0.53);
     const fromHead = goal.clone().sub(head);
     if (fromHead.lengthSq() < exclusion * exclusion) {
       // A stable sideways/downward escape is safer than normalizing an
@@ -127,7 +133,7 @@ export function safeArmGoal(shoulder, requested, outward, head, armLength,
   // Protect the shoulder joint from unreachable hand goals, without resizing
   // its bone chain. The IK solver has its own minimum bend radius.
   const arm = goal.clone().sub(shoulder);
-  const maximum = armLength * 0.985;
+  const maximum = armLength * (neutral ? 0.997 : 0.985);
   if (arm.lengthSq() > maximum * maximum) goal.copy(shoulder).addScaledVector(arm.normalize(), maximum);
   return goal;
 }
