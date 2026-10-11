@@ -363,8 +363,12 @@ export class GraphicsPipeline {
     if (!this.settings) return;
     this.composer.setPixelRatio(this.settings.pixelRatio);
     this.composer.setSize(this.width, this.height);
-    this.bloomComposer.setPixelRatio(this.settings.pixelRatio * this.settings.bloomScale);
-    this.bloomComposer.setSize(this.width, this.height);
+    // Performance runs without bloom: shrink its HDR buffers to 1px rather
+    // than retaining offscreen textures at full display resolution.
+    const bloomEnabled = this.settings.bloomStrength > 0;
+    this.bloomComposer.setPixelRatio(bloomEnabled
+      ? this.settings.pixelRatio * this.settings.bloomScale : 1);
+    this.bloomComposer.setSize(bloomEnabled ? this.width : 1, bloomEnabled ? this.height : 1);
     const sw = Math.max(1, Math.round(this.width * this.settings.pixelRatio));
     const sh = Math.max(1, Math.round(this.height * this.settings.pixelRatio));
     const samples = this.settings.msaaSamples;
@@ -380,6 +384,12 @@ export class GraphicsPipeline {
     }
     try {
       this.updateContactShadows();
+      // Skip both HDR composer targets and all fullscreen post effects on the
+      // lowest tier. Three's direct renderer retains ACES/output color-space.
+      if (this.settings.name === 'performance') {
+        this.renderer.render(this.scene, this.camera);
+        return;
+      }
       if (this.bloomComposite.enabled) {
         const validBloom = this.renderSelectiveBloom();
         this.bloomComposite.enabled = validBloom;
