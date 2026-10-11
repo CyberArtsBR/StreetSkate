@@ -331,6 +331,9 @@ export class TransitionController {
       air.supportsPump = transition.supportsPump;
       air.frame.transitionId = transition.id;
       air.frame.transitionType = transition.type;
+      // Re-entry may occur several metres sideways from takeoff, especially
+      // after a deliberate diagonal carve. Match the whole authored coping.
+      air.frame.lipPath = transition.lipPath.map(point => point.clone());
     }
     return air;
   }
