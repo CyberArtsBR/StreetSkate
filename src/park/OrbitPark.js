@@ -25,7 +25,17 @@ function prepareOrbitMaterials(object) {
   for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
     if (!material) continue;
     if (/Paint \/ crew graffiti/.test(material.name)) {
-      material.depthWrite = false;
+      // The imported BLEND graffiti overlay rendered partially transparent
+      // over structural ramp panels. Cut out genuinely clear texels instead:
+      // opaque colored paint now depth-writes without turning ramp structures
+      // or their backs into ghost surfaces.
+      material.transparent = false;
+      material.opacity = 1;
+      material.alphaTest = 0.42;
+      material.depthWrite = true;
+      material.depthTest = true;
+      material.side = THREE.DoubleSide;
+      if ('transmission' in material) material.transmission = 0;
       material.polygonOffset = true;
       material.polygonOffsetFactor = -1;
       material.polygonOffsetUnits = -1;
@@ -76,11 +86,18 @@ export function splitOrbitScene(scene, sourceRails = []) {
   const collision = new THREE.Group();
   collision.name = 'ORBIT / authored collision';
   const proxies = [], visuals = [], helpers = [];
+  let brandingBounds = null;
   scene.traverse(object => {
     if (!object.isMesh) return;
     const name = authoredName(object);
     const explicit = object.userData?.skateCollisionSurface || object.userData?.skate?.collisionSurface;
-    if (explicit === 'decorative') helpers.push(object);
+    // The exact authored front-facing letter mesh must be omitted before
+    // visual batching (batching intentionally ignores Object3D.visible).
+    // The black arch/banner, cyan halo and subtitle stay intact.
+    if (name === 'Halo / ORBIT logotype') {
+      brandingBounds = new THREE.Box3().setFromObject(object);
+      helpers.push(object);
+    } else if (explicit === 'decorative') helpers.push(object);
     else if (object.visible && ['rideable', 'solid'].includes(explicit)) {
       prepareOrbitMaterials(object);
       visuals.push(object);
@@ -114,6 +131,12 @@ export function splitOrbitScene(scene, sourceRails = []) {
     const rideable = semantic === 'rideable';
     const solid = semantic === 'solid';
     if (!rideable && !solid && !luminousRail) continue;
+    // The pink bowl rim remains VISIBLE and GRINDABLE, but its narrow coping
+    // tube cannot also be a rigid obstruction across the only roll-in. Let
+    // four wheels transition on the actual curved bowl skin. All other bars
+    // retain their existing solid collision; no invisible floor or bowl cap.
+    if (luminousRail && railName === 'Orbit bowl coping'
+        && !['rideable','solid'].includes(object.userData?.skateCollisionSurface)) continue;
     const mesh = new THREE.Mesh(object.geometry.clone().applyMatrix4(object.matrixWorld), material);
     mesh.name = name;
     mesh.userData.surface = rideable ? 'rideable' : 'solid';
@@ -133,7 +156,60 @@ export function splitOrbitScene(scene, sourceRails = []) {
   if (!collision.children.length) throw new Error('ORBIT has no visible collision surfaces.');
   const { park, visualTriangles } = batchWarehouseVisuals(scene, 'ORBIT');
   park.userData.environmentBloom = true;
-  return { park, collision, visualTriangles, rails };
+  return { park, collision, visualTriangles, rails,
+    brandingAnchor: brandingBounds?.isEmpty() ? null : brandingBounds ? {
+      x: brandingBounds.getCenter(new THREE.Vector3()).x,
+      y: brandingBounds.getCenter(new THREE.Vector3()).y,
+      z: brandingBounds.max.z,
+      width: brandingBounds.max.x - brandingBounds.min.x,
+      height: brandingBounds.max.y - brandingBounds.min.y,
+    } : null };
+}
+
+/**
+ * Replace only the original ORBIT lettering on the imported halo sign with
+ * CHIMPIONS. Keep the artist's sign board and arch exactly where they are.
+ * CanvasTexture is created only in the live browser, never by Node collision
+ * tests. Everything added is owned by the world and gets disposed on unload.
+ */
+export function addChimpionsOrbitSign(park, anchor, canvasFactory = () => document.createElement('canvas')) {
+  if (!park?.isObject3D || !anchor) return null;
+  const canvas = canvasFactory();
+  canvas.width = 2048;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 230px Arial Black, Impact, sans-serif';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = '#04bfff';
+  ctx.shadowBlur = 34;
+  ctx.lineWidth = 19;
+  ctx.strokeStyle = '#075070';
+  ctx.strokeText('CHIMPIONS', 1024, 260, 1860);
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#e8ffff';
+  ctx.fillText('CHIMPIONS', 1024, 260, 1860);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const width = Math.max(11.0, anchor.width * 1.38);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, Math.max(1.65, anchor.height * 1.08)),
+    new THREE.MeshBasicMaterial({
+      name: 'Chimpions / halo front logo', map: texture,
+      transparent: true, opacity: 1, depthWrite: false, depthTest: true,
+      side: THREE.DoubleSide, toneMapped: false,
+    }),
+  );
+  mesh.name = 'Halo / CHIMPIONS logotype';
+  mesh.position.set(anchor.x, anchor.y, anchor.z + 0.05);
+  mesh.renderOrder = 5;
+  mesh.userData.castShadow = false;
+  mesh.userData.skateCollisionSurface = 'decorative';
+  park.add(mesh);
+  return mesh;
 }
 
 export async function createOrbitPark() {
@@ -146,6 +222,7 @@ export async function createOrbitPark() {
     new THREE.TextureLoader().loadAsync('/assets/spacepark/textures/galaxy-4k.png'),
   ]);
   const world = splitOrbitScene(gltf.scene, manifest.rails);
+  addChimpionsOrbitSign(world.park, world.brandingAnchor);
   sky.colorSpace = THREE.SRGBColorSpace;
   sky.mapping = THREE.EquirectangularReflectionMapping;
   const backdrop = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24),
