@@ -336,7 +336,11 @@ export class SkateboardContactRig {
     if (earliest > 1) return null;
     const candidate = this._candidate.copy(from).lerp(to, clamp(earliest, 0, 1));
     const support = this.solveGround(candidate, from, heading, this._scratchD, false);
-    if (support.supported) return support;
+    // A single wheel or a single truck touching an edge is not a completed
+    // landing. Lip releases may keep partial contact during *ground* movement,
+    // but a new air-to-ground catch needs support on both trucks.
+    if (support.supported && support.count >= 2
+      && support.frontSupported > 0 && support.rearSupported > 0) return support;
     return null;
   }
 }

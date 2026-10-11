@@ -55,7 +55,10 @@ export function auditParkSurfaceCoverage({
         if (!hit.face) return false;
         normalMatrix.getNormalMatrix(hit.object.matrixWorld);
         faceNormal.copy(hit.face.normal).applyNormalMatrix(normalMatrix).normalize();
-        return faceNormal.y>=0.46 && Number.isFinite(hit.point.y);
+        // Collision probing intentionally tolerates reversed GLB winding.
+        // The read-only audit must use the same convention or silently miss
+        // entire backwards-wound ramps when measuring coverage.
+        return Math.abs(faceNormal.y)>=0.46 && Number.isFinite(hit.point.y);
       });
       if (!visual) continue;
       visualSamples++;

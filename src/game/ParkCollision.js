@@ -46,8 +46,10 @@ export class ParkCollision {
     this._sweepResult = { point: new THREE.Vector3(), normal: new THREE.Vector3(), distance: 0, fraction: 1 };
     root.updateMatrixWorld(true);
     root.traverse(mesh => {
-      if (!mesh.isMesh) return;
-      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.side = THREE.DoubleSide;
+      if (!mesh.isMesh || !mesh.geometry?.attributes?.position) return;
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (material) material.side = THREE.DoubleSide;
+      }
       this.meshes.push(mesh);
       // A thin grind bar beside the rider must not collapse the entire chase
       // arm into the avatar. Rails still block the body; walls, steps and ramp
@@ -57,22 +59,29 @@ export class ParkCollision {
       if (rideable) this.ridingMeshes.push(mesh);
       const geometry = mesh.geometry, position = geometry.attributes.position, index = geometry.index;
       const count = index ? index.count : position.count;
-      if (count >= 3) {
-        // Restrict acceleration to static collision proxies, never the rider or
-        // visual meshes. Indirect mode preserves authored triangle indices.
-        geometry.boundsTree ||= new MeshBVH(geometry, { indirect: true });
-        mesh.raycast = acceleratedRaycast;
-      }
-      for (let i = 0; i < count; i += 3) {
+      let finiteGeometry = true;
+      for (let i = 0; i + 2 < count; i += 3) {
         const vertices = [0, 1, 2].map(j => new THREE.Vector3()
           .fromBufferAttribute(position, index ? index.getX(i + j) : i + j).applyMatrix4(mesh.matrixWorld));
+        if (vertices.some(v => !Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.z))) {
+          finiteGeometry = false;
+          continue;
+        }
         const triangle = new THREE.Triangle(...vertices);
         const normal = triangle.getNormal(new THREE.Vector3());
+        // Imported degenerate facets cannot create physical walls or corrupt the BVH.
+        if (normal.lengthSq() < EPS) continue;
         // Even an accidentally reversed floor triangle is rideable when approached from above.
         if (rideable && Math.abs(normal.y) > 0.035) continue;
         triangle.faceNormal = normal;
         triangle.railId = mesh.userData.railId || null;
         this.blocks.addTriangle(triangle);
+      }
+      // Do not send NaN/Infinity-containing GLB proxies into the ray BVH.
+      // Finite meshes keep the fast path, without changing their authored geometry.
+      if (finiteGeometry && count >= 3) {
+        geometry.boundsTree ||= new MeshBVH(geometry, { indirect: true });
+        mesh.raycast = acceleratedRaycast;
       }
     });
     this.blocks.build();
@@ -90,6 +99,7 @@ export class ParkCollision {
     this.ray.intersectObjects(this.ridingMeshes, false, this._rayHits);
     for (const hit of this._rayHits) {
       this.normal(hit, normalOut);
+      if (!Number.isFinite(normalOut.x) || !Number.isFinite(normalOut.y) || !Number.isFinite(normalOut.z)) continue;
       // Authoring/export tools sometimes reverse otherwise valid ramp/floor
       // triangles. A ray descending from above must receive the upward face;
       // never reorient underside hits on upward sweeps.
