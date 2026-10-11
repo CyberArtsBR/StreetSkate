@@ -25,7 +25,17 @@ function prepareOrbitMaterials(object) {
   for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
     if (!material) continue;
     if (/Paint \/ crew graffiti/.test(material.name)) {
-      material.depthWrite = false;
+      // The imported BLEND graffiti overlay rendered partially transparent
+      // over structural ramp panels. Cut out genuinely clear texels instead:
+      // opaque colored paint now depth-writes without turning ramp structures
+      // or their backs into ghost surfaces.
+      material.transparent = false;
+      material.opacity = 1;
+      material.alphaTest = 0.42;
+      material.depthWrite = true;
+      material.depthTest = true;
+      material.side = THREE.DoubleSide;
+      if ('transmission' in material) material.transmission = 0;
       material.polygonOffset = true;
       material.polygonOffsetFactor = -1;
       material.polygonOffsetUnits = -1;
@@ -114,6 +124,12 @@ export function splitOrbitScene(scene, sourceRails = []) {
     const rideable = semantic === 'rideable';
     const solid = semantic === 'solid';
     if (!rideable && !solid && !luminousRail) continue;
+    // The pink bowl rim remains VISIBLE and GRINDABLE, but its narrow coping
+    // tube cannot also be a rigid obstruction across the only roll-in. Let
+    // four wheels transition on the actual curved bowl skin. All other bars
+    // retain their existing solid collision; no invisible floor or bowl cap.
+    if (luminousRail && railName === 'Orbit bowl coping'
+        && !['rideable','solid'].includes(object.userData?.skateCollisionSurface)) continue;
     const mesh = new THREE.Mesh(object.geometry.clone().applyMatrix4(object.matrixWorld), material);
     mesh.name = name;
     mesh.userData.surface = rideable ? 'rideable' : 'solid';
