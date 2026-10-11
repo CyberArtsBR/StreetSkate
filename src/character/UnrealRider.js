@@ -444,8 +444,11 @@ export class UnrealRider {
       if (Number.isFinite(hipCorrection)) {
         this.model.position.y += hipCorrection;
         this.root.updateWorldMatrix(true, true);
+        // Guard both short and tall rigs from dipping the pelvis into the deck
+        // during full crouch. The shoe-contact calibration is independent:
+        // corrected feet remain anchored by the following two-leg IK solve.
         ensurePelvisDeckClearance(this.model, this.bones.pelvis, board,
-          this.poseCalibration.pelvisClearance);
+          Math.max(0.355, this.poseCalibration.pelvisClearance));
       }
     }
     for (const side of SIDES) {
