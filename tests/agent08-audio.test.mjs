@@ -134,3 +134,23 @@ test('SFX impact cooldown prevents multiple effects in one physics tick', () => 
   fx.impact(0.4);
   assert.equal(impacts, 2);
 });
+
+test('trusted input retries an autoplay attempt that is still pending', async () => {
+  const env = fakeMusicEnvironment();
+  try {
+    const pending = [];
+    env.FakeAudio.prototype.play = function() {
+      return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    };
+    const m = new MusicPlayer();
+    assert.equal(pending.length, 1, 'initial music starts automatically when browser permits');
+    m.unlock();
+    assert.equal(pending.length, 2, 'first user gesture must not be lost to pending autoplay');
+    pending[0].reject(Object.assign(new Error('autoplay blocked'), { name: 'NotAllowedError' }));
+    await Promise.resolve();
+    pending[1].resolve();
+    await Promise.resolve();
+    assert.equal(m.unlocked, true);
+    m.dispose();
+  } finally { env.restore(); }
+});
