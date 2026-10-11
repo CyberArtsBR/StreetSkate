@@ -4,6 +4,7 @@ import { RailNetwork } from './RailNetwork.js';
 import { CoreSkateController } from './core/CoreSkateController.js';
 import { SkateboardContactRig } from './SkateboardContactRig.js';
 import { sharedSurfaceTextures, surfaceTexturesReady } from '../park/SurfaceMaterials.js';
+import { buildParkRouteMetadata, validateParkManifest } from '../park/ParkRegistry.js';
 
 // Location-specific presentation only; universal skate physics stays unchanged.
 export const PARK_REGISTRY = Object.freeze({
@@ -85,6 +86,9 @@ export function validateParkWorld(world) {
       throw new Error('Location contains an invalid or duplicate grind path.');
     names.add(rail.name);
   }
+  // The core game retains a mutable manifest for locationId/presentation updates.
+  // Validate against the same strict contract used by the transactional loader.
+  validateParkManifest(manifest);
   return world;
 }
 
@@ -100,6 +104,9 @@ export async function createParkWorld(id, onProgress = () => {}) {
     // Readiness belongs to the selected world: a Rooftop texture failure must
     // never stop the independent warehouse or archived GLB park from loading.
     await world.ready;
+    if (world.manifest.routes === undefined)
+      world.manifest.routes = buildParkRouteMetadata(world.manifest, id);
+    validateParkWorld(world);
     world.id = id;
     world.presentation = { ...entry.presentation, ...world.manifest.environment, ...world.presentation };
     world.manifest.locationId = id;
@@ -154,6 +161,8 @@ export function disposeParkWorld(world, retainedWorld = null) {
     for (const material of list) if (material) {
       materialSet.add(material);
       for (const value of Object.values(material)) if (value?.isTexture) textureSet.add(value);
+      for (const uniform of Object.values(material.uniforms || {}))
+        if (uniform?.value?.isTexture) textureSet.add(uniform.value);
     }
   });
   gather(retainedWorld?.park, protectedGeometry, protectedMaterials, protectedTextures);
@@ -163,6 +172,7 @@ export function disposeParkWorld(world, retainedWorld = null) {
   world.park?.removeFromParent();
   world.collision?.removeFromParent();
   for (const geometry of geometries) if (!protectedGeometry.has(geometry)) {
+    geometry.disposeBoundsTree?.();
     geometry.boundsTree = null;
     geometry.dispose();
   }
