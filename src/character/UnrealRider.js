@@ -496,11 +496,15 @@ export class UnrealRider {
       // stuck to the torso. Normal ollies, AIR and vert returns retain this
       // safe shoulder-to-wrist profile rather than ragdolling hands past head.
       // Named grabs/flatland/bails still use their authored reach animations.
-      const neutralArms = C(this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
-        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE)
-        + this.w(PRESENTATION_STATES.AIR) + this.w(PRESENTATION_STATES.VERT_AIR)
-        + this.w(PRESENTATION_STATES.OLLIE_POP), 0, 1)
-        * (1-grab) * (1-flat) * (bail ? 0 : 1);
+      const regularNoGrabAir = [PRESENTATION_STATES.AIR, PRESENTATION_STATES.VERT_AIR,
+        PRESENTATION_STATES.OLLIE_POP].includes(presentation?.state) && !grab && !flatland && !bail;
+      // Preserve a fixed, neutral silhouette immediately on generic takeoff:
+      // spring channel blending previously permitted one-frame half-neutral
+      // arms that could fold over the face before the AIR channel settled.
+      const neutralArms = regularNoGrabAir ? 1 : C(
+        this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
+        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE),
+        0, 1) * (1-grab) * (1-flat) * (bail ? 0 : 1);
       const neutralPose = neutralArms > 0 ? neutralArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
         this.kneeForward.clone().applyQuaternion(rootQ), armLength,
