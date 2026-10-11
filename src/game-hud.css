@@ -51,9 +51,17 @@ body[data-screen='playing'] #trick-feedback{top:clamp(86px,11vh,110px)}
 body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{backdrop-filter:none}
 #trick-feedback:not(:empty){
   box-sizing:border-box;
+  position:fixed;
+  left:50%;
+  right:auto;
+  top:clamp(100px,13vh,148px);
   width:max-content;
-  max-width:min(90vw,690px);
-  margin-inline:auto;
+  max-width:min(92vw,960px);
+  margin:0;
+  transform:translateX(-50%);
+  overflow:visible;
+  white-space:normal;
+  overflow-wrap:anywhere;
   /* The graffiti lettering stands on its own: no solid rectangular panel. */
   padding:0;
   background:none;
@@ -62,7 +70,12 @@ body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{ba
   box-shadow:none;
   backdrop-filter:none;
 }
-#trick-feedback .graffiti-word img{filter:drop-shadow(0 2px 2px #000c)}
+#trick-feedback .graffiti-art{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 10px;max-width:100%;overflow:visible}
+#trick-feedback .graffiti-word{display:inline-flex;align-items:center;flex-wrap:nowrap;max-width:100%}
+#trick-feedback .graffiti-word img{max-height:clamp(22px,4.1vh,46px);width:auto;max-width:min(6vw,40px);object-fit:contain;filter:drop-shadow(0 2px 2px #000c)}
+/* The legacy duplicate ::after text was independently positioned inside a
+   max-content box, clipping the left score digits on long gold/fire combos. */
+#trick-feedback::after{content:none!important}
 #run-timer,#now-playing,.skate-hud{font-variant-numeric:tabular-nums}
 @media(max-width:720px){
   .skate-hud{gap:11px;max-width:calc(100vw - 24px);padding:10px 12px}
