@@ -13,5 +13,5 @@ test('Grand Warehouse adds no runtime graffiti to the warehouse visual root', ()
   const code=readFileSync('src/park/WarehouseVariants.js','utf8');
   assert.doesNotMatch(code, /createGrandWarehouseGraffiti|GrandWarehouseGraffiti/);
   const path=readFileSync('src/park/GrandWarehouseSceneFilter.js','utf8');
-  assert.match(path, /Nine stair/);
+  assert.match(path, /Six stair kinked down rail/);
 });
