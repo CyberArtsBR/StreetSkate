@@ -52,7 +52,10 @@ export function warehouseTubePaths(geometry) {
   return paths;
 }
 export function buildImportedWarehouseCollision(root, authoredRails = [], { grandMode = false } = {}) {
-  const repairs = repairImportedWarehouse(root);
+  const repairs = repairImportedWarehouse(root, {
+    preserveArtistLayout: grandMode,
+    preserveFloorFinish: grandMode,
+  });
   root.updateMatrixWorld(true);
   const collision = new THREE.Group(); collision.name = 'Urban warehouse / imported collision';
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
@@ -81,6 +84,11 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     const joinedCoping = (joinedRamp && /Stainless_Coping/.test(materialName))
       || grandEmbeddedCoping;
     const grandMixedTubePart = grandMode && /___tube/.test(name) && !grandMetal;
+    const grandMixedRampPart = grandMode && /Skateable_Surface/.test(name)
+      && !/Foundry_Plywood(?:\.\d+)?$/.test(materialName) && !grandMetal;
+    // Imported multilayer quarter meshes contain dark timber sides under the
+    // same Skateable_Surface object name. They are solids, not wheel support.
+    if (grandMixedRampPart && /Plywood_Edges/.test(materialName)) return;
     const joinedRiding = joinedRamp && /Foundry_Plywood(?:\.\d+)?$/.test(materialName);
     // Blender joins preserve material primitives, not the original object
     // labels. Edge trim must never become a second wall or wheel surface.
@@ -89,10 +97,11 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
       || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
     const stairLanding = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
     const rideable = joinedRamp ? joinedRiding
-      : (grandMixedTubePart ? /Foundry_Plywood(?:\.\d+)?$/.test(materialName)
+      : (grandMixedTubePart || grandMixedRampPart)
+        ? /Foundry_Plywood(?:\.\d+)?$/.test(materialName)
         : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name));
     const tube = joinedCoping || (/___tube/.test(name) && (!grandMode || grandMetal));
-    const solid = joinedRamp || grandMixedTubePart || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
+    const solid = joinedRamp || grandMixedTubePart || grandMixedRampPart || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {
