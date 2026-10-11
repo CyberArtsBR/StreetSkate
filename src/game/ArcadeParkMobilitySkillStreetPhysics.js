@@ -36,6 +36,10 @@ export const ARCADE_PARK_MOBILITY = Object.freeze({
   turnGainHighSpeed: GROUND_MOTOR.turnGainHighSpeed,
   turnGainFullSpeed: GROUND_MOTOR.turnGainFullSpeed,
   manualTurnGain: GROUND_MOTOR.manualTurnGain,
+  highSpeedSteerReference: GROUND_MOTOR.highSpeedSteerReference,
+  highSpeedYawExponent: GROUND_MOTOR.highSpeedYawExponent,
+  groundSteerResponseLow: GROUND_MOTOR.groundSteerResponseLow,
+  groundSteerResponseHigh: GROUND_MOTOR.groundSteerResponseHigh,
 
   // Re-entry steering protection. A steep transition has almost no horizontal
   // tangent near vertical, so steering is briefly suppressed after touchdown.

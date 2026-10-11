@@ -8,6 +8,7 @@ import {
   automaticPushAcceleration,
   passiveRollingResistance,
   resolveGroundMotion,
+  smoothGroundSteer,
   transitionGravityScale,
 } from './core/GroundMotor.js';
 import {
@@ -123,6 +124,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
     this.autoPushActive = false;
     this.rampExitIntentTime = 0;
     this.rampReentrySteerLock = 0;
+    this.groundSteerFiltered = 0;
     this.wallImpactTime = 0;
     this.wallImpactDuration = MOMENTUM_ROLL.wallImpactDuration;
     this.wallImpactCooldown = 0;
@@ -208,6 +210,13 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
 
     const speedState = start.speedState;
     let speed = speedState.speed;
+    this.groundSteerFiltered = smoothGroundSteer({
+      previous: this.groundSteerFiltered,
+      target: this.steer,
+      speed,
+      dt,
+      config: MOMENTUM_ROLL,
+    });
 
     if (this.manual) this.updateManualBalance(dt, input, speed);
     if (this.bailTime) return;
@@ -218,7 +227,7 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
       heading: this.heading,
       normal: this.normal,
       speedState,
-      steer: this.steer,
+      steer: this.groundSteerFiltered,
       manual: Boolean(this.manual),
       crouched: Boolean(input.ollieHeld),
       reentryRemaining: this.rampReentrySteerLock,
@@ -263,6 +272,10 @@ export class MomentumRollSkillStreetPhysics extends StableBoardContactSkillStree
       if (into < 0) this.velocity.addScaledVector(this.wallSlideNormal, -into);
     }
     if (this.grounded) this.syncTravelDirection();
-    if (!this.grounded) this.autoPushActive = false;
+    if (!this.grounded) {
+      this.autoPushActive = false;
+      // A new airborne segment must not inherit a stale held carve on reentry.
+      this.groundSteerFiltered = 0;
+    }
   }
 }
