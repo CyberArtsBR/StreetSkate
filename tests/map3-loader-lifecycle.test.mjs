@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { refineWarehouseMaterials } from '../src/park/WarehouseMaterialPresentation.js';
 
 // Execute the actual warehouse loader's function body with a synthetic GLB.
 // Previous unit tests checked geometry in isolation and missed a ReferenceError
@@ -36,11 +37,12 @@ test('Grand Warehouse completes the loader and retains its stair exclusion count
     excludeGrandWarehouseMisplacedSixStair: () => { exclusionCalls++; return 7; },
     buildImportedWarehouseCollision: () => ({ collision: { children: [] }, rails: [], triangles: 120, surfaces: [] }),
     batchWarehouseVisuals: () => ({
-      park: {}, sourceMeshes: 1400, visualTriangles: 10000,
+      park: {traverse() {}}, sourceMeshes: 1400, visualTriangles: 10000,
       drawCalls: 30, rubberFloorMeshes: 1,
     }),
     releaseVisualRoot: () => {},
     ensureGrandWarehouseSpawns: () => {},
+    refineWarehouseMaterials,
   };
   const load = runInNewContext(functionBody + '\ncreateWarehouseVariant', mocks, {
     filename: 'src/park/WarehouseVariants.js', timeout: 5000,
