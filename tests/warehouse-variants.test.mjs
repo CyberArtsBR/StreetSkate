@@ -26,10 +26,12 @@ const readGlb = file => {
   return { bytes, json };
 };
 
-test('maps 3 and 4 are registered, selectable and have dedicated world loaders', () => {
+test('original maps 1 and 4 are now the only selectable maps, numbered 1 and 2', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
-  assert.deepEqual(ids, ['rooftop', 'foundry', 'tron-warehouse', 'urban-warehouse']);
-  for (const { id } of assets) {
+  assert.deepEqual(ids, ['rooftop', 'urban-warehouse']);
+  assert.equal(PARK_REGISTRY.foundry, undefined);
+  assert.equal(PARK_REGISTRY['tron-warehouse'], undefined);
+  for (const id of ids) {
     assert.equal(PARK_DEFINITIONS.find(p => p.id === id).available, true);
     assert.equal(typeof PARK_REGISTRY[id].create, 'function');
   }

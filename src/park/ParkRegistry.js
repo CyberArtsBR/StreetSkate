@@ -1,12 +1,7 @@
-/**
- * Stable park identifiers and menu metadata. A disabled location never has a
- * fallback factory: especially important while THE FOUNDRY is being authored.
- */
+/** Stable park identifiers; public map numbers are independent of saved IDs. */
 export const PARK_DEFINITIONS = Object.freeze([
-  Object.freeze({ id: 'rooftop', name: 'SKYLINE ROOFTOP', subtitle: 'Sunset cloud skatepark', available: true, selectable: true }),
-  Object.freeze({ id: 'foundry', name: 'THE FOUNDRY', subtitle: 'Industrial skate warehouse', available: true, selectable: true }),
-  Object.freeze({ id: 'tron-warehouse', name: 'TRON WAREHOUSE', subtitle: 'Electric neon / cyber skatepark', available: true, selectable: true }),
-  Object.freeze({ id: 'urban-warehouse', name: 'URBAN WAREHOUSE', subtitle: 'Revised Foundry / expanded ramps', available: true, selectable: true }),
+  Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
+  Object.freeze({ id: 'urban-warehouse', number:2, name: 'URBAN WAREHOUSE', subtitle: 'Concrete, coping & after-hours sessions', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
@@ -151,16 +146,6 @@ async function loadLegacy({ scope, signal }) {
   return { ...assembled, manifest };
 }
 
-async function loadFoundry({ scope, signal }) {
-  const { createWarehousePark } = await import('./WarehousePark.js');
-  assertNotAborted(signal);
-  const world = createWarehousePark();
-  scope.trackWorld(world, { disposeTextures: true });
-  await world.ready;
-  assertNotAborted(signal);
-  return world;
-}
-
 async function loadWarehouseVariant({ scope, signal }, id) {
   const { createWarehouseVariant } = await import('./WarehouseVariants.js');
   assertNotAborted(signal);
@@ -171,12 +156,11 @@ async function loadWarehouseVariant({ scope, signal }, id) {
   return world;
 }
 
-export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyLoader = loadLegacy, foundryLoader = loadFoundry } = {}) {
+export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyLoader = loadLegacy } = {}) {
   const registry = new ParkRegistry();
   for (const definition of PARK_DEFINITIONS) {
     const load = definition.id === 'rooftop' ? rooftopLoader :
-      definition.id === 'legacy' ? legacyLoader : definition.id === 'foundry' ? foundryLoader :
-      ['tron-warehouse', 'urban-warehouse'].includes(definition.id)
+      definition.id === 'legacy' ? legacyLoader : definition.id === 'urban-warehouse'
         ? params => loadWarehouseVariant(params, definition.id) : undefined;
     registry.register({ ...definition, ...(load ? { load } : {}) });
   }

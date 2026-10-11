@@ -17,4 +17,4 @@ export const BOARD_CHOICES = Object.freeze(LABELS.map((label, finishIndex) =>
   })));
 export const LOCATIONS = Object.freeze(PARK_DEFINITIONS
   .filter(park => park.selectable)
-  .map(({ id, name, subtitle, available }) => Object.freeze({ id, name, subtitle, available })));
+  .map(({ id, name, subtitle, available, number }) => Object.freeze({ id, name, subtitle, available, number })));

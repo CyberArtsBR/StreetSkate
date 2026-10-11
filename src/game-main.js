@@ -13,10 +13,12 @@ import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
+import { graffitiLettering, graffitiPalette } from './game/GraffitiLettering.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
 import './game-shell.css';
+import './loadout-menu.css';
 
 const container = document.querySelector('#viewport');
 const app = document.querySelector('#app');
@@ -320,8 +322,8 @@ function updateHud() {
   const trickNode = document.querySelector('#trick-feedback');
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
   // Do not reset the pop animation on every render frame.
-  if (trickNode.textContent !== trickLabel) {
-    trickNode.textContent = trickLabel;
+  if (trickNode.dataset.graffitiText !== trickLabel) {
+    trickNode.innerHTML = trickLabel ? graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
     trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
     trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
     trickNode.classList.remove('graffiti-pop');
@@ -395,8 +397,8 @@ function refreshLocationUi() {
     spotNav.append(button);
   }
   spotNav.hidden = !manifest.spots?.length;
-  const locationTitle = { foundry: 'THE FOUNDRY', legacy: 'LEGACY PARK', rooftop: 'ROOFTOP',
-    'tron-warehouse': 'TRON WAREHOUSE', 'urban-warehouse': 'URBAN WAREHOUSE' }[currentWorld.id] || manifest.name;
+  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / SKYLINE ROOFTOP',
+    'urban-warehouse': 'MAP 2 / URBAN WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
   document.querySelector('.edition').textContent = locationTitle;
   gameShell.setLocation(currentWorld.id);
@@ -478,7 +480,7 @@ async function selectLocation(id, { hero, finish } = {}) {
     return { locationId: currentWorld.id, manifest };
   } catch (error) {
     if (nextWorld && nextWorld !== currentWorld) disposeParkWorld(nextWorld, currentWorld);
-    throw new Error(`Could not load ${id === 'foundry' ? 'The Foundry' : 'the selected location'}. ${error.message || 'Choose another location and retry.'}`);
+    throw new Error(`Could not load the selected location. ${error.message || 'Choose another location and retry.'}`);
   } finally {
     switchingWorld = false;
   }
@@ -651,5 +653,7 @@ renderer.setAnimationLoop(() => {
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
   updateWorldVisibility();
-  graphicsPipeline.render();
+  // The selector supplies its own lit 3D alley. Avoid drawing the hidden park
+  // and its postprocessing at the same time, especially on mobile GPUs.
+  if(gameShell.phase!=='select') graphicsPipeline.render();
 });

@@ -5,6 +5,9 @@ import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
 import { characterPortrait, forgetCharacterPortrait } from './CharacterPortraits.js';
+import { boardPortraits } from './BoardPortraits.js';
+import { graffitiLettering } from './GraffitiLettering.js';
+import { LoadoutBackdrop } from './LoadoutBackdrop.js';
 import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
@@ -126,6 +129,10 @@ export class GameShell {
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
     this.timer.hidden=!this.active;this.updateTimer();
     this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':'menu-screen';
+    if(this.phase==='select'&&!this.backdrop) {
+      try { this.backdrop=new LoadoutBackdrop(this.root); } catch { /* CSS alley remains available without WebGL. */ }
+    }
+    this.backdrop?.setActive(this.phase==='select');
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
@@ -136,19 +143,20 @@ export class GameShell {
         <span class="rider-portrait" data-portrait-url="${safe(hero.url)}"><span class="rider-initial">${safe(hero.name[0]||'?')}</span></span>
         <strong>${safe(hero.name)}</strong><small>${safe(hero.subtitle)}</small></button>`).join('');
       const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${this.boardConfirmed&&i===this.boardIndex?'is-chosen':''}"
-        style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-preview"></span><b>${safe(board.label)}</b></button>`).join('');
+        style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-thumb" data-board-preview="${i}"><span class="deck-preview"></span></span><b>${safe(board.label)}</b><span class="deck-swatch" aria-hidden="true"></span></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
-        <strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
-      body=`<div class="loadout-shell"><header><small>CHIMP HAWK · YOUR NEXT SESSION</small><h2>BUILD YOUR LINE</h2>
-        <p>CHOOSE YOUR RIDER · YOUR DECK · YOUR SPOT</p></header>
-        <div class="loadout-section"><div class="loadout-heading"><b>01 / CHOOSE YOUR RIDER</b><button data-menu data-action="upload">↑ UPLOAD YOUR CHARACTER AVATAR .GLB FILE</button></div>
-        <div class="loadout-roster">${cards}</div></div>
-        <div class="loadout-section"><div class="loadout-heading"><b>02 / GRADIENT GLOW SKATEBOARD</b><span>+20% DECK SIZE</span></div>
-        <div class="loadout-boards">${colors}</div></div>
-        <div class="loadout-section"><div class="loadout-heading"><b>03 / CHOOSE A LOCATION</b><span>MORE PARKS COMING</span></div>
-        <div class="loadout-locations">${spots}</div></div>
-        <footer>${this.button('← BACK','back')}${this.button(this.selectBusy?'LOADING RIDER…':'START SESSION →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='rooftop'?'ABOVE THE CITY':'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
+      body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB</small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
+        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><span class="loadout-edition">STREETSKATE · VOL. 01</span></header>
+        <div class="loadout-panels">
+        <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
+        <div class="loadout-roster">${cards}</div><div class="selection-note"><span>${this.heroConfirmed?'RIDER LOCKED IN':'CHOOSE YOUR RIDER'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong></div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
+        <section class="loadout-section deck-panel" aria-label="Choose your skateboard"><div class="loadout-heading"><span class="section-number">02</span><h3>${graffitiLettering('DECK','gold')}</h3><span class="panel-kicker">GRADIENT GLOW</span></div>
+        <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
+        <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">TWO PARKS. YOUR LINE.</span></div>
+        <div class="loadout-locations">${spots}</div><div class="selection-note"><span>SESSION LOCATION</span><strong>MAP ${LOCATIONS[this.locationIndex].number} / ${safe(LOCATIONS[this.locationIndex].name)}</strong></div></section></div>
+        <footer>${this.button('← BACK','back')}<span class="loadout-recap">${safe(this.heroes[this.heroIndex].name)} <i>/</i> ${safe(BOARD_CHOICES[this.boardIndex].label)} <i>/</i> MAP ${LOCATIONS[this.locationIndex].number}</span>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
         <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
@@ -178,12 +186,12 @@ export class GameShell {
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${title}</h2>${body}</div>`;
+    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${graffitiLettering(title,'gold')}</h2>${body}</div>`;
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
       button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};
     }
-    if(this.phase==='select')this.loadPortraits();
+    if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
       const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
@@ -211,6 +219,14 @@ export class GameShell {
         el.replaceChildren(thumb);
       }).catch(()=>{}); // Monogram remains visible if a model is unavailable.
     }
+  }
+  loadBoardPreviews(){
+    const elements=[...this.content.querySelectorAll('[data-board-preview]')];
+    boardPortraits().then(previews=>{
+      for(const el of elements) if(el.isConnected){
+        const image=document.createElement('img');image.src=previews[Number(el.dataset.boardPreview)];image.alt='';image.draggable=false;el.replaceChildren(image);
+      }
+    }).catch(()=>{});
   }
   setLocation(id){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.root.dataset.location=id;}
   async confirmLoadout(){

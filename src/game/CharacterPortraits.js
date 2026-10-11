@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { UnrealRider } from '../character/UnrealRider.js';
 import { PortraitPromiseCache } from './PortraitPromiseCache.js';
 
 const cache = new PortraitPromiseCache(8);
@@ -45,7 +45,8 @@ function disposePortraitModel(model) {
 
 /** Render an imported GLB as a small static image, never keeping its mesh alive. */
 async function renderPortrait(url) {
-  const model = (await new GLTFLoader().loadAsync(url)).scene;
+  const rider = await new UnrealRider(url).load();
+  const model = rider.root;
   try {
     if (!renderer) {
       renderer = new THREE.WebGLRenderer({
@@ -63,6 +64,8 @@ async function renderPortrait(url) {
     const key = new THREE.DirectionalLight('#ffe8ce', 3);
     key.position.set(-3, 7, 5);
     scene.add(key);
+    // Preview the same planted, bent-knee stance used during a session.
+    for(let frame=0;frame<40;frame++) rider.update({dt:1/60,time:frame/60});
     const bounds = new THREE.Box3().setFromObject(model);
     const dims = bounds.getSize(new THREE.Vector3());
     if (!(dims.y > 0.001) || !Number.isFinite(dims.y)) throw new Error('Invalid GLB bounds');
@@ -73,7 +76,7 @@ async function renderPortrait(url) {
     const scaledBounds = new THREE.Box3().setFromObject(model);
     const center = scaledBounds.getCenter(new THREE.Vector3());
     model.position.sub(center);
-    model.rotation.y = Math.PI / 5;
+    model.rotation.y = -Math.PI / 3;
     // Frame face, ears, headwear and shoulders at thumbnail scale.
     const camera = new THREE.PerspectiveCamera(39, 320 / 340, 0.05, 40);
     // Oversized Chimpions heads and muzzle shapes extend well below the cranium.

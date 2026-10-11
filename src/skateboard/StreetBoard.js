@@ -70,7 +70,7 @@ export class StreetBoard {
     };
   }
 
-  async load() {
+  async load({ persist = true } = {}) {
     this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
     // Match Half Pipe's deck-only 18% extension: trucks/wheelbase stay intact.
     this.model.traverse(o => { if (o.isMesh && /^Board1/i.test(o.name)) o.scale.x *= 1.18; });
@@ -99,11 +99,11 @@ export class StreetBoard {
     });
     let finish = 0;
     try { finish = Number(localStorage.getItem('streetskate.boardFinish')) || 0; } catch {}
-    this.setFinish(finish);
+    this.setFinish(finish, { persist });
     return this;
   }
 
-  setFinish(index = 0) {
+  setFinish(index = 0, { persist = true } = {}) {
     if (!Number.isFinite(index)) index = 0;
     this.finishIndex = ((Math.trunc(index) % SKATEBOARD_FINISHES.length) + SKATEBOARD_FINISHES.length) % SKATEBOARD_FINISHES.length;
     const finish = SKATEBOARD_FINISHES[this.finishIndex];
@@ -152,7 +152,7 @@ export class StreetBoard {
         material.needsUpdate = true;
       }
     });
-    try { localStorage.setItem('streetskate.boardFinish', String(this.finishIndex)); } catch {}
+    if (persist) try { localStorage.setItem('streetskate.boardFinish', String(this.finishIndex)); } catch {}
   }
 
   pointWorld(x, y, z, target = new THREE.Vector3()) {
