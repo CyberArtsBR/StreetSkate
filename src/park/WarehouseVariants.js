@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWarehousePark } from './WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
+import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -172,6 +173,7 @@ export async function createWarehouseVariant(id) {
     // Authored Foundry feature locations/lines are stale after Blender edits.
     world.manifest.features = [];
     world.manifest.lines = [];
+    if (id === 'grand-warehouse') ensureGrandWarehouseSpawns(world);
   }
 
   // Tiny underlay closes visual seams without capping the recessed bowl.

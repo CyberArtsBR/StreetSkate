@@ -31,7 +31,7 @@ test('original map geometry is embedded in an immutable, separately versioned Ma
   const length=bytes.readUInt32LE(12);
   const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
   assert.ok(json.meshes.length>=1414,'missing authored warehouse meshes');
-  assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\\.001)?|Plane_SkateLite_base_color\\.002_0)$/.test(n.name||'')).length,3,
+  assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(n.name||'')).length,3,
     'two low obstacles and the new SkateLite ramp must be present');
   assert.ok(json.nodes.some(n=>/Ground_Floor/.test(n.name||'')));
   assert.ok(json.nodes.some(n=>/Brick_North_South_Wall/.test(n.name||'')));

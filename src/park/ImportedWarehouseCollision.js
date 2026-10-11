@@ -103,7 +103,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
-    if (grandMode && /^(?:Cube__0(?:\\.001)?|Plane_SkateLite_base_color\\.002_0)$/.test(name)) {
+    if (grandMode && /^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(name)) {
       addGrandFixture(object, name);
       return;
     }
