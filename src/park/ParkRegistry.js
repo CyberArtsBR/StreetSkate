@@ -6,6 +6,60 @@ export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
+
+/**
+ * Designer guidance keyed by ACTUAL scene spot IDs. These are feature sequences,
+ * not collision-proven navigation meshes. Never infer geometry or teleport the rider.
+ * The authoritative waypoint coordinates come from the active park manifest.
+ */
+const ROUTE_GUIDES = Object.freeze({
+  rooftop: [
+    { id: 'technical', name: 'Rooftop street technique', category: 'technical',
+      spots: ['street', 'rail'], rails: ['Street flat rail', 'Manual pad edge', 'Solar express continuous return rail'] },
+    { id: 'flow', name: 'Halfpipe to pool', category: 'flow',
+      spots: ['street', 'flow', 'bowl'], rails: ['Orbit pool coping'] },
+    { id: 'showcase', name: 'Skyline showcase', category: 'showcase',
+      spots: ['street', 'mega', 'flow'], rails: ['Solar express continuous return rail'] },
+  ],
+  orbit: [
+    { id: 'technical', name: 'Ion runway technique', category: 'technical',
+      spots: ['street', 'rail', 'training'], rails: ['Ion runway long rail', 'Cross-orbit long rail', 'Long ledge ultraviolet edge'] },
+    { id: 'flow', name: 'Halfpipe and broad banks', category: 'flow',
+      spots: ['flow', 'banks', 'street'], rails: ['02 / north halfpipe coping', '02 / south halfpipe coping'] },
+    { id: 'showcase', name: 'ORBIT signature circuit', category: 'showcase',
+      spots: ['street', 'bowl', 'flow'], rails: ['Orbit bowl coping', '02 / north halfpipe coping'] },
+  ],
+  'grand-warehouse': [
+    { id: 'technical', name: 'Warehouse street and horseshoe', category: 'technical',
+      spots: ['entrance', 'street', 'horseshoe'], railMatches: ['Street', 'Nine stair', 'horseshoe'] },
+    { id: 'flow', name: 'Warehouse flow to vert', category: 'flow',
+      spots: ['entrance', 'flow', 'vert'], railMatches: ['Flow', 'Vert', 'halfpipe'] },
+    { id: 'showcase', name: 'Grand Warehouse districts', category: 'showcase',
+      spots: ['entrance', 'bowl', 'vert'], railMatches: ['bowl', 'Competition'] },
+  ],
+});
+
+export function buildParkRouteMetadata(manifest, parkId) {
+  const guides = ROUTE_GUIDES[parkId] || [];
+  const spots = new Map((manifest?.spots || []).map(spot => [spot.id, spot]));
+  const rails = (manifest?.rails || []).map(rail => rail.name).filter(name => typeof name === 'string');
+  return Object.freeze(guides.map(guide => {
+    const waypoints = guide.spots.map(id => spots.get(id)).filter(Boolean).map(spot =>
+      Object.freeze({
+        spotId: spot.id, label: spot.label || spot.id,
+        position: Object.freeze([...spot.position]),
+        ...(Number.isFinite(spot.heading) ? { heading: spot.heading } : {}),
+      }));
+    const railNames = [...new Set(rails.filter(name => guide.rails?.includes(name) ||
+      guide.railMatches?.some(fragment => name.toLowerCase().includes(fragment.toLowerCase()))))];
+    return Object.freeze({
+      id: guide.id, name: guide.name, category: guide.category,
+      navigation: 'feature-sequence', // Waypoints are safe spawn anchors, NOT a proven clear traversal.
+      waypoints: Object.freeze(waypoints), railNames: Object.freeze(railNames),
+    });
+  }).filter(route => route.waypoints.length >= 2));
+}
+
 const isVec3 = value => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
 const fail = detail => { throw new Error(`Invalid park manifest: ${detail}`); };
 
@@ -46,6 +100,33 @@ export function validateParkManifest(source) {
       });
     }
   }
+  if (source.spawnHeading !== undefined && !Number.isFinite(source.spawnHeading)) fail('spawnHeading');
+  const railNames = new Set(rails.map(rail => rail.name).filter(Boolean));
+  const routes = [];
+  if (source.routes !== undefined) {
+    if (!Array.isArray(source.routes)) fail('routes must be an array');
+    const routeIds = new Set();
+    for (const [index, route] of source.routes.entries()) {
+      if (!route || typeof route.id !== 'string' || !route.id.trim() ||
+          routeIds.has(route.id) || !['technical', 'flow', 'showcase'].includes(route.category) ||
+          !Array.isArray(route.waypoints) || route.waypoints.length < 2 ||
+          !Array.isArray(route.railNames) || route.railNames.some(name => !railNames.has(name)))
+        fail(`routes[${index}]`);
+      routeIds.add(route.id);
+      const waypoints = route.waypoints.map((point, waypointIndex) => {
+        if (!point || !spotIds.has(point.spotId) || !isVec3(point.position) ||
+            (point.heading !== undefined && !Number.isFinite(point.heading)) ||
+            !playableRegions.some(region => point.position[0] >= region.minX &&
+              point.position[0] <= region.maxX && point.position[2] >= region.minZ &&
+              point.position[2] <= region.maxZ)) fail(`routes[${index}].waypoints[${waypointIndex}]`);
+        return Object.freeze({ ...point, position: Object.freeze([...point.position]) });
+      });
+      routes.push(Object.freeze({
+        ...route, waypoints: Object.freeze(waypoints),
+        railNames: Object.freeze([...route.railNames]),
+      }));
+    }
+  }
   if (source.visualTriangles !== undefined && (!Number.isFinite(source.visualTriangles) || source.visualTriangles < 0))
     fail('visualTriangles');
   return Object.freeze({
@@ -54,6 +135,7 @@ export function validateParkManifest(source) {
     rails: Object.freeze(rails),
     playableRegions: Object.freeze(playableRegions),
     spots: Object.freeze(spots),
+    ...(source.routes === undefined ? {} : { routes: Object.freeze(routes) }),
     ...(source.views === undefined ? {} : { views: Object.freeze(views) }),
   });
 }
