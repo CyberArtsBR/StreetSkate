@@ -54,24 +54,35 @@ const VARIANTS = Object.freeze({
  * Never alter visible object names, transforms, materials or geometry.
  */
 export function annotateWarehouseFeatures(root, mapId) {
-  let annotated = 0, explicitAliases = 0;
+  let annotated = 0, explicitAliases = 0, explicitSurfaceHints = 0;
   root.traverse(object => {
     if (!object.isMesh) return;
+    const sourceName = warehouseObjectName(object);
+    const explicit = object.userData?.skateFeatureId || object.userData?.skate?.featureId;
+    const featureId = typeof explicit === 'string' && /^[a-z0-9][a-z0-9._/-]*$/i.test(explicit)
+      ? explicit
+      : `${mapId}/legacy/${sourceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mesh'}`;
     const collisionName = object.userData?.skateCollisionName || object.userData?.skate?.collisionName;
-    if (typeof collisionName === 'string' && collisionName.includes(' / ')) {
-      object.userData.name = collisionName; // legacy warehouseObjectName() bridge
+    const surface = object.userData?.skateCollisionSurface || object.userData?.skate?.collisionSurface;
+    const surfaceAliases = {
+      rideable: 'Skateable_Surface', solid: 'Warehouse_Walls',
+      decorative: 'Floor_Markings',
+    };
+    // The collision importer owned by Agent 04 still consumes historical names.
+    // Give it a canonical compatibility alias derived from stable GLB extras.
+    const alias = typeof collisionName === 'string' && collisionName.includes(' / ')
+      ? collisionName
+      : surfaceAliases[surface] ? `SKATE_META / ${featureId} / ${surfaceAliases[surface]}` : null;
+    if (alias) {
+      object.userData.name = alias; // mesh.name and all visible art stay unchanged
       explicitAliases++;
     }
-    const name = warehouseObjectName(object);
-    const explicit = object.userData?.skateFeatureId || object.userData?.skate?.featureId;
-    if (typeof explicit === 'string' && /^[a-z0-9][a-z0-9._/-]*$/i.test(explicit))
-      object.userData.skateFeatureId = explicit;
-    else
-      object.userData.skateFeatureId = `${mapId}/legacy/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mesh'}`;
-    object.userData.skateClassification = collisionName ? 'glb-metadata' : 'legacy-name';
+    if (surfaceAliases[surface]) explicitSurfaceHints++;
+    object.userData.skateFeatureId = featureId;
+    object.userData.skateClassification = alias ? 'glb-metadata' : 'legacy-name';
     annotated++;
   });
-  return { annotated, explicitAliases };
+  return { annotated, explicitAliases, explicitSurfaceHints };
 }
 
 function releaseVisualRoot(root) {
@@ -159,7 +170,7 @@ export async function createWarehouseVariant(id) {
   const world = createWarehousePark({ textures: false });
   let batched, imported;
   const featureMetadata = typeof annotateWarehouseFeatures === 'function'
-    ? annotateWarehouseFeatures(gltf.scene, id) : { annotated: 0, explicitAliases: 0 };
+    ? annotateWarehouseFeatures(gltf.scene, id) : { annotated: 0, explicitAliases: 0, explicitSurfaceHints: 0 };
   let excludedStairMeshes = 0; // Must survive the try block for manifest statistics.
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
     : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
@@ -255,6 +266,7 @@ export async function createWarehouseVariant(id) {
   }));
   manifest.statistics = { ...manifest.statistics, featureMetadataMeshes: featureMetadata.annotated,
     explicitFeatureAliases: featureMetadata.explicitAliases,
+    explicitSurfaceHints: featureMetadata.explicitSurfaceHints,
     authoredRouteCount: manifest.routes.length,
     recognizedRideableFeatures: manifest.features.length };
   manifest.environment = {
