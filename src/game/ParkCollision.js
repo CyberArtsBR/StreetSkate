@@ -76,8 +76,11 @@ export class ParkCollision {
         // The older 0.035 threshold marked its nearly vertical coping facets
         // as hard blockers, stopping climbs and preventing lip takeoff.
         // Real structural sides/backing remain in the separate SOLID meshes.
-        if (rideable && (Math.abs(normal.y) > 0.012
-          || (mesh.userData.transitionSkin && normal.y >= -0.012))) continue;
+        // A transition riding skin must never become a body wall because of
+        // near-vertical slopes OR reversed triangle winding at an imported
+        // corner. Actual support backs/sidewalls are separate SOLID meshes.
+        if (rideable && (mesh.userData.transitionSkin
+          || Math.abs(normal.y) > 0.012)) continue;
         triangle.faceNormal = normal;
         triangle.railId = mesh.userData.railId || null;
         this.blocks.addTriangle(triangle);
