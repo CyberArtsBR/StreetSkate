@@ -523,8 +523,14 @@ export class UnrealRider {
           .addScaledVector(this.kneeForward.clone().applyQuaternion(rootQ),armLength*.18);
         elbowPole.lerp(restingPole,neutralArms);
       }
-      const smoothedWorld = smoothHandDestination(this.smoothedHands[side], world, dt,
-        grab > 0.01 ? 30 : 24);
+      // Planted, near-straight A-pose arms must follow their own moving
+      // shoulders exactly. World-space lag here makes elbows buckle on frame
+      // two even if the destination itself is valid. Dampen only aerial/grab
+      // transitions, when hands are intentionally released from that pose.
+      const smoothedWorld = neutralArms > 0.98 && !bail
+        ? world.clone()
+        : smoothHandDestination(this.smoothedHands[side], world, dt,
+          grab > 0.01 ? 30 : 24);
       this.smoothedHands[side] = smoothedWorld.clone();
       limb(upper, lower, hand, smoothedWorld, elbowPole);
       if (this.hands[side]) {
