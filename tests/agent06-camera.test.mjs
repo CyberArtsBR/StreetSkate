@@ -24,6 +24,22 @@ function rig(p = player(), mode = 'follow') {
 }
 function horizontal(v) { return new THREE.Vector3(v.x, 0, v.z).normalize(); }
 
+
+test('default Follow framing is a little closer without pulling wall/vert cameras into obstacles', () => {
+  const ground = highFollowFraming({ grounded: true, horizontalSpeed: 7 });
+  const air = highFollowFraming({ grounded: false, horizontalSpeed: 7 });
+  const wall = highFollowFraming({ wallRideActive: true, horizontalSpeed: 7 });
+  const returning = highFollowFraming({ transitionReturning: true, horizontalSpeed: 7 });
+  assert.equal(ground.distance, 8.5);
+  assert.equal(ground.height, 4.9);
+  assert.ok(ground.distance > 7.8 && ground.distance < 9.5, 'moderate zoom, not first-person');
+  assert.ok(air.distance > ground.distance);
+  assert.ok(wall.distance > ground.distance && wall.height >= 6, 'maintain wall clearance');
+  assert.ok(returning.distance > ground.distance && returning.lookAhead >= 1, 'landings remain visible');
+  const c = rig(player(), 'follow');
+  assert.ok(c.distance <= 9 && c.distance >= 8, 'first-person gameplay frame uses closer default');
+  assert.equal(c.mode, 'follow');
+});
 test('agent06: straight travel remains behind the movement vector', () => {
   const p = player();
   const c = rig(p);
