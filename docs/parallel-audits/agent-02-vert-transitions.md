@@ -15,13 +15,14 @@
 | Transfer abuse | Up exit accepted with very little approach energy; staged transfer could produce a deck launch from almost nothing | Require credible takeoff speed/rise and abort low-energy deck planning to return without upward impulse |
 | Wrong transition | Coping candidate could select a nearby nearly perpendicular crossing rail | Reject candidates whose rail tangent is inconsistent with the measured slope normal |
 | Verified transfer reentry | Emergency original-wall sweep could catch a rider already headed for a verified deck | Original-wall emergency sweep is disabled during active verified deck transfers; deck support owns landing |
+| Pump on hard seams | Large wheel-normal discontinuities qualified as curved transition compression | Reject incoherent curvature above 0.48 radians while preserving real bowl/quarter pumping and landing-window timing |
 | 180/360 | Legacy auto-yaw and landing orientation are already handled by a distinct orientation authority | Preserve existing player-only spin/heading logic; no automatic turnaround introduced |
 
 ### Physics model and ownership
 
 The vertical launch envelope and gravity remain owned by `TransitionController`. Start-of-air kinetic budget: `v_launch² <= v_inbound² + (0.72 * boost)²`. Near-vertical ramp return permits controlled finite outward drift; it never teleports the rider onto a return line. `VertReturnFlight` corrects velocity in the local ramp/coping plane and leaves Y ballistic. `TransferFlightResult` applies a limited horizontal acceleration, not scripted XZ teleportation.
 
-The low-energy transfer guard is applied only to the post-takeoff transfer plan. This *does not* override genuine collisions or wheel contacts. The original same-transition wheel-sweep/continuous-sweep support rules remain the landing authority. Existing pump timing, compression, cooldown, and hard-cap policy in `PumpSystem` are deliberately **unchanged**, because the phase-one runtime consumes them in `StatefulSkillStreetPhysics` (outside Agent 02 ownership). Those values should be jointly reviewed with Agent 01 before integration.
+The low-energy transfer guard is applied only to the post-takeoff transfer plan. This *does not* override genuine collisions or wheel contacts. The original same-transition wheel-sweep/continuous-sweep support rules remain the landing authority. Existing pump timing, compression, cooldown, and hard-cap policy in `PumpSystem` remain unchanged, but its curvature eligibility now excludes hard seams. The phase-one runtime consumes this pure helper in `StatefulSkillStreetPhysics` (outside Agent 02 ownership). Pump speed limits should be jointly reviewed with Agent 01 before integration.
 
 ### Deterministic verification
 
@@ -36,7 +37,7 @@ node tools/agent02-vert-trajectories.mjs
 npm run build
 ```
 
-New regression scenarios: fast straight/diagonal approach, opposite halfpipe wall, curvature-dependent departure, shallow lip rejection, 60/120 Hz trajectory parity, weak/unsupported transfers, aborted returns, bounded deck-target acceleration, high lateral speed without snap, original-wall sweep exclusion for verified transfers. Existing landing/rotation tests independently cover passive same-wall fakie, deliberate 180/360, early-flip auto-catch and rejected alignments.
+New regression scenarios: fast straight/diagonal approach, opposite halfpipe wall, curvature-dependent departure, shallow lip rejection, 60/120 Hz trajectory parity, weak/unsupported transfers, aborted returns, bounded deck-target acceleration, high lateral speed without snap, crossing lip normals, hard-seam pumping rejection, original-wall sweep exclusion for verified transfers. Existing landing/rotation tests independently cover passive same-wall fakie, deliberate 180/360, early-flip auto-catch and rejected alignments.
 
 `tools/agent02-vert-trajectories.mjs` emits deterministic 120 Hz JSON for quarter straight/diagonal, halfpipe opposing and 180-motion cases, bowl pocket, mini ramp, and a planned verified transfer. Report fields include incoming/launch speed, launch vertical speed, apex rise and time, first descending lip-plane crossing, lateral displacement and return error. **Lip-plane crossing is not a confirmed landing**; real GLB contact/collision must still be replayed.
 
