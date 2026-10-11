@@ -574,6 +574,31 @@ export class UnrealRider {
           }
         }
       }
+      if (nearNeutral) {
+        // Some imported GLBs have nonuniform bone-parent transforms. Turning
+        // the upper arm from its bind pose changes the ACTUAL world-space
+        // segment lengths. A one-pass solver calculated reach in bind pose
+        // (~0.27m on Heretic), while the skinned arm later measured ~0.32m:
+        // the neutral wrist stayed at 0.27m and the elbow buckled visibly.
+        // Re-measure after solving and re-project at real world chain reach.
+        // Three bounded refinements avoid scale editing or per-frame drift.
+        for (let pass = 0; pass < 3; pass++) {
+          const shoulderNow = upper.getWorldPosition(V());
+          const elbowNow = lower.getWorldPosition(V());
+          const wristNow = hand.getWorldPosition(V());
+          const reachNow = shoulderNow.distanceTo(elbowNow) + elbowNow.distanceTo(wristNow);
+          if (!Number.isFinite(reachNow) || reachNow <= 1e-5) break;
+          const desiredReach = reachNow * .997;
+          if (Math.abs(this.smoothedHands[side].distanceTo(shoulderNow) - desiredReach) < .002) break;
+          const stable = neutralArmIKTargets(shoulderNow, outwardWorld,
+            this.kneeForward.clone().applyQuaternion(rootQ), reachNow);
+          if (!stable) break;
+          const candidate = safeArmGoal(shoulderNow, stable.wrist, outwardWorld,
+            headWorld, reachNow, { neutral: true });
+          limb(upper, lower, hand, candidate, stable.elbow, 2.10);
+          this.smoothedHands[side].copy(candidate);
+        }
+      }
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
         // Neutral wrists follow their forearms in local space. Holding the
