@@ -112,6 +112,15 @@ test('all five rider GLBs limit sole clearance without changing bone or board sc
   board.contactRig={deckTopY:.14,deckWidth:.42,deckLength:1.1};
   board.update({dt:0});
   rider.update({board,presentation:{state:'IDLE'},dt:1/60});
+  rider.resetPresentation();
+  for(let frame=0;frame<20;frame++)
+    rider.update({board,presentation:{state:'CROUCH'},crouch:1,dt:1/60});
+  rider.root.updateWorldMatrix(true,true);
+  board.root.updateWorldMatrix(true,true);
+  const pelvis=board.root.worldToLocal(rider.bones.pelvis.getWorldPosition(new THREE.Vector3()));
+  const deckTop=board.contactRig.deckTopY-board.deckHeight;
+  assert.ok(pelvis.y-deckTop>0.34,
+    name+' pelvis intersects the board when crouched: '+(pelvis.y-deckTop));
   for(const side of ['l','r']){
    const foot=rider.bones['foot_'+side];
    const ankle=foot.getWorldPosition(new THREE.Vector3());
