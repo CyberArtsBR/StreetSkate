@@ -4,6 +4,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWarehousePark } from './WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
+import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
+import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFilter.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -20,6 +22,17 @@ const VARIANTS = Object.freeze({
     background: '#111d30',
     floor: '#1b3444',
     theme: 'Electric cyan / futuristic indoor warehouse',
+  },
+  'grand-warehouse': {
+    name: 'GRAND WAREHOUSE',
+    url: '/assets/warehouse/granwarehouse.glb?v=fbc46ba3',
+    exposure: 1.06,
+    light: '#ffe4bc',
+    ambient: '#d4ddf2',
+    ground: '#41392e',
+    background: '#30323a',
+    floor: '#46454d',
+    theme: 'Artist-authored wood and steel warehouse / no added wall art',
   },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
@@ -57,7 +70,7 @@ export function batchWarehouseVisuals(root, name, { rubberMaterial = null } = {}
   const batches = new Map(), oldGeometry = new Set();
   let sourceMeshes = 0, visualTriangles = 0, rubberFloorMeshes = 0;
   root.traverse(object => {
-    if (!object.isMesh) return;
+    if (!object.isMesh || object.userData.grandWarehouseExcluded) return;
     sourceMeshes++;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     if (materials.length !== 1 || !object.geometry?.attributes?.position) return;
@@ -118,12 +131,24 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
-  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial() : null;
+  let excludedStairMeshes = 0; // Must survive the try block for manifest statistics.
+  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
+    : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
-    if (id === 'urban-warehouse') imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails);
+    // Map 3 only: omit the mistakenly exported near-volcano Six stair clone.
+    // Its seven material primitives include treads, wood bank, and handrails.
+    // KEEP the correctly placed Nine stair assembly beside the far rail.
+    // Mark before collision and visual batching, avoiding invisible colliders.
+    excludedStairMeshes = id === 'grand-warehouse'
+      ? excludeGrandWarehouseMisplacedSixStair(gltf.scene) : 0;
+    if (id === 'urban-warehouse' || id === 'grand-warehouse') {
+      imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
+        grandMode: id === 'grand-warehouse',
+      });
+    }
     batched = batchWarehouseVisuals(gltf.scene, variant.name, { rubberMaterial });
     if (rubberMaterial && !batched.rubberFloorMeshes) {
-      throw new Error('Urban warehouse has no recognized rubber floor objects; check the GLB ground mesh names.');
+      throw new Error(`${variant.name} has no recognized rubber floor objects; check the GLB ground mesh names.`);
     }
   } catch (error) {
     if (rubberMaterial) {
@@ -153,6 +178,7 @@ export async function createWarehouseVariant(id) {
     // Authored Foundry feature locations/lines are stale after Blender edits.
     world.manifest.features = [];
     world.manifest.lines = [];
+    if (id === 'grand-warehouse') ensureGrandWarehouseSpawns(world);
   }
 
   // Tiny underlay closes visual seams without capping the recessed bowl.
@@ -184,6 +210,7 @@ export async function createWarehouseVariant(id) {
     ...manifest.statistics, sourceMeshes: batched.sourceMeshes, visualMeshes: batched.drawCalls,
     visualTriangles: batched.visualTriangles, batchedDrawCalls: batched.drawCalls,
     rubberFloorMeshes: batched.rubberFloorMeshes,
+    ...(id === 'grand-warehouse' ? { excludedMisplacedSixStairMeshes: excludedStairMeshes } : {}),
   };
   manifest.visualTriangles = batched.visualTriangles;
   manifest.environment = {

@@ -9,7 +9,7 @@ const nameOf = object => {
 };
 
 /** Repair the edited import before deriving either batched art or collision. */
-export function repairImportedWarehouse(root) {
+export function repairImportedWarehouse(root, { preserveArtistLayout = false, preserveFloorFinish = false } = {}) {
   if (root.userData.warehouseRepairs) return root.userData.warehouseRepairs;
   root.updateMatrixWorld(true);
   const diagnostics = { movedRamps: [], floorPatched: false };
@@ -39,7 +39,7 @@ export function repairImportedWarehouse(root) {
     object.position.add(local);
     diagnostics.movedRamps.push({ name: nameOf(object), delta: delta.toArray() });
   };
-  for (const object of joined) {
+  for (const object of preserveArtistLayout ? [] : joined) {
     const bounds = new THREE.Box3().setFromObject(object);
     const name = nameOf(object), centre = bounds.getCenter(new THREE.Vector3());
     const shift = new THREE.Vector3(
@@ -59,7 +59,7 @@ export function repairImportedWarehouse(root) {
   }
   // These copies are separate objects (one coping was independently moved), so
   // apply one common translation to preserve every existing ramp/rail join.
-  if (lowSpines.length) {
+  if (!preserveArtistLayout && lowSpines.length) {
     const bounds = new THREE.Box3();
     for (const mesh of lowSpines) bounds.union(new THREE.Box3().setFromObject(mesh));
     if (bounds.max.z > 53.2) {
@@ -70,7 +70,7 @@ export function repairImportedWarehouse(root) {
   root.updateMatrixWorld(true);
   // Keep the charcoal plaza finish independently of the imported marble asset.
   // Clone only the floor material so ramps sharing an atlas retain their finish.
-  if (floor) {
+  if (floor && !preserveFloorFinish) {
     floor.material = floor.material.clone();
     floor.material.name = 'Urban warehouse / charcoal floor';
     floor.material.color.set('#24272a');

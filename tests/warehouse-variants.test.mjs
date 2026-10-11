@@ -26,11 +26,13 @@ const readGlb = file => {
   return { bytes, json };
 };
 
-test('original maps 1 and 4 are now the only selectable maps, numbered 1 and 2', () => {
+test('existing map 1 and map 2 remain unchanged while Grand Warehouse is independently selectable as map 3', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
-  assert.deepEqual(ids, ['rooftop', 'urban-warehouse']);
+  assert.deepEqual(ids, ['rooftop', 'urban-warehouse', 'grand-warehouse']);
   assert.equal(PARK_REGISTRY.foundry, undefined);
   assert.equal(PARK_REGISTRY['tron-warehouse'], undefined);
+  assert.deepEqual(PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.number), [1,2,3]);
+  assert.equal(PARK_REGISTRY['grand-warehouse'].name, 'Grand Warehouse');
   for (const id of ids) {
     assert.equal(PARK_DEFINITIONS.find(p => p.id === id).available, true);
     assert.equal(typeof PARK_REGISTRY[id].create, 'function');

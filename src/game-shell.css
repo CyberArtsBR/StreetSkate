@@ -488,3 +488,17 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 @media (prefers-reduced-motion: reduce) {
   #trick-feedback { will-change: auto; }
 }
+
+/* Map 3: crisp 1990s graffiti selection art, scoped exclusively to Grand Warehouse. */
+.loadout-location[data-location="grand-warehouse"]{
+  background:linear-gradient(126deg,#25164a 5%,#a21b66 39%,#f77b36 75%,#3cd2c1 100%)!important;
+  border-color:#ffdc69!important;
+}
+.loadout-location[data-location="grand-warehouse"] .location-art{
+  background:linear-gradient(110deg,#15152bcf,#651a5780),
+    repeating-linear-gradient(142deg,transparent 0 24px,#e5fb3860 25px 29px,transparent 31px 54px);
+}
+.loadout-location[data-location="grand-warehouse"] .location-stamp{
+  color:#faff68;
+  text-shadow:2px 2px 0 #241244,0 0 9px #fb42ba;
+}

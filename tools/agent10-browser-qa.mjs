@@ -132,16 +132,16 @@ try{
   assert.equal(await page.evaluate(()=>localStorage.getItem('streetskate.masterVolume')),stored);
   await page.locator('body[data-screen="title"]').waitFor();
  });
- await checked('timed run selection, grid keyboard, and disabled locations',async()=>{
+ await checked('timed run selection, grid keyboard, and three playable locations',async()=>{
   await page.locator('[data-action="start"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   assert.equal(await page.locator('.loadout-character').count(),4);
   await page.waitForFunction(() => document.querySelectorAll('.rider-portrait img').length === 4, null, {timeout:60000});
   await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
-  assert.equal(await page.locator('.loadout-location').count(),4);
+  assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),0);
-  for (const id of ['rooftop', 'foundry', 'tron-warehouse', 'urban-warehouse']) {
+  for (const id of ['rooftop', 'urban-warehouse', 'grand-warehouse']) {
     assert.equal(await page.locator(`.loadout-location[data-location="${id}"]`).isEnabled(),true,
       `${id} must remain available and selectable`);
   }
