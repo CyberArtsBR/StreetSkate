@@ -53,6 +53,17 @@ test('reversed winding on a steep authored corner remains a riding skin, not a c
   assert.equal(moved.contacts.length,0,'body capsule stopped on real transition skin');
 });
 
+test('sphere-sweep fallback also ignores steep rideable facets lacking transition metadata', () => {
+  // Unlabelled imported skins can still enter the body-index because they
+  // look vertical. That must not resurrect a *board* stop through sphere BVH.
+  const riding = verticalPanel('rideable',false);
+  assert.ok(riding.blocks.triangles.length>0,'fixture must exercise BVH fallback');
+  const from = new THREE.Vector3(0,.9,-.65),to = new THREE.Vector3(0,.9,.65);
+  const point = new THREE.Vector3(),normal = new THREE.Vector3();
+  assert.equal(riding.sweepSolidSphere(from,to,.08,point,normal),null,
+    'fallback sphere sweep still blocks a riding facet');
+});
+
 test('real structural wall still stops skateboard nose/tail and remains wallride-eligible', () => {
   const solid = verticalPanel('solid',false);
   const from = new THREE.Vector3(0,0.9,-0.65);
