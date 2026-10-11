@@ -173,3 +173,28 @@ test('synthesized pop, rail and landing voices remain gated and respect pause',a
     assert.equal(fx.roll.gain.gain.target,0,'pause silences rolling layer');
   }finally{await fx.dispose();globalThis.window=oldWindow;}
 });
+
+test('camera option persists and is retained when starting the session',()=>{
+  const oldStorage=globalThis.localStorage;
+  const preferences=new Map();
+  globalThis.localStorage={
+    getItem:k=>preferences.get(k)||null,
+    setItem:(k,v)=>preferences.set(k,v)
+  };
+  try {
+    const cameraCalls=[];
+    const shell=Object.create(GameShell.prototype);
+    shell.phase='options';shell.cameraIndex=0;shell.music={unlock(){}};
+    shell.actions={
+      camera:value=>cameraCalls.push(value),
+      start:()=>{}
+    };
+    shell.render=()=>{};
+    shell.setScreen=phase=>{shell.phase=phase;};
+    shell.choose('camera');
+    assert.equal(preferences.get('streetskate.camera'),'classic');
+    shell.start(false);
+    assert.equal(shell.phase,'playing');
+    assert.equal(cameraCalls.at(-1),'classic','starting a run must not reset the chosen camera');
+  }finally{globalThis.localStorage=oldStorage;}
+});
