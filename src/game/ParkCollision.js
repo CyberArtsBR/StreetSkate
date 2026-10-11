@@ -83,6 +83,9 @@ export class ParkCollision {
           || Math.abs(normal.y) > 0.012)) continue;
         triangle.faceNormal = normal;
         triangle.railId = mesh.userData.railId || null;
+        // Capsule uses the full body index. Only true solids may ever stop
+        // nose/tail clearance sweeps, including the sphere fallback path.
+        triangle.solidObstacle = !rideable;
         this.blocks.addTriangle(triangle);
       }
       // Do not send NaN/Infinity-containing GLB proxies into the ray BVH.
@@ -204,6 +207,7 @@ export class ParkCollision {
       this.blocks.getSphereTriangles(this._sphere, this._sphereTriangles);
       let deepest = null;
       for (const triangle of this._sphereTriangles) {
+        if (!triangle.solidObstacle) continue;
         if (ignoreRail && triangle.railId === ignoreRail) continue;
         const hit = this.blocks.triangleSphereIntersect(this._sphere, triangle);
         if (!hit || hit.depth < 1e-6) continue;
