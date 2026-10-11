@@ -34,8 +34,8 @@ export const THPS_CAMERA = Object.freeze({
   highSpeedFovCap: 3.5,
   portraitFovCap: 2.5,
   // Prevent a momentary 180° downhill reversal from whipping the camera.
-  maximumTrackedYawRadiansPerSecond: 6.9,
-  occlusionSideFollowRate: 18,
+  maximumTrackedYawRadiansPerSecond: 3.6,
+  occlusionSideFollowRate: 11,
 
   // Classic skate cameras do not instantly orbit behind the rider every time a
   // quarter pipe reverses world travel. Normal carving recenters deliberately;
@@ -43,10 +43,10 @@ export const THPS_CAMERA = Object.freeze({
   directionFollowRate: 4.2,
   reverseDirectionFollowRate: 0.82,
   reverseDotThreshold: -0.18,
-  positionFollowRate: 9.5,
-  targetFollowRate: 12.0,
-  verticalFollowRate: 14,
-  vertVerticalFollowRate: 24,
+  positionFollowRate: 7.5,
+  targetFollowRate: 8.5,
+  verticalFollowRate: 8.5,
+  vertVerticalFollowRate: 13,
   maximumFollowLag: 1.4,
   classicVertDistance: 3.6,
   classicVertHeight: 4.4,
@@ -382,6 +382,19 @@ export class FollowCamera {
       const unobstructed = checked.distanceToSquared(intermediate) < 0.0025
         && checked.distanceTo(riderAnchor) >= minArm;
       this.camera.position.copy(unobstructed ? intermediate : safeEye);
+    } else if (!firstFrame && !clipped && !wasOccluded && dt > 0) {
+      // Clear sight lines also need a damped tripod. Previously the camera
+      // jumped straight to the new eye whenever per-wheel ground normals or
+      // travel heading changed between frames, creating visible screen shake.
+      // Preserve the collision authority: accept interpolation only when its
+      // entire eye ray is verified clear, never look through a wall.
+      const alpha = 1 - Math.exp(-11 * dt);
+      const candidate = this.camera.position.clone().lerp(safeEye, alpha);
+      const tested = player?.surface?.camera
+        ? player.surface.camera(riderAnchor, candidate, 0.28) : candidate;
+      const safe = tested.distanceToSquared(candidate) < 0.0025
+        && candidate.distanceTo(riderAnchor) >= minArm;
+      this.camera.position.copy(safe ? candidate : safeEye);
     } else {
       this.camera.position.copy(safeEye);
     }
