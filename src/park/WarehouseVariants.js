@@ -21,6 +21,17 @@ const VARIANTS = Object.freeze({
     floor: '#1b3444',
     theme: 'Electric cyan / futuristic indoor warehouse',
   },
+  'grand-warehouse': {
+    name: 'GRAND WAREHOUSE',
+    url: '/assets/warehouse/grand-warehouse.glb?v=906a8ab0',
+    exposure: 1.06,
+    light: '#ffe4bc',
+    ambient: '#d4ddf2',
+    ground: '#41392e',
+    background: '#30323a',
+    floor: '#46454d',
+    theme: '90s graffiti / classic wood and steel / expanded indoor skate playground',
+  },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
     url: '/assets/warehouse/urban-warehouse.glb?v=813cbf0c',
@@ -120,7 +131,11 @@ export async function createWarehouseVariant(id) {
   let batched, imported;
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
-    if (id === 'urban-warehouse') imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails);
+    if (id === 'urban-warehouse' || id === 'grand-warehouse') {
+      imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
+        grandMode: id === 'grand-warehouse',
+      });
+    }
     batched = batchWarehouseVisuals(gltf.scene, variant.name, { rubberMaterial });
     if (rubberMaterial && !batched.rubberFloorMeshes) {
       throw new Error('Urban warehouse has no recognized rubber floor objects; check the GLB ground mesh names.');

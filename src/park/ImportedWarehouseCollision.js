@@ -51,7 +51,7 @@ export function warehouseTubePaths(geometry) {
   }
   return paths;
 }
-export function buildImportedWarehouseCollision(root, authoredRails = []) {
+export function buildImportedWarehouseCollision(root, authoredRails = [], { grandMode = false } = {}) {
   const repairs = repairImportedWarehouse(root);
   root.updateMatrixWorld(true);
   const collision = new THREE.Group(); collision.name = 'Urban warehouse / imported collision';
@@ -72,7 +72,15 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     const materialName = object.material?.name || '';
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
       && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
-    const joinedCoping = joinedRamp && /Stainless_Coping/.test(materialName);
+    const grandMetal = grandMode && /Foundry_(?:Stainless_Coping|Grind_Rail)/.test(materialName);
+    // Blender can join metal rails into mixed-material ramp, ledge and side
+    // meshes. GLTFLoader splits those materials into child primitives. Rebuild
+    // grind paths only from the metal pipe primitive, not its wooden support.
+    const grandEmbeddedCoping = grandMetal && !/___tube/.test(name)
+      && /Skateable_Surface|Side_Wood_Core|Back_Panel|Hubba_Solid|Curved_Quarter_Rear_Panel/.test(name);
+    const joinedCoping = (joinedRamp && /Stainless_Coping/.test(materialName))
+      || grandEmbeddedCoping;
+    const grandMixedTubePart = grandMode && /___tube/.test(name) && !grandMetal;
     const joinedRiding = joinedRamp && /Foundry_Plywood(?:\.\d+)?$/.test(materialName);
     // Blender joins preserve material primitives, not the original object
     // labels. Edge trim must never become a second wall or wheel surface.
@@ -80,9 +88,11 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
       || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
     const stairLanding = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
-    const rideable = joinedRamp ? joinedRiding : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
-    const tube = joinedCoping || /___tube/.test(name);
-    const solid = joinedRamp || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
+    const rideable = joinedRamp ? joinedRiding
+      : (grandMixedTubePart ? /Foundry_Plywood(?:\.\d+)?$/.test(materialName)
+        : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name));
+    const tube = joinedCoping || (/___tube/.test(name) && (!grandMode || grandMetal));
+    const solid = joinedRamp || grandMixedTubePart || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {
@@ -90,7 +100,13 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
       const template = authoredRails.find(rail => rail.name === base)
         || (joinedCoping ? authoredRails.find(rail => rail.name.startsWith(base.replace(/ coping$/, '') + ' ') && rail.transition) : null);
       const paths = warehouseTubePaths(geometry);
-      if (!paths.length) throw new Error(`Cannot extract grind path from ${name}`);
+      if (!paths.length) {
+        if (!grandMode) throw new Error(`Cannot extract grind path from ${name}`);
+        // Some joined steel details are supports, not valid 10-sided pipes.
+        // Preserve them as physical blockers, never create a phantom grind.
+        add(geometry, 'solid', name);
+        return;
+      }
       const railId = `${base} / imported ${rails.length + 1}`;
       for (const [i, path] of paths.entries()) {
         const forward = path.points.map(p => p.map(v => Math.round(v * 10000)).join(',')).join(';');
