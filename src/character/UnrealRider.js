@@ -504,7 +504,7 @@ export class UnrealRider {
         const angle = THREE.MathUtils.degToRad(40);
         const direction = lateral.clone().multiplyScalar(Math.sin(angle))
           .add(V(0,-Math.cos(angle),0)).addScaledVector(this.kneeForward,.025).normalize();
-        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.92);
+        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.985);
         world.lerp(restingHand,neutralArms);
       }
       const reachWeight = handstand ? flat : grab;
