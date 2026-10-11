@@ -259,10 +259,10 @@ export class GraphicsPipeline {
     if (!this.settings) return;
     const orbit = Boolean(this.world?.userData.environmentBloom);
     this.bloomComposite.enabled = orbit || this.settings.bloomStrength > 0;
-    this.bloom.strength = orbit ? .62 : this.settings.bloomStrength * this.settings.vfxScale;
-    this.bloom.radius = orbit ? .38 : .24;
+    this.bloom.strength = orbit ? .24 : this.settings.bloomStrength * this.settings.vfxScale;
+    this.bloom.radius = .24;
     this.bloom.threshold = orbit ? 1.25 : .88;
-    this.bloomComposite.uniforms.bloomMix.value = orbit ? 1 : .32;
+    this.bloomComposite.uniforms.bloomMix.value = orbit ? .55 : .32;
   }
 
   resize(width, height) {

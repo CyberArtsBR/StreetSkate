@@ -1,8 +1,42 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { batchWarehouseVisuals } from './WarehouseVariants.js';
+import { warehouseObjectName } from './ImportedWarehouseCollision.js';
 
-const authoredName = object => object.userData.name || object.name;
+const authoredName = warehouseObjectName;
+
+function prepareOrbitMaterials(object) {
+  for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+    if (!material) continue;
+    if (/Paint \/ crew graffiti/.test(material.name)) {
+      material.depthWrite = false;
+      material.polygonOffset = true;
+      material.polygonOffsetFactor = -1;
+      material.polygonOffsetUnits = -1;
+    } else {
+      material.transparent = false;
+      material.opacity = 1;
+      material.alphaTest = 0;
+      material.depthWrite = true;
+      material.side = THREE.DoubleSide;
+      if ('transmission' in material) material.transmission = 0;
+    }
+    if (/Ceramic \/ silver riding concrete/.test(material.name)) {
+      material.map = null;
+      material.normalMap = null;
+      material.roughnessMap = null;
+      material.metalnessMap = null;
+      material.color.set('#52677b');
+      material.roughness = .19;
+      material.metalness = .55;
+    }
+    // Preserve neon color and shape without saturating the ramps around it.
+    if (/^(LED|Grind) \/ /.test(material.name)) {
+      material.emissiveIntensity = Math.min(material.emissiveIntensity, 2.2);
+    }
+    material.needsUpdate = true;
+  }
+}
 
 // Blender's curve export stores nine vertices per bevel ring. Average each
 // ring in world space so grind paths follow edited positions and transforms.
@@ -28,9 +62,13 @@ export function splitOrbitScene(scene, sourceRails = []) {
   const proxies = [], visuals = [], helpers = [];
   scene.traverse(object => {
     if (!object.isMesh) return;
-    if (/^COL_/.test(authoredName(object))) proxies.push(object);
-    else if (/collision.bar/.test(authoredName(object))) helpers.push(object);
-    else if (object.visible) visuals.push(object);
+    const name = authoredName(object);
+    if (/^COL_/.test(name)) proxies.push(object);
+    else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ expansion joint/.test(name)) helpers.push(object);
+    else if (object.visible) {
+      prepareOrbitMaterials(object);
+      visuals.push(object);
+    }
   });
   const hints = new Set(proxies.map(object => authoredName(object).slice(4)));
   const rails = [];
@@ -46,8 +84,11 @@ export function splitOrbitScene(scene, sourceRails = []) {
         rails.push({ ...template, name: railName, points, radius: template?.radius || .075 });
       }
     }
-    const rideable = /orbital.bowl.(flat|transition)|continuous.ride|broad.bank.circuit.ride|^Deck \/ (bowl apron|east|north|south|west)$|Skateable_Surface|manual.pad|^06 \/ ledge/i.test(name);
-    const solid = hints.has(name) || /Side_Wood_Core|accessible.side.panel|\/ back$|structural.cheek|collision.bar|\/ pedestal|knee.wall|equipment.cabinet/i.test(name);
+    const purpleRamp = /^04_FLOW_LAB \/ Flow launch ramp/.test(name);
+    const purpleRide = purpleRamp && /^Foundry_Plywood/.test(object.material?.name || '');
+    const purpleCore = purpleRamp && /^Foundry_Dark_Timber/.test(object.material?.name || '');
+    const rideable = purpleRide || /orbital.bowl.(flat|transition)|continuous.ride|broad.bank.circuit.ride|^Deck \/ (bowl apron|east|north|south|west)$|Skateable_Surface|manual.pad|^06 \/ ledge/i.test(name);
+    const solid = purpleCore || hints.has(name) || /Side_Wood_Core|accessible.side.panel|\/ back$|structural.cheek|collision.bar|\/ pedestal|knee.wall|equipment.cabinet/i.test(name);
     if (!rideable && !solid && !luminousRail) continue;
     const mesh = new THREE.Mesh(object.geometry.clone().applyMatrix4(object.matrixWorld), material);
     mesh.name = name;
@@ -80,11 +121,12 @@ export async function createOrbitPark() {
   ]);
   const world = splitOrbitScene(gltf.scene, manifest.rails);
   sky.colorSpace = THREE.SRGBColorSpace;
+  sky.mapping = THREE.EquirectangularReflectionMapping;
   const backdrop = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24),
     new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, depthWrite: false, fog: false }));
   backdrop.userData.castShadow = false;
   world.park.add(backdrop);
   manifest.visualTriangles = world.visualTriangles;
   manifest.rails = world.rails;
-  return { ...world, manifest };
+  return { ...world, manifest, environment: sky };
 }

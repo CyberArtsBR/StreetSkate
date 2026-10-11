@@ -1,6 +1,6 @@
 {
   "name": "ORBIT",
-  "revision": 3,
+  "revision": 4,
   "theme": "Expanded neon orbital skatepark",
   "dimensions": "136 × 108 m · EXPANDED ORBIT",
   "transitionScale": 1,
@@ -1382,5 +1382,11 @@
     "derivation": "Blender image resampling from preserved generated panorama"
   },
   "graffitiPlacement": "Reachable lower bowl transition, ramp side/rear panels, broad bank cheek, manual pad face and low perimeter walls",
-  "collisionSource": "Visible edited geometry from orbit.glb; COL_ and collision-bar helper copies are excluded"
+  "collisionSource": "Visible edited geometry with material-aware purple ramp collision; legacy blue funboxes, expansion-joint grids, COL_ and collision-bar helpers excluded",
+  "surfaceFinish": {
+    "ground": "Smooth reflective slate",
+    "roughness": 0.19,
+    "metalness": 0.55,
+    "opaqueRamps": true
+  }
 }

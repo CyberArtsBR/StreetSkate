@@ -162,7 +162,7 @@ function applyLighting() {
   ambient.groundColor.set(settings.ambientGround);
   ambient.intensity = dusk ? 0.4 : settings.ambientIntensity;
   renderer.toneMappingExposure = settings.exposure * (graphicsPipeline.settings?.exposureMultiplier || 1);
-  scene.environment = sky?.environment?.texture || environment.texture;
+  scene.environment = currentWorld.environment || sky?.environment?.texture || environment.texture;
   scene.environmentIntensity = (dusk ? 0.22 : settings.environmentIntensity) *
     ((graphicsPipeline.settings?.environmentIntensity || .84) / .84);
   scene.backgroundBlurriness = graphicsPipeline.settings?.environmentBlur || 0;
