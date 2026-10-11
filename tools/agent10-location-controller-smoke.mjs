@@ -118,9 +118,8 @@ try{
     await page.bringToFront();
     assert.equal(await page.evaluate(()=>document.hasFocus()),true,
       'Browser must be focused for gamepad edge processing');
-    // Wait until GameShell has sampled the neutral virtual controller.
-    const frame=await page.evaluate(()=>window.streetSkate.renderer.info.render.frame);
-    await page.waitForFunction(v=>window.streetSkate.renderer.info.render.frame>=v+2,frame,{timeout:60000});
+    // Input sampling continues each animation frame while idle menus skip rendering.
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
     await setButton(0,true);
     try { await page.locator('body[data-screen="select"]').waitFor({timeout:30000}); }
     finally { await setButton(0,false); }
@@ -132,8 +131,7 @@ try{
       await page.waitForFunction(()=>document.activeElement?.dataset.action==='hero'
         && document.activeElement?.dataset.index==='1',null,{timeout:30000});
     } finally { await setButton(15,false); }
-    const frameAfter=await page.evaluate(()=>window.streetSkate.renderer.info.render.frame);
-    await page.waitForFunction(v=>window.streetSkate.renderer.info.render.frame>=v+2,frameAfter,{timeout:60000});
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
     await setButton(0,true);
     try { await page.locator('.loadout-character[data-index="1"].is-chosen').waitFor({timeout:30000}); }
     finally { await setButton(0,false); }

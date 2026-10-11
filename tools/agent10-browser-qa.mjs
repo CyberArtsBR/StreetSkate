@@ -137,7 +137,11 @@ try{
   await page.locator('[data-action="start"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   assert.equal(await page.locator('.loadout-character').count(),4);
-  await page.waitForFunction(() => document.querySelectorAll('.rider-portrait img').length === 4, null, {timeout:60000});
+  await page.waitForFunction(() => {
+    const roster = document.querySelectorAll('.loadout-roster .rider-portrait img');
+    const selected = document.querySelector('.selected-rider .rider-portrait img');
+    return roster.length === 4 && [...roster, selected].every(img => img?.complete && img.naturalWidth > 0);
+  }, null, {timeout:60000});
   await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
