@@ -36,11 +36,13 @@
   width:max-content;
   max-width:min(90vw,690px);
   margin-inline:auto;
-  padding:10px 18px;
-  background:linear-gradient(115deg,#0a132de5,#291535dc);
-  border:1px solid #dcdeff5c;
-  border-radius:16px;
-  box-shadow:0 8px 30px #050414aa;
+  /* The graffiti lettering stands on its own: no solid rectangular panel. */
+  padding:0;
+  background:none;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  backdrop-filter:none;
 }
 #trick-feedback .graffiti-word img{filter:drop-shadow(0 2px 2px #000c)}
 #run-timer,#now-playing,.skate-hud{font-variant-numeric:tabular-nums}
@@ -50,11 +52,11 @@
   .skate-hud .session-score strong{font-size:24px}
   .skate-hud .session-score small{font-size:8px}
   .skate-hud .speed>span{font-size:38px}
-  #trick-feedback:not(:empty){padding:7px 10px;max-width:95vw}
+  #trick-feedback:not(:empty){padding:0;max-width:95vw}
   #trick-feedback .graffiti-art{gap:2px 5px;justify-content:center}
 }
 @media(max-height:480px){
   #now-playing{max-width:245px}
   #run-timer{padding:8px 12px}
-  #trick-feedback:not(:empty){top:16%;padding:5px 9px}
+  #trick-feedback:not(:empty){top:16%;padding:0}
 }
