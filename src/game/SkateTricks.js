@@ -5,7 +5,8 @@ const COMBO_WINDOW = 0.38;
 const LANDING_GRACE = 0.24;
 // A render-frame input may precede the fixed-step takeoff and should survive
 // normal simulation jitter without firing on a later unrelated jump.
-const AIR_FLIP_GRACE = 0.26;
+const AIR_FLIP_GRACE = 0.18;
+const OLLIE_FLIP_GRACE = 0.22;
 const AIR_QUEUE_WINDOW = 0.72;
 const MAX_QUEUED_AIR_TRICKS = 2;
 const REPEAT_VALUES = [1, 0.75, 0.5, 0.25, 0.1, 0];
@@ -101,7 +102,8 @@ export class SkateTricks {
     if (context.grounded && !context.grinding && !context.manual && input.flipPressed) {
       this.pendingAirFlip = {
         trick: { ...flipFor(direction) },
-        expires: this.time + AIR_FLIP_GRACE,
+        expires: this.time + ((input.ollieHeld || input.ollieReleased)
+          ? OLLIE_FLIP_GRACE : AIR_FLIP_GRACE),
       };
     }
 

@@ -13,7 +13,7 @@ const air = (extra = {}) => ({
 
 test('aaa03: buffered grounded flip survives a fixed-step delayed ollie', () => {
   const tricks = new SkateTricks();
-  tricks.resolve(input({ flipPressed: true }), air({ grounded: true }));
+  tricks.resolve(input({ flipPressed: true, ollieHeld: true }), air({ grounded: true }));
   tricks.tick(0.20);
   const result = tricks.resolve(input(), air());
   assert.equal(result.flip.name, 'Kickflip');
