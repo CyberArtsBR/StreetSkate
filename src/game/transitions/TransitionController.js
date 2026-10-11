@@ -238,9 +238,11 @@ export class TransitionController {
 
   begin(position, velocity, edge, { boardForward = null, launchBoost = 0 } = {}) {
     const incomingVelocity = velocity.clone();
-    const incomingSpeed = clamp(incomingVelocity.length(), 0, 24);
+    const incomingSpeed = incomingVelocity.length();
     const tangentVelocity = incomingVelocity.dot(edge.copingTangent);
-    const tangentSpeed = Math.min(Math.abs(tangentVelocity), 2.8);
+    // A diagonal run has a genuine along-coping velocity. Do not count it
+    // as climb energy and then delete it when leaving the lip.
+    const tangentSpeed = Math.abs(tangentVelocity);
     const normalY = clamp(Math.abs(edge.surfaceNormal.y), 0, 1);
     const nonLateralSpeed = Math.sqrt(Math.max(0,
       incomingSpeed * incomingSpeed - tangentSpeed * tangentSpeed));
@@ -258,8 +260,8 @@ export class TransitionController {
     // This is a physical speed bound, not a scripted trajectory. It limits
     // launch energy once at departure, then leaves gravity/steering unchanged.
     launchVertical = Math.min(launchVertical, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
-    const lateralVelocity = clamp(tangentVelocity, -2.6, 2.6);
-    const exitRequested = Boolean(edge.exitRequested);
+    const lateralVelocity = tangentVelocity;
+    const exitRequested = Boolean(edge.exitRequested && edge.supportsTransfer !== false);
 
     let launchHorizontal;
     if (exitRequested) {
@@ -268,8 +270,22 @@ export class TransitionController {
       launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
       launchVertical = clamp(launchVertical * 0.80, 3.2, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     } else {
-      launchHorizontal = edge.copingTangent.clone().multiplyScalar(clamp(lateralVelocity, -1.1, 1.1));
+      // Near-vertical coping retains a small physically directional outward
+      // component rather than annihilating radial velocity in one frame.
+      // Rounded/shallow lip samples do NOT create a deck-crossing catapult.
+      const outwardSpeed = Math.max(0, incomingVelocity.dot(edge.deckOutward));
+      const vertAmount = clamp((0.72 - normalY) / 0.52, 0, 1);
+      const radialRetention = Math.min(1.65, outwardSpeed * 0.22 * vertAmount);
+      launchHorizontal = edge.copingTangent.clone()
+        .multiplyScalar(lateralVelocity)
+        .addScaledVector(edge.deckOutward, radialRetention);
     }
+    // All retained XZ energy is paid for from the *same* launch budget.
+    // Even a fast diagonal approach cannot receive duplicate lift + sideways
+    // kinetic energy through the coping projection.
+    const remainingVertical = Math.sqrt(Math.max(0,
+      energyBudget * energyBudget - launchHorizontal.lengthSq()));
+    launchVertical = Math.min(launchVertical, remainingVertical);
     velocity.copy(launchHorizontal).addScaledVector(UP, launchVertical);
 
     const returnTarget = edge.lipPoint.clone().addScaledVector(edge.rampInward, 0.30);
