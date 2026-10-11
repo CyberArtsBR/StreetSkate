@@ -79,7 +79,12 @@ export function splitOrbitScene(scene, sourceRails = []) {
   scene.traverse(object => {
     if (!object.isMesh) return;
     const name = authoredName(object);
-    if (/^COL_/.test(name)) proxies.push(object);
+    const explicit = object.userData?.skateCollisionSurface || object.userData?.skate?.collisionSurface;
+    if (explicit === 'decorative') helpers.push(object);
+    else if (object.visible && ['rideable', 'solid'].includes(explicit)) {
+      prepareOrbitMaterials(object);
+      visuals.push(object);
+    } else if (/^COL_/.test(name)) proxies.push(object);
     else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ expansion joint/.test(name)) helpers.push(object);
     else if (object.visible) {
       prepareOrbitMaterials(object);
