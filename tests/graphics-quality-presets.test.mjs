@@ -29,12 +29,12 @@ test('preset caps never exceed DPR, MSAA or GPU anisotropy capabilities', () => 
   assert.equal(resolveGraphicsSettings('cinematic', {devicePixelRatio:3,maxAnisotropy:32,maxSamples:4}).pixelRatio,2.25);
 });
 
-test('SSR remains optional to protect performance on low/midrange devices', () => {
+test('unstable SSR is disabled across all tiers while preserving high preset bloom', () => {
   assert.equal(GRAPHICS_PRESETS.performance.ssr,false);
   assert.equal(GRAPHICS_PRESETS.balanced.ssr,false);
   assert.equal(GRAPHICS_PRESETS.high.ssr,false);
-  assert.equal(GRAPHICS_PRESETS.ultra.ssr,true);
-  assert.equal(GRAPHICS_PRESETS.cinematic.ssr,true);
+  assert.equal(GRAPHICS_PRESETS.ultra.ssr,false);
+  assert.equal(GRAPHICS_PRESETS.cinematic.ssr,false);
   assert.equal(GRAPHICS_PRESETS.performance.bloomStrength,0);
   assert.ok(GRAPHICS_PRESETS.high.bloomStrength>0);
 });

@@ -136,6 +136,15 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     // Imported multilayer quarter meshes contain dark timber sides under the
     // same Skateable_Surface object name. They are solids, not wheel support.
     if (grandMixedRampPart && /Plywood_Edges/.test(materialName)) return;
+    if (grandMixedRampPart) {
+      // An authored Skateable_Surface with a nonstandard imported material was
+      // previously downgraded wholesale to solid. That blocks the long wooden
+      // warehouse quarter near the horseshoe rail/bowl. Keep only actual
+      // upward-facing skin rideable; vertical backs and undersides stay solid.
+      // The triangles are taken directly from the GLB, with no geometry moves.
+      addGrandFixture(object, name);
+      return;
+    }
     const joinedRiding = joinedRamp && /Foundry_Plywood(?:\.\d+)?$/.test(materialName);
     // Blender joins preserve material primitives, not the original object
     // labels. Edge trim must never become a second wall or wheel surface.

@@ -16,7 +16,12 @@ test('agent07: all five presets retain 1024² shadows with bounded follow covera
   assert.equal(GRAPHICS_PRESETS.performance.bloomStrength, 0);
   assert.equal(GRAPHICS_PRESETS.performance.sharpen, 0);
   assert.equal(GRAPHICS_PRESETS.high.ssr, false);
-  assert.ok(GRAPHICS_PRESETS.ultra.ssrTargetLimit < GRAPHICS_PRESETS.cinematic.ssrTargetLimit);
+  // Screen-space reflections ghost/skew imported skatepark objects at high DPR.
+  for (const name of ['ultra', 'cinematic']) {
+    assert.equal(GRAPHICS_PRESETS[name].ssr, false);
+    assert.equal(GRAPHICS_PRESETS[name].ssrTargetLimit, 0);
+    assert.equal(GRAPHICS_PRESETS[name].shadowResolution, 1024);
+  }
 });
 
 test('agent07: rider-centered shadows improve contact resolution without moving sun direction', () => {
