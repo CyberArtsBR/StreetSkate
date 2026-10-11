@@ -72,7 +72,7 @@ body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{ba
   box-shadow:none;
   backdrop-filter:none;
 }
-#trick-feedback .graffiti-lettering{display:block;max-width:100%;overflow:visible}
+#trick-feedback .graffiti-lettering{display:block;max-width:100%;overflow:visible;--letter-height:inherit}
 #trick-feedback .graffiti-art{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:7px 12px;max-width:100%;overflow:visible;padding:8px 12px 14px}
 #trick-feedback .graffiti-word{display:inline-flex;align-items:center;flex-wrap:nowrap;min-width:0;max-width:100%;overflow:visible}
 #trick-feedback .graffiti-word img{display:block;width:calc(var(--letter-height)*.79);height:var(--letter-height);max-width:none;max-height:none;min-width:0;object-fit:contain;filter:drop-shadow(0 2px 2px #000c)}
