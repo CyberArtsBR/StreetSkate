@@ -131,13 +131,14 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
+  let excludedStairMeshes = 0; // Must survive the try block for manifest statistics.
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
     : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
     // Map 3 only: omit the exported Nine stair assembly the artist does not
     // want in this scene. Mark *before* deriving visuals, wheel collision and
     // grind paths so the removed obstacle has no invisible physical remnants.
-    const excludedStairMeshes = id === 'grand-warehouse'
+    excludedStairMeshes = id === 'grand-warehouse'
       ? excludeGrandWarehouseNineStair(gltf.scene) : 0;
     if (id === 'urban-warehouse' || id === 'grand-warehouse') {
       imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
