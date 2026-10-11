@@ -129,13 +129,15 @@ test('Agent04 Grand spawn placement is idempotent and preserves original floor t
     { id: 'near', heading: 0, position: [0, .15, 0] },
     { id: 'second', heading: Math.PI, position: [6, .15, 6] },
   ]);
-  const beforeTransform = world.floor.matrix.clone();
+  // Cache the evaluated artist transform, not Three.js's stale default matrix.
+  world.collision.updateMatrixWorld(true);
+  const beforeTransform = world.floor.matrixWorld.clone();
   ensureGrandWarehouseSpawns(world);
   const first = JSON.stringify(world.manifest);
   assert.equal(world.manifest.statistics.grandValidatedSpawns, 3);
   ensureGrandWarehouseSpawns(world);
   assert.equal(JSON.stringify(world.manifest), first, 'second preparation moved validated spawns');
-  assert.ok(world.floor.matrix.equals(beforeTransform), 'spawn repair modified an artist-authored object');
+  assert.ok(world.floor.matrixWorld.equals(beforeTransform), 'spawn repair modified an artist-authored object');
 });
 
 test('Agent04 Grand spawn search does not partially overwrite manifest on failure', () => {
