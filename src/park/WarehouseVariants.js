@@ -130,8 +130,8 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
-  const rubberMaterial = ['urban-warehouse', 'grand-warehouse'].includes(id)
-    ? createUrbanRubberFloorMaterial() : null;
+  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
+    : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
     if (id === 'urban-warehouse' || id === 'grand-warehouse') {
       imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
