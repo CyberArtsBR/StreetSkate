@@ -20,7 +20,7 @@ export const GROUND_MOTOR = Object.freeze({
   rollingBase: 0.025,
   rollingQuadratic: 0.00115,
   transitionSurfaceY: 0.992,
-  uphillGravityScale: 0.92,
+  uphillGravityScale: 0.45,
   downhillGravityScale: 1.0,
   steerRateLowSpeed: 2.7,
   steerRateHighSpeed: 1.65,
