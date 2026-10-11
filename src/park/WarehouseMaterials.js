@@ -2,12 +2,16 @@ import * as THREE from 'three';
 
 // Original industrial detail maps, plus the project's already-vendored photographic
 // wood/concrete. All maps are local, shared within one world and created only once.
+// 1K relief retains visible tactile detail with 75% less RGBA8 base-level
+// memory than the previous pair of 2K procedural relief textures.
+export const WAREHOUSE_RELIEF_SIZE = 1024;
+
 export function createWarehouseMaterials({ textures = true } = {}) {
   const pending = [];
   const canvasEnabled = textures && typeof document !== 'undefined';
   const make = (color, roughness = .7, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
   const materials = {
-    wood: make('#e6c28b', .64), woodDark: make('#b18b59', .74),
+    wood: make('#e6c28b', .70), woodDark: make('#b18b59', .74),
     edge: make('#a17e50', .77), concrete: make('#c7c6bf', .83),
     brick: make('#74564a', .91), steel: make('#303b40', .45, { metalness: .72 }),
     coping: make('#a8b6bb', .26, { metalness: .86 }),
@@ -40,20 +44,21 @@ export function createWarehouseMaterials({ textures = true } = {}) {
   materials.wood.color.set('#fff0cb'); materials.woodDark.color.set('#c2a479');
   materials.concrete.map = photo('concrete'); materials.concrete.color.set('#dad9cf');
 
-  const wood = canvas(2048), w = wood.getContext('2d');
-  w.fillStyle = '#bababa'; w.fillRect(0, 0, 2048, 2048);
-  for (let i = 0; i < 1500; i++) {
-    const x = random() * 2048, y = random() * 2048;
+  const wood = canvas(WAREHOUSE_RELIEF_SIZE), w = wood.getContext('2d');
+  w.fillStyle = '#bababa'; w.fillRect(0, 0, WAREHOUSE_RELIEF_SIZE, WAREHOUSE_RELIEF_SIZE);
+  for (let i = 0; i < 800; i++) {
+    const x = random() * WAREHOUSE_RELIEF_SIZE, y = random() * WAREHOUSE_RELIEF_SIZE;
     w.strokeStyle = `rgba(30,30,30,${.015 + random() * .075})`; w.lineWidth = .6 + random();
     w.beginPath(); w.moveTo(x, y); w.bezierCurveTo(x + 4, y + 80, x - 3, y + 160, x + 1, y + 240); w.stroke();
   }
-  for (const x of [0, 1024, 2046]) { w.fillStyle = '#4c4c4c'; w.fillRect(x, 0, 2, 2048); }
-  for (const y of [0, 2046]) { w.fillStyle = '#555'; w.fillRect(0, y, 2048, 2); }
-  for (const x of [18, 1005, 1042, 2028]) for (let y = 22; y < 2048; y += 256) {
+  for (const x of [0, 512, 1022]) { w.fillStyle = '#4c4c4c'; w.fillRect(x, 0, 2, WAREHOUSE_RELIEF_SIZE); }
+  for (const y of [0, 1022]) { w.fillStyle = '#555'; w.fillRect(0, y, WAREHOUSE_RELIEF_SIZE, 2); }
+  for (const x of [9, 502, 521, 1014]) for (let y = 22; y < WAREHOUSE_RELIEF_SIZE; y += 128) {
     w.fillStyle = '#5c5c5c'; w.beginPath(); w.arc(x, y, 2.8, 0, Math.PI * 2); w.fill();
   }
   materials.wood.bumpMap = map(wood, false); materials.wood.bumpScale = .009;
-  materials.wood.roughnessMap = materials.wood.bumpMap;
+  // The relief is a height signal, not a physically valid roughness map.
+  // Reusing it as roughness artificially polished plywood by multiplication.
   materials.woodDark.bumpMap = materials.wood.bumpMap; materials.woodDark.bumpScale = .009;
   const layers = canvas(1024, 256), e = layers.getContext('2d');
   e.fillStyle = '#bc9862'; e.fillRect(0, 0, 1024, 256);
@@ -68,27 +73,27 @@ export function createWarehouseMaterials({ textures = true } = {}) {
   materials.brick.map = localPhoto('/assets/warehouse/foundry-brick-albedo.webp');
   materials.brick.color.set('#fff');
 
-  const floor = canvas(2048), f = floor.getContext('2d');
-  f.fillStyle = '#cbcbcb'; f.fillRect(0, 0, 2048, 2048);
-  for (let i = 0; i < 9500; i++) {
+  const floor = canvas(WAREHOUSE_RELIEF_SIZE), f = floor.getContext('2d');
+  f.fillStyle = '#cbcbcb'; f.fillRect(0, 0, WAREHOUSE_RELIEF_SIZE, WAREHOUSE_RELIEF_SIZE);
+  for (let i = 0; i < 4500; i++) {
     f.fillStyle = `rgba(72,72,72,${random() * .09})`;
-    f.fillRect(random() * 2048, random() * 2048, 1 + random() * 3, 1 + random() * 3);
+    f.fillRect(random() * WAREHOUSE_RELIEF_SIZE, random() * WAREHOUSE_RELIEF_SIZE, 1 + random() * 3, 1 + random() * 3);
   }
-  f.strokeStyle = '#777'; f.lineWidth = 2; f.strokeRect(1, 1, 2046, 2046);
+  f.strokeStyle = '#777'; f.lineWidth = 2; f.strokeRect(1, 1, WAREHOUSE_RELIEF_SIZE - 2, WAREHOUSE_RELIEF_SIZE - 2);
   for (let i = 0; i < 24; i++) {
-    const x = random() * 2048, y = random() * 2048;
+    const x = random() * WAREHOUSE_RELIEF_SIZE, y = random() * WAREHOUSE_RELIEF_SIZE;
     f.strokeStyle = `rgba(50,50,50,${.02 + random() * .045})`; f.lineWidth = 2 + random() * 3;
     f.beginPath(); f.moveTo(x, y); f.bezierCurveTo(x + 35, y + 24, x + 57, y + 59, x + 94, y + 93); f.stroke();
   }
-  materials.concrete.roughness = .72;
+  materials.concrete.roughness = .78;
   materials.concrete.bumpMap = map(floor, false); materials.concrete.bumpScale = .004;
-  materials.concrete.roughnessMap = materials.concrete.bumpMap;
+  // Keep concrete naturally matte; use the height texture only for bump.
 
   const metal = canvas(512), m = metal.getContext('2d');
   m.fillStyle = '#959d9d'; m.fillRect(0, 0, 512, 512);
   for (let x = 0; x < 512; x += 32) { m.fillStyle = '#697a7d'; m.fillRect(x, 0, 2, 512); m.fillStyle = '#bdc4c1'; m.fillRect(x + 3, 0, 3, 512); }
   materials.cladding.map = map(metal);
-  return { materials, ready: Promise.all(pending), textureSizes: ['photographic plywood/concrete: existing 2K', 'wood relief/roughness: 2048² shared', 'original generated photographic brick albedo', 'concrete relief/roughness: 2048² shared', 'plywood edge: 1024×256', 'cladding: 512²'] };
+  return { materials, ready: Promise.all(pending), textureSizes: ['photographic plywood/concrete: existing 2K', 'wood relief: 1024² shared', 'original generated photographic brick albedo', 'concrete relief: 1024² shared', 'plywood edge: 1024×256', 'cladding: 512²'] };
 }
 
 export function createWarehouseSign(title, subtitle = '', { dark = true } = {}) {
