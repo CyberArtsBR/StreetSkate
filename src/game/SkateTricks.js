@@ -3,10 +3,14 @@ import { directionKey, flipFor, flipUpgradeFor, grabFor, grindFor, DOUBLE_GRAB_T
 const TAP_WINDOW = 0.46;
 const COMBO_WINDOW = 0.38;
 const LANDING_GRACE = 0.24;
+// A render-frame input may precede the fixed-step takeoff and should survive
+// normal simulation jitter without firing on a later unrelated jump.
 const AIR_FLIP_GRACE = 0.18;
+const OLLIE_FLIP_GRACE = 0.22;
 const AIR_QUEUE_WINDOW = 0.72;
 const MAX_QUEUED_AIR_TRICKS = 2;
-const REPEAT_VALUES = [1, 0.75, 0.5, 0.25, 0.1];
+const REPEAT_VALUES = [1, 0.75, 0.5, 0.25, 0.1, 0];
+const MAX_COMBO_MULTIPLIER = 12;
 
 export class SkateTricks {
   constructor() { this.reset(); }
@@ -98,7 +102,8 @@ export class SkateTricks {
     if (context.grounded && !context.grinding && !context.manual && input.flipPressed) {
       this.pendingAirFlip = {
         trick: { ...flipFor(direction) },
-        expires: this.time + AIR_FLIP_GRACE,
+        expires: this.time + ((input.ollieHeld || input.ollieReleased)
+          ? OLLIE_FLIP_GRACE : AIR_FLIP_GRACE),
       };
     }
 
@@ -178,19 +183,25 @@ export class SkateTricks {
   }
 
   queueAirTrick(kind, trick) {
-    if (this.airTrickQueue.length >= MAX_QUEUED_AIR_TRICKS) return;
+    // A held or duplicated input edge must not manufacture identical future
+    // flips/grabs from one takeoff. Different named tricks remain chainable.
+    if (!trick?.name || this.airTrickQueue.length >= MAX_QUEUED_AIR_TRICKS) return;
+    if (this.airTrickQueue.some(item => item.kind === kind && item.trick.name === trick.name)) return;
     this.airTrickQueue.push({ kind, trick: { ...trick }, expires: this.time + AIR_QUEUE_WINDOW });
   }
 
   record(name, points = 0, { stance = 1 } = {}) {
     if (!name) return;
     const normalizedStance = stance < 0 ? -1 : 1;
-    const previous = this.combo.at(-1);
-    // The same trick cannot be awarded twice from overlapping input/state edges.
-    // Legitimate repeats after their animation/contact window still score with
-    // the existing diminishing-repeat formula.
-    if (previous?.name === name && previous.stance === normalizedStance
-      && this.time - previous.recordedAt < 0.14) return previous;
+    // Overlapping animation, rail and input events can interleave different
+    // labels in the same physics tick. Deduplicate by identity across the whole
+    // recent combo, not only against the last event.
+    const duplicate = this.combo.findLast(entry =>
+      entry.name === name && entry.stance === normalizedStance
+      && this.time - entry.recordedAt >= 0 && this.time - entry.recordedAt < 0.14);
+    if (duplicate) return duplicate;
+    const priorRepeats = this.combo.reduce((count, entry) =>
+      count + Number(entry.name === name && entry.stance === normalizedStance), 0);
     if (!this.combo.length) this.comboStartedAt = this.time;
     const entry = {
       name, basePoints: Math.max(0, Number.isFinite(points) ? points : 0),
@@ -198,7 +209,9 @@ export class SkateTricks {
     };
     this.combo.push(entry);
     this.recalculateCombo();
-    this.comboMultiplier += 1;
+    // First and second executions build a combo; mechanical input loops do not
+    // inflate the multiplier forever. New tricks and switch stance add variety.
+    if (priorRepeats < 2) this.comboMultiplier = Math.min(MAX_COMBO_MULTIPLIER, this.comboMultiplier + 1);
     this.lastLabel = name;
     this.settleTimer = 0;
     return entry;
@@ -248,7 +261,7 @@ export class SkateTricks {
     if (!this.combo.length) return null;
     this.comboBase += Math.round(this.durationFraction);
     this.durationFraction = 0;
-    const multiplier = Math.max(1, this.comboMultiplier);
+    const multiplier = Math.max(1, Math.min(MAX_COMBO_MULTIPLIER, this.comboMultiplier));
     const points = this.comboBase * multiplier;
     const names = this.combo.slice(-4).map(t => t.name).join(' + ');
     this.combo = [];
@@ -261,7 +274,7 @@ export class SkateTricks {
 
   comboText() {
     if (!this.combo.length) return '';
-    return `${this.combo.at(-1).name} · ${this.comboBase} × ${Math.max(1, this.comboMultiplier)}`;
+    return `${this.combo.at(-1).name} · ${this.comboBase} × ${Math.max(1, Math.min(MAX_COMBO_MULTIPLIER, this.comboMultiplier))}`;
   }
 
   comboDuration() { return this.combo.length ? Math.max(0, this.time - this.comboStartedAt) : 0; }

@@ -16,10 +16,11 @@ import { batchWarehouseVisuals } from '../src/park/WarehouseVariants.js';
 const file = 'public/assets/warehouse/granwarehouse.glb';
 const expectedHash = 'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c';
 
-test('Map 3 is distinct and preserves the exact Map 2 asset address and selection number', () => {
+test('Map 3 is distinct and preserves ORBIT as Map 2', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
-  assert.deepEqual(ids, ['rooftop','urban-warehouse','grand-warehouse']);
-  assert.equal(PARK_DEFINITIONS.find(p => p.id === 'urban-warehouse').number, 2);
+  assert.deepEqual(ids, ['rooftop','orbit','grand-warehouse']);
+  assert.equal(PARK_DEFINITIONS.find(p => p.id === 'orbit').number, 2);
+  assert.equal(PARK_REGISTRY.orbit.name, 'ORBIT');
   assert.equal(PARK_DEFINITIONS.find(p => p.id === 'grand-warehouse').number, 3);
   assert.equal(typeof PARK_REGISTRY['grand-warehouse'].create, 'function');
 });

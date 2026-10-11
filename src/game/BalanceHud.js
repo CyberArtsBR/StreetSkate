@@ -24,10 +24,17 @@ export function ensureBalanceHud() {
     update(mode, value = 0) {
       const active = mode === 'MANUAL' || mode === 'NOSE MANUAL' || mode === 'GRIND';
       root.classList.toggle('active', active);
-      if (!active) return;
-      const normalized = Math.max(-1, Math.min(1, value || 0));
+      if (!active) {
+        root.classList.remove('danger');
+        root.removeAttribute('aria-valuenow');
+        return;
+      }
+      // A recovered/bailing physics state may briefly report NaN: never send
+      // that value to CSS or leave stale danger lighting on the HUD.
+      const normalized = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
       this.label.textContent = mode;
       this.marker.style.left = `${50 + normalized * 47}%`;
+      root.setAttribute('aria-valuenow', String(Math.round(normalized * 100)));
       root.classList.toggle('danger', Math.abs(normalized) > 0.72);
     },
   };

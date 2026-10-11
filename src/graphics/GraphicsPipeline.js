@@ -100,6 +100,13 @@ export class GraphicsPipeline {
     this.bloomComposer.addPass(this.bloom);
     this.blackoutMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
     this.glowRoot = null;
+    this.bloomSceneMeshes = null;
+    this.bloomEnvironmentEmissives = [];
+    this.bloomSceneChildCount = -1;
+    this.bloomGlowMeshCount = -1;
+    this.bloomCacheAge = 0;
+    this.shadowAnchor = null;
+    this.shadowWorldPosition = new THREE.Vector3();
 
     this.bloomComposite = new ShaderPass(SELECTIVE_BLOOM_COMPOSITE);
     this.bloomComposite.enabled = false;
@@ -129,19 +136,28 @@ export class GraphicsPipeline {
 
   refreshSSRTargets() {
     if (!this.ssr) return;
-    const selected = [];
+    const candidates = [];
     this.world?.traverse(object => {
-      if (!object.isMesh || !object.visible || selected.length >= 96) return;
+      if (!object.isMesh || !object.visible) return;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
-      if (materials.some(m => m && m.metalness >= .55 && m.roughness <= .65 && m.transparent !== true)) {
-        selected.push(object);
-      }
+      const reflective = materials.find(m => m && m.metalness >= .45 &&
+        m.roughness <= .48 && m.transparent !== true && (m.emissiveIntensity || 0) < 1);
+      if (!reflective) return;
+      // Prefer large reflective floors/ramps over small repeated metal details.
+      // Selection is rebuilt at world/preset changes, never each rendered frame.
+      const radius = object.geometry?.boundingSphere?.radius || 1;
+      const scale = object.getWorldScale?.(new THREE.Vector3()) || new THREE.Vector3(1, 1, 1);
+      const projectedSize = radius * Math.max(scale.x, scale.y, scale.z);
+      candidates.push({ object, score: projectedSize * (1.2 - reflective.roughness) });
     });
-    this.ssr.selects = selected;
+    candidates.sort((a, b) => b.score - a.score);
+    this.ssr.selects = candidates.slice(0, this.settings?.ssrTargetLimit || 40).map(entry => entry.object);
   }
 
   setWorld(world) {
     this.world = world;
+    this.bloomSceneMeshes = null;
+    this.shadowAnchor = null;
     this.configureBloom();
     this.refreshSSRTargets();
     this.updateMaterials();
@@ -152,6 +168,63 @@ export class GraphicsPipeline {
   // runtime rider GLB swaps and changes to the skateboard finish.
   setGlowTarget(root) {
     this.glowRoot = root;
+    this.bloomSceneMeshes = null;
+  }
+
+  refreshBloomSceneCache() {
+    const meshes = [];
+    this.scene.traverse(object => { if (object.isMesh) meshes.push(object); });
+    const environmentEmissives = [];
+    if (this.world?.userData.environmentBloom) {
+      this.world.traverse(object => {
+        if (!object.isMesh) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        if (materials.some(material => /^(LED|Grind) \/ /.test(material?.name || '') &&
+          material.emissive?.getHex?.() > 0)) environmentEmissives.push(object);
+      });
+    }
+    this.bloomSceneMeshes = meshes;
+    this.bloomEnvironmentEmissives = environmentEmissives;
+    this.bloomSceneChildCount = this.scene.children?.length ?? 0;
+    this.bloomCacheAge = 0;
+  }
+
+  // Keep the existing directional light's direction intact while following
+  // the active rider. This concentrates 1024² shadow texels near wheel contact
+  // instead of spreading them across an entire 150-metre warehouse.
+  updateContactShadows() {
+    if (!this.settings || !this.glowRoot?.parent) return;
+    const light = this.scene.children?.find(object => object.isDirectionalLight && object.castShadow && object.shadow);
+    if (!light) return;
+    const radius = this.settings.shadowCoverageRadius;
+    const shadow = light.shadow, camera = shadow.camera;
+    if (camera.left !== -radius || camera.right !== radius ||
+        camera.top !== radius || camera.bottom !== -radius) {
+      camera.left = camera.bottom = -radius;
+      camera.right = camera.top = radius;
+      camera.updateProjectionMatrix();
+      shadow.needsUpdate = true;
+    }
+    // The former normal bias (0.07 m) separated board/wheel contact shadows.
+    shadow.normalBias = this.settings.shadowNormalBias;
+    if (!this.shadowAnchor || this.shadowAnchor.light !== light) {
+      this.shadowAnchor = {
+        light, position: light.position.clone(), target: light.target.position.clone(),
+      };
+    }
+    this.glowRoot.getWorldPosition(this.shadowWorldPosition);
+    const texel = (radius * 2) / 1024;
+    const snap = value => Math.round(value / texel) * texel;
+    const offsetX = snap(this.shadowWorldPosition.x - this.shadowAnchor.target.x);
+    const offsetZ = snap(this.shadowWorldPosition.z - this.shadowAnchor.target.z);
+    const anchor = this.shadowAnchor;
+    if (Math.abs(light.target.position.x - anchor.target.x - offsetX) > 1e-6 ||
+        Math.abs(light.target.position.z - anchor.target.z - offsetZ) > 1e-6) {
+      light.position.set(anchor.position.x + offsetX, anchor.position.y, anchor.position.z + offsetZ);
+      light.target.position.set(anchor.target.x + offsetX, anchor.target.y, anchor.target.z + offsetZ);
+      light.target.updateMatrixWorld();
+      shadow.needsUpdate = true;
+    }
   }
 
   renderSelectiveBloom() {
@@ -160,13 +233,16 @@ export class GraphicsPipeline {
     this.glowRoot.traverse(object => {
       if (object.isMesh) allowed.add(object);
     });
-    if (this.world?.userData.environmentBloom) {
-      this.world.traverse(object => {
-        if (!object.isMesh) return;
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        if (materials.some(material => /^(LED|Grind) \/ /.test(material?.name || '') && material.emissive?.getHex() > 0)) allowed.add(object);
-      });
+    const childCount = this.scene.children?.length ?? 0;
+    // Recheck occasionally for procedural objects, immediately for rider swaps
+    // and top-level scene changes; ordinary frames avoid two full traversals.
+    if (!this.bloomSceneMeshes || this.bloomCacheAge >= 120 ||
+        this.bloomSceneChildCount !== childCount || this.bloomGlowMeshCount !== allowed.size) {
+      this.refreshBloomSceneCache();
+      this.bloomGlowMeshCount = allowed.size;
     }
+    this.bloomCacheAge++;
+    for (const object of this.bloomEnvironmentEmissives) allowed.add(object);
     if (!allowed.size) return false;
     const replaced = [];
     const originalBackground = this.scene.background;
@@ -181,11 +257,11 @@ export class GraphicsPipeline {
       this.scene.fog = null;
       this.scene.overrideMaterial = null;
       // Dark geometry still writes depth: rider bloom cannot appear through walls.
-      this.scene.traverse(object => {
-        if (!object.isMesh || allowed.has(object)) return;
+      for (const object of this.bloomSceneMeshes) {
+        if (allowed.has(object)) continue;
         replaced.push([object, object.material]);
         object.material = this.blackoutMaterial;
-      });
+      }
       this.bloomComposer.render();
       this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
       return true;
@@ -200,21 +276,26 @@ export class GraphicsPipeline {
 
   updateMaterials() {
     if (!this.world || !this.settings) return;
-    const touched = new Set();
+    const touched = new Set(), textures = new Set();
     this.world.traverse(object => {
       if (!object.isMesh) return;
       for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
         if (!m || touched.has(m)) continue;
         touched.add(m);
-        if (m.map) {
-          m.map.anisotropy = this.settings.anisotropy;
-          m.map.needsUpdate = true;
+        for (const key of ['map','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap','emissiveMap','alphaMap']) {
+          const map = m[key];
+          if (!map?.isTexture || textures.has(map)) continue;
+          textures.add(map);
+          if (map.anisotropy !== this.settings.anisotropy) {
+            map.anisotropy = this.settings.anisotropy;
+            map.needsUpdate = true;
+          }
         }
         if (m.metalness >= .45 && 'envMapIntensity' in m) {
           if (!this.reflectionBase.has(m)) this.reflectionBase.set(m, m.envMapIntensity);
           m.envMapIntensity = this.reflectionBase.get(m) * this.settings.metalReflectionStrength;
         }
-        if (m.emissive?.getHex?.() !== 0 && 'emissiveIntensity' in m) {
+        if (m.emissive?.getHex?.() > 0 && 'emissiveIntensity' in m) {
           if (!this.emissiveBase.has(m)) this.emissiveBase.set(m, m.emissiveIntensity);
           m.emissiveIntensity = this.emissiveBase.get(m) * this.settings.vfxScale;
         }
@@ -240,16 +321,26 @@ export class GraphicsPipeline {
 
     try {
       if (settings.ssr) this.createSSR();
+      else if (this.ssr) {
+        // Reclaim the SSR render targets when downgrading instead of merely
+        // hiding a pass that continues to occupy GPU memory.
+        this.composer.passes.splice(this.composer.passes.indexOf(this.ssr), 1);
+        this.ssr.dispose();
+        this.ssr = null;
+      }
       if (this.ssr) {
-        this.ssr.enabled = settings.ssr;
+        this.ssr.enabled = true;
         this.ssr.resolutionScale = settings.ssrScale || .5;
+        this.refreshSSRTargets();
       }
     } catch (error) {
       console.warn('SSR unavailable on this GPU; falling back to environment reflections.', error);
       if (this.ssr) this.ssr.enabled = false;
     }
     this.configureBloom();
+    this.cas.enabled = settings.sharpen > 0;
     this.cas.uniforms.strength.value = settings.sharpen;
+    this.shadowAnchor = null;
     this.updateMaterials();
     this.resize(this.width, this.height);
     return settings;
@@ -258,7 +349,8 @@ export class GraphicsPipeline {
   configureBloom() {
     if (!this.settings) return;
     const orbit = Boolean(this.world?.userData.environmentBloom);
-    this.bloomComposite.enabled = orbit || this.settings.bloomStrength > 0;
+    // Performance means no extra scene pass, even on emissive-heavy ORBIT.
+    this.bloomComposite.enabled = this.settings.bloomStrength > 0;
     this.bloom.strength = orbit ? .24 : this.settings.bloomStrength * this.settings.vfxScale;
     this.bloom.radius = .24;
     this.bloom.threshold = orbit ? 1.25 : .88;
@@ -271,8 +363,12 @@ export class GraphicsPipeline {
     if (!this.settings) return;
     this.composer.setPixelRatio(this.settings.pixelRatio);
     this.composer.setSize(this.width, this.height);
-    this.bloomComposer.setPixelRatio(this.settings.pixelRatio * this.settings.bloomScale);
-    this.bloomComposer.setSize(this.width, this.height);
+    // Performance runs without bloom: shrink its HDR buffers to 1px rather
+    // than retaining offscreen textures at full display resolution.
+    const bloomEnabled = this.settings.bloomStrength > 0;
+    this.bloomComposer.setPixelRatio(bloomEnabled
+      ? this.settings.pixelRatio * this.settings.bloomScale : 1);
+    this.bloomComposer.setSize(bloomEnabled ? this.width : 1, bloomEnabled ? this.height : 1);
     const sw = Math.max(1, Math.round(this.width * this.settings.pixelRatio));
     const sh = Math.max(1, Math.round(this.height * this.settings.pixelRatio));
     const samples = this.settings.msaaSamples;
@@ -287,13 +383,20 @@ export class GraphicsPipeline {
       return;
     }
     try {
+      this.updateContactShadows();
+      // Skip both HDR composer targets and all fullscreen post effects on the
+      // lowest tier. Three's direct renderer retains ACES/output color-space.
+      if (this.settings.name === 'performance') {
+        this.renderer.render(this.scene, this.camera);
+        return;
+      }
       if (this.bloomComposite.enabled) {
         const validBloom = this.renderSelectiveBloom();
         this.bloomComposite.enabled = validBloom;
       }
       this.composer.render();
       // Re-enable on the next frame after a transient/no-rider loading state.
-      this.bloomComposite.enabled = Boolean(this.world?.userData.environmentBloom) || this.settings.bloomStrength > 0;
+      this.bloomComposite.enabled = this.settings.bloomStrength > 0;
     } catch (error) {
       console.warn('Post-processing failed; disabling it for stable skating.', error);
       this.faulted = true;

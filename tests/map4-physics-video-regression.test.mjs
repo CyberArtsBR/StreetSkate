@@ -105,11 +105,11 @@ test('continuing a real near-vertical ramp uses the saved normal; flat wall appr
   assert.equal(fromFlat,null, 'a player on the flat cannot ride straight up a wall');
 });
 
-test('imported Map 4 side cores are solid, not wheel-support surfaces', async () => {
-  const scene=await loadGeometry('public/assets/warehouse/urban-warehouse.glb');
-  const imported=buildImportedWarehouseCollision(scene);
+test('released Grand Warehouse side cores are solid, not wheel-support surfaces', async () => {
+  const scene=await loadGeometry('public/assets/warehouse/granwarehouse.glb');
+  const imported=buildImportedWarehouseCollision(scene,[],{grandMode:true});
   const names=imported.surfaces.join(';');
-  assert.equal(imported.rails.length,50, 'includes independently extracted joined ramp copings');
+  assert.ok(imported.rails.length>=25,'preserves extracted authored grind/coping geometry');
   assert.doesNotMatch(names,/Side_Wood_Core|Back_Panel|Concrete_or_wood_support/);
   assert.match(names,/Skateable_Surface/);
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='solid'));

@@ -76,3 +76,42 @@
 @media(max-width:1000px){.loadout-panels{gap:10px}#game-shell.loadout-screen .loadout-section{padding:13px;gap:10px;border-radius:20px}.loadout-heading h3{font-size:25px}#game-shell.loadout-screen .panel-kicker{display:none}.loadout-recap{font-size:8px}.loadout-recap i{padding:0 3px}}
 @media(max-width:720px){#game-shell.loadout-screen .shell-content{width:100vw;max-height:calc(100dvh - 45px);height:calc(100dvh - 45px)}#game-shell.loadout-screen .loadout-shell{padding:15px;gap:17px}.loadout-panels{grid-template-columns:1fr;gap:15px}#game-shell.loadout-screen .loadout-section{padding:17px;border-radius:23px}#game-shell.loadout-screen .loadout-shell header h2{font-size:clamp(28px,7.7vw,52px)}#game-shell.loadout-screen .loadout-shell header p{font-size:8px;letter-spacing:.07em}.loadout-edition{display:none}#game-shell.loadout-screen .loadout-shell header small{font-size:9px}#game-shell.loadout-screen .rider-portrait{height:150px}#game-shell.loadout-screen .loadout-character strong{font-size:19px}#game-shell.loadout-screen .loadout-boards{grid-template-columns:repeat(2,minmax(0,1fr))}.deck-thumb{height:70px}#game-shell.loadout-screen .loadout-deck b{font-size:11px}#game-shell.loadout-screen .loadout-locations{grid-template-rows:auto}.location-art{height:145px;flex:none}#game-shell.loadout-screen .loadout-shell footer{flex-wrap:wrap}.loadout-recap{order:3;flex-basis:100%;font-size:9px}#game-shell.loadout-screen .loadout-shell footer [data-action='confirmLoadout']{flex:1;min-width:0}#game-shell.loadout-screen .loadout-status{text-align:center}#game-shell.loadout-screen .menu-footnote{bottom:6px;font-size:7px;padding:7px}}
 @media(max-height:600px) and (min-width:721px){#game-shell.loadout-screen .shell-content{max-height:calc(100dvh - 45px)}#game-shell.loadout-screen .loadout-shell header h2{font-size:38px}#game-shell.loadout-screen .rider-portrait{height:83px}#game-shell.loadout-screen .menu-footnote{bottom:3px}}
+
+/* Agent 08: never hide Map 03 in an implicit overflowing two-row grid. */
+#game-shell.loadout-screen .loadout-locations{
+  grid-template-rows:none;
+  grid-auto-rows:minmax(145px,auto);
+  align-content:start;
+  flex:0 0 auto;
+}
+#game-shell.loadout-screen .shell-content{
+  overscroll-behavior:contain;
+  scroll-behavior:auto;
+}
+#game-shell.loadout-screen button[data-menu]:focus-visible,
+#game-shell.loadout-screen button[data-menu].selected{
+  outline:3px solid #fff4ba;
+  outline-offset:2px;
+  position:relative;
+  z-index:1;
+}
+#game-shell.loadout-screen .loadout-status{font-size:clamp(11px,.9vw,13px);line-height:1.5}
+#game-shell.loadout-screen .loadout-section{scroll-margin-block:16px}
+#game-shell.loadout-screen button[data-menu]{scroll-margin:14px}
+@media(max-width:720px){
+  #game-shell.loadout-screen .loadout-locations{grid-auto-rows:minmax(178px,auto)}
+  #game-shell.loadout-screen .loadout-shell{padding-bottom:38px}
+  #game-shell.loadout-screen .menu-footnote{
+    max-width:calc(100vw - 16px);
+    text-align:center;
+    white-space:normal;
+    line-height:1.45;
+  }
+}
+@media(max-height:600px){
+  #game-shell.loadout-screen .shell-content{scrollbar-gutter:stable}
+}
+@media(prefers-reduced-motion:reduce){
+  #game-shell.loadout-screen *,#game-shell.loadout-screen *::before,
+  #game-shell.loadout-screen *::after{scroll-behavior:auto!important;transition:none!important}
+}

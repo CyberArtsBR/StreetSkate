@@ -6,71 +6,69 @@ import { createHash } from 'node:crypto';
 import { PARK_DEFINITIONS } from '../src/park/ParkRegistry.js';
 import { PARK_REGISTRY } from '../src/game/ParkRegistry.js';
 
+// Map 4's urban-warehouse.glb belonged to an abandoned fourth-map experiment.
+// Test the actual shipping three-location catalog and its two imported GLBs.
 const assets = [
-  { id: 'tron-warehouse', file: 'tron-warehouse.glb', sha256: '0306579ac6473b57c550920c9c8a39749bcc07fe59697ba149a23d380115abe3' },
-  { id: 'urban-warehouse', file: 'urban-warehouse.glb', sha256: '813cbf0c11ffcb9a2317843978b7d3d08973fb029d4ecdac047c018ed351a7b2' },
+  { id:'orbit', file:'public/assets/spacepark/orbit.glb', minMeshes:100 },
+  { id:'grand-warehouse', file:'public/assets/warehouse/granwarehouse.glb', minMeshes:1400,
+    sha256:'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c' },
 ];
-const readGlb = file => {
-  const path = resolve('public/assets/warehouse', file);
-  let bytes;
-  try { bytes = readFileSync(path); }
-  catch {
-    throw new Error(`Missing ${path}. Upload the provided GLB to the warehouse-maps-3-4 branch before merging.`);
-  }
-  assert.equal(bytes.toString('ascii', 0, 4), 'glTF', 'GLB magic');
-  assert.equal(bytes.readUInt32LE(4), 2, 'glTF v2');
-  assert.equal(bytes.readUInt32LE(8), bytes.length, 'GLB byte length');
-  const length = bytes.readUInt32LE(12);
-  assert.equal(bytes.toString('ascii', 16, 20), 'JSON', 'JSON chunk');
-  const json = JSON.parse(bytes.subarray(20, 20 + length).toString('utf8'));
-  return { bytes, json };
-};
-
-test('existing map 1 and map 2 remain unchanged while Grand Warehouse is independently selectable as map 3', () => {
-  const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
-  assert.deepEqual(ids, ['rooftop', 'urban-warehouse', 'grand-warehouse']);
-  assert.equal(PARK_REGISTRY.foundry, undefined);
-  assert.equal(PARK_REGISTRY['tron-warehouse'], undefined);
-  assert.deepEqual(PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.number), [1,2,3]);
-  assert.equal(PARK_REGISTRY['grand-warehouse'].name, 'Grand Warehouse');
-  for (const id of ids) {
-    assert.equal(PARK_DEFINITIONS.find(p => p.id === id).available, true);
-    assert.equal(typeof PARK_REGISTRY[id].create, 'function');
+function readGlb(file) {
+  const bytes=readFileSync(resolve(file));
+  assert.equal(bytes.toString('ascii',0,4),'glTF',file+' magic');
+  assert.equal(bytes.readUInt32LE(4),2,file+' GLB v2');
+  assert.equal(bytes.readUInt32LE(8),bytes.length,file+' declared length');
+  assert.equal(bytes.toString('ascii',16,20),'JSON',file+' JSON chunk');
+  const length=bytes.readUInt32LE(12);
+  assert.ok(length>0 && 20+length<=bytes.length,file+' JSON bounds');
+  const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
+  return {bytes,json};
+}
+test('only Skyline Rooftop, ORBIT and Grand Warehouse are selectable maps 1–3',()=>{
+  const ids=PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.id);
+  assert.deepEqual(ids,['rooftop','orbit','grand-warehouse']);
+  assert.deepEqual(PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.number),[1,2,3]);
+  assert.equal(PARK_REGISTRY['urban-warehouse'],undefined);
+  assert.equal(PARK_REGISTRY['tron-warehouse'],undefined);
+  assert.equal(PARK_REGISTRY['grand-warehouse'].name,'Grand Warehouse');
+  for(const id of ids){
+    assert.equal(PARK_DEFINITIONS.find(p=>p.id===id).available,true);
+    assert.equal(typeof PARK_REGISTRY[id].create,'function');
   }
 });
 
-test('both GLB assets are present, distinct and keep the playable warehouse topology', () => {
-  const parsed = assets.map(({ file, sha256 }) => {
-    const { bytes, json } = readGlb(file);
-    const actual = createHash('sha256').update(bytes).digest('hex');
-    assert.ok(actual.startsWith(sha256), `${file} differs from the verified prepared GLB`);
-    assert.ok(json.meshes.length >= 1946, 'warehouse scenery missing');
-    assert.ok(json.nodes.some(n => n.name?.includes('Ground_Floor')), 'ground missing');
-    assert.ok(json.nodes.some(n => n.name?.startsWith('02_TIMBER_BOWL')), 'bowl missing');
-    assert.ok(json.nodes.some(n => n.name?.startsWith('03_VERT_HALL')), 'halfpipe missing');
-    assert.ok(json.nodes.some(n => n.name?.startsWith('04_FLOW_LAB')), 'flow transitions missing');
-    return { actual, json };
+test('shipping ORBIT and Grand Warehouse GLBs are present, distinct and preserve geometry',()=>{
+  const parsed=assets.map(({id,file,minMeshes,sha256})=>{
+    const {bytes,json}=readGlb(file);
+    const hash=createHash('sha256').update(bytes).digest('hex');
+    if(sha256)assert.equal(hash,sha256,id+' artist asset changed');
+    assert.ok(json.meshes.length>=minMeshes,id+' missing mesh geometry');
+    assert.ok(json.nodes.length>json.meshes.length*.5,id+' incomplete node hierarchy');
+    assert.ok(Array.isArray(json.materials)&&json.materials.length>10,id+' material slots missing');
+    assert.ok(Array.isArray(json.bufferViews)&&json.bufferViews.length>0,id+' missing embedded buffers');
+    return {hash,json};
   });
-  assert.notEqual(parsed[0].actual, parsed[1].actual, 'The two maps cannot be identical');
-  assert.ok(parsed[1].json.nodes.some(n => /Premium_White_Marble_Floor/.test(n.name || '')),
-    'Map 4 must use the revised Foundry export');
+  assert.notEqual(parsed[0].hash,parsed[1].hash,'ORBIT and Grand Warehouse cannot be the same GLB');
+  assert.ok(parsed[1].json.nodes.some(n=>/Ground_Floor/.test(n.name||'')),'Grand ground missing');
+  assert.ok(parsed[1].json.nodes.some(n=>/^02_TIMBER_BOWL/.test(n.name||'')),'Grand bowl missing');
+  assert.ok(parsed[1].json.nodes.some(n=>/^03_VERT_HALL/.test(n.name||'')),'Grand vert hall missing');
+  assert.ok(parsed[1].json.nodes.some(n=>/^04_FLOW_LAB/.test(n.name||'')),'Grand flow transitions missing');
 });
 
-test('Map 4 revised West transfer quarter faces upward on the riding surface', () => {
-  const { bytes, json } = readGlb('urban-warehouse.glb');
-  const target = json.nodes.find(node =>
-    /03_VERT_HALL \/ West transfer quarter \/ Skateable_Surface/.test(node.name || ''));
-  assert.ok(target && Number.isInteger(target.mesh), 'West transfer quarter is missing');
-  const primitive = json.meshes[target.mesh].primitives[0];
-  const normals = json.accessors[primitive.attributes.NORMAL];
-  assert.equal(normals.componentType, 5126, 'West transfer normal format');
-  assert.equal(normals.type, 'VEC3');
-  const view = json.bufferViews[normals.bufferView];
-  const stride = view.byteStride || 12;
-  const offset = 28 + bytes.readUInt32LE(12)
-    + (view.byteOffset || 0) + (normals.byteOffset || 0);
-  let upward = 0;
-  for (let vertex = 0; vertex < normals.count; vertex++)
-    upward += bytes.readFloatLE(offset + vertex * stride + 4);
-  assert.ok(upward / normals.count > 0.40, 'rideable quarter normals point away from the skater');
+test('Grand Warehouse West transfer quarter preserves upward riding-surface normals',()=>{
+  const {bytes,json}=readGlb(assets[1].file);
+  const target=json.nodes.find(node=>
+    /03_VERT_HALL \/ West transfer quarter \/ Skateable_Surface/.test(node.name||''));
+  assert.ok(target&&Number.isInteger(target.mesh),'Grand West transfer quarter is missing');
+  const primitive=json.meshes[target.mesh].primitives[0];
+  const normals=json.accessors[primitive.attributes.NORMAL];
+  assert.equal(normals.componentType,5126,'West transfer normal format');
+  assert.equal(normals.type,'VEC3');
+  const view=json.bufferViews[normals.bufferView];
+  const stride=view.byteStride||12;
+  const offset=28+bytes.readUInt32LE(12)+(view.byteOffset||0)+(normals.byteOffset||0);
+  let upward=0;
+  for(let vertex=0;vertex<normals.count;vertex++)
+    upward+=bytes.readFloatLE(offset+vertex*stride+4);
+  assert.ok(upward/normals.count>0.40,'Grand riding surface normals point away from skater');
 });

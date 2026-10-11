@@ -45,6 +45,9 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.manualInstability = 0;
     this.grindBalance = 0;
     this.grindBalanceState = createBalanceState(1.18);
+    this.manualScoreEntry = null;
+    this.lastFlatlandAt = -Infinity;
+    this.grindReentryGuard = null;
   }
 
   balanceMode() {
@@ -67,13 +70,23 @@ export class SkillStreetPhysics extends StreetPhysics {
     // to manufacture a long combo. New tricks require actual rail travel.
     if (events.grindChange && this.grind) {
       const elapsed = this.grind.time - (this.grind.lastSwitchTime ?? 0);
-      const travelled = Math.abs(this.grind.s - (this.grind.lastSwitchS ?? this.grind.s));
-      if (elapsed < 0.20 || travelled < 0.38) {
+      const travelled = this.grind.travelDistance == null
+        ? Math.abs(this.grind.s - (this.grind.lastSwitchS ?? this.grind.s))
+        : this.grind.travelDistance - (this.grind.lastSwitchTravel ?? 0);
+      // First rail trick change is responsive; consecutive changes need more
+      // distance and skill, even around a closed rail's wraparound.
+      const minTravel = (this.grind.trickSwitchCount || 0) > 0 ? 0.9 : 0.55;
+      if (elapsed < 0.26 || travelled < minTravel) {
         events = { ...events, grindChange: null };
       } else if (events.grindChange.name !== previousGrind) {
         this.grind.lastSwitchTime = this.grind.time;
         this.grind.lastSwitchS = this.grind.s;
+        this.grind.lastSwitchTravel = this.grind.travelDistance ?? 0;
       }
+    }
+    if (events.flatland && this.manual && this.tricks
+      && this.tricks.time - this.lastFlatlandAt < 0.65) {
+      events = { ...events, flatland: null };
     }
     super.handleEvents(events);
 
@@ -82,10 +95,13 @@ export class SkillStreetPhysics extends StreetPhysics {
       this.manualBalance = 0;
       this.manualTime = 0;
       this.manualInstability = 0;
+      this.manualScoreEntry = this.tricks?.combo?.at(-1) || null;
+      this.lastFlatlandAt = -Infinity;
       this.stableGroundTime = 0;
     }
 
     if (events.flatland && this.manual) {
+      this.lastFlatlandAt = this.tricks?.time ?? 0;
       const amount = events.flatland.instability ?? 0.38;
       this.manualInstability = Math.min(1.4, this.manualInstability + amount);
       disturbBalance(this.manualBalanceState, amount);
@@ -96,6 +112,8 @@ export class SkillStreetPhysics extends StreetPhysics {
       this.grind.instability = Math.min(1.5, (this.grind.instability || 0) + 0.46);
       disturbBalance(this.grind.balanceState, 0.46);
       this.grind.contactClearanceTarget = this.grind.profile.clearance;
+      this.grind.trickSwitchCount = (this.grind.trickSwitchCount || 0) + 1;
+      this.grind.scoreEntry = this.tricks?.combo?.at(-1) || this.grind.scoreEntry;
     }
   }
 
@@ -104,6 +122,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.manualBalance = 0;
     this.manualTime = 0;
     this.manualInstability = 0;
+    this.manualScoreEntry = null;
   }
 
   endManual({ bail = false } = {}) {
@@ -119,6 +138,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.manualTime = 0;
     this.manualInstability = 0;
     this.manualBalanceState = createBalanceState(0.72);
+    this.manualScoreEntry = null;
     this.stableGroundTime = 0;
   }
 
@@ -204,7 +224,11 @@ export class SkillStreetPhysics extends StreetPhysics {
       steering: this.steer,
     });
     this.manualBalance = result.value;
-    this.tricks.addDuration((info.durationRate || 28) * dt);
+    // Manual duration must reward rolling balance rather than stationary
+    // button farming. Credit its manual score entry, not an intervening flatland.
+    const motionQuality = clamp((Math.abs(speed) - 0.4) / 3.6, 0, 1);
+    this.tricks.addDuration((info.durationRate || 28) * dt * motionQuality,
+      this.manualScoreEntry || this.tricks.combo.at(-1));
     if (!result.failed) return true;
     const severe = Math.abs(result.value) + Math.abs(result.velocity) * 0.18 > 1.16;
     this.endManual({ bail: severe });
@@ -292,7 +316,9 @@ export class SkillStreetPhysics extends StreetPhysics {
     });
     grind.balance = result.value;
     this.grindBalance = result.value;
-    this.tricks.addDuration(grind.profile.durationRate * dt);
+    const motionQuality = clamp((Math.abs(grind.speed) - 0.8) / 3.2, 0, 1);
+    this.tricks.addDuration(grind.profile.durationRate * dt * motionQuality,
+      grind.scoreEntry || this.tricks.combo.at(-1));
     if (!result.failed) return true;
     this.bail('BAIL · grind balance lost');
     return false;
@@ -309,7 +335,9 @@ export class SkillStreetPhysics extends StreetPhysics {
     const gravityAlong = GRAVITY.dot(currentTravel);
     this.grind.speed = advanceGrindSpeed(this.grind.speed, gravityAlong, dt);
 
-    this.grind.s += this.grind.direction * this.grind.speed * dt;
+    const railStep = this.grind.direction * this.grind.speed * dt;
+    this.grind.s += railStep;
+    this.grind.travelDistance = (this.grind.travelDistance || 0) + Math.abs(railStep);
     this.grind.contactClearance += (this.grind.contactClearanceTarget - this.grind.contactClearance) * (1 - Math.exp(-18 * dt));
     const sample = this.railNetwork.sample(this.grind.rail, this.grind.s, { clearance: this.grind.contactClearance });
     if (!sample) { this.exitGrind(false); return; }
@@ -339,6 +367,7 @@ export class SkillStreetPhysics extends StreetPhysics {
   exitGrind(pop) {
     if (!this.grind) return;
     const grind = this.grind;
+    this.grindReentryGuard = { rail: grind.rail, position: this.position.clone() };
     const sample = this.railNetwork.sample(grind.rail, clamp(grind.s, 0, grind.rail.length), { clearance: grind.contactClearance });
     const tangent = sample?.tangent || this.forward.clone();
     const travel = tangent.clone().multiplyScalar(grind.direction);
@@ -380,6 +409,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.manualBalance = 0;
     this.manualTime = 0;
     this.manualInstability = 0;
+    this.manualScoreEntry = null;
     this.grindBalance = 0;
     this.manualBalanceState = createBalanceState(0.72);
     this.grindBalanceState = createBalanceState(1.18);

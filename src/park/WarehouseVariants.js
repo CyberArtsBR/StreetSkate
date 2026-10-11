@@ -6,6 +6,7 @@ import { buildImportedWarehouseCollision, warehouseObjectName } from './Imported
 import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
 import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
 import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFilter.js';
+import { buildParkRouteMetadata } from './ParkRegistry.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -46,6 +47,43 @@ const VARIANTS = Object.freeze({
     theme: 'Revised Foundry / charcoal rubber plaza / expanded ramp lines',
   },
 });
+
+/**
+ * Optional glTF extras: skateFeatureId and skateCollisionName. The imported
+ * collision code continues to recognize old Blender names as a fallback.
+ * Never alter visible object names, transforms, materials or geometry.
+ */
+export function annotateWarehouseFeatures(root, mapId) {
+  let annotated = 0, explicitAliases = 0, explicitSurfaceHints = 0;
+  root.traverse(object => {
+    if (!object.isMesh) return;
+    const sourceName = warehouseObjectName(object);
+    const explicit = object.userData?.skateFeatureId || object.userData?.skate?.featureId;
+    const featureId = typeof explicit === 'string' && /^[a-z0-9][a-z0-9._/-]*$/i.test(explicit)
+      ? explicit
+      : `${mapId}/legacy/${sourceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mesh'}`;
+    const collisionName = object.userData?.skateCollisionName || object.userData?.skate?.collisionName;
+    const surface = object.userData?.skateCollisionSurface || object.userData?.skate?.collisionSurface;
+    const surfaceAliases = {
+      rideable: 'Skateable_Surface', solid: 'Warehouse_Walls',
+      decorative: 'Floor_Markings',
+    };
+    // The collision importer owned by Agent 04 still consumes historical names.
+    // Give it a canonical compatibility alias derived from stable GLB extras.
+    const alias = typeof collisionName === 'string' && collisionName.includes(' / ')
+      ? collisionName
+      : surfaceAliases[surface] ? `SKATE_META / ${featureId} / ${surfaceAliases[surface]}` : null;
+    if (alias) {
+      object.userData.name = alias; // mesh.name and all visible art stay unchanged
+      explicitAliases++;
+    }
+    if (surfaceAliases[surface]) explicitSurfaceHints++;
+    object.userData.skateFeatureId = featureId;
+    object.userData.skateClassification = alias ? 'glb-metadata' : 'legacy-name';
+    annotated++;
+  });
+  return { annotated, explicitAliases, explicitSurfaceHints };
+}
 
 function releaseVisualRoot(root) {
   const geometries = new Set(), materials = new Set(), textures = new Set();
@@ -131,6 +169,8 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
+  const featureMetadata = typeof annotateWarehouseFeatures === 'function'
+    ? annotateWarehouseFeatures(gltf.scene, id) : { annotated: 0, explicitAliases: 0, explicitSurfaceHints: 0 };
   let excludedStairMeshes = 0; // Must survive the try block for manifest statistics.
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
     : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
@@ -176,7 +216,11 @@ export async function createWarehouseVariant(id) {
     world.manifest.statistics.rails = imported.rails.length;
     world.manifest.statistics.importedRidingSurfaces = imported.surfaces.length;
     // Authored Foundry feature locations/lines are stale after Blender edits.
-    world.manifest.features = [];
+    // Procedural Foundry features are stale after the edited GLB import.
+    world.manifest.features = [...new Set(imported.surfaces)].map((name, index) => ({
+      id: `imported-surface-${index + 1}`, name, type: 'rideable',
+      source: 'visible-imported-mesh',
+    }));
     world.manifest.lines = [];
     if (id === 'grand-warehouse') ensureGrandWarehouseSpawns(world);
   }
@@ -213,6 +257,18 @@ export async function createWarehouseVariant(id) {
     ...(id === 'grand-warehouse' ? { excludedMisplacedSixStairMeshes: excludedStairMeshes } : {}),
   };
   manifest.visualTriangles = batched.visualTriangles;
+  manifest.source = { asset: variant.url.split('?')[0], classification: 'authored-glb' };
+  manifest.collisionSource = imported ? 'Visible imported GLB geometry / glTF metadata with legacy-name fallback' : 'Procedural Foundry proxies';
+  manifest.routes = typeof buildParkRouteMetadata === 'function'
+    ? buildParkRouteMetadata(manifest, id) : [];
+  if (imported) manifest.lines = manifest.routes.map(route => ({
+    name: route.name, category: route.category, route: route.waypoints.map(point => point.label),
+  }));
+  manifest.statistics = { ...manifest.statistics, featureMetadataMeshes: featureMetadata.annotated,
+    explicitFeatureAliases: featureMetadata.explicitAliases,
+    explicitSurfaceHints: featureMetadata.explicitSurfaceHints,
+    authoredRouteCount: manifest.routes.length,
+    recognizedRideableFeatures: manifest.features.length };
   manifest.environment = {
     ...manifest.environment, background: variant.background, fog: variant.background,
     fogNear: 100, fogFar: 225, exposure: variant.exposure,

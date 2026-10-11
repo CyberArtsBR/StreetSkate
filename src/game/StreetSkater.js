@@ -212,17 +212,19 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       && speed < GROUND_MOTOR.autoPushTarget;
     const pushAllowed = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime
       && !braking && this.charge < 0.05;
-    // Both feet remain planted during automatic propulsion and pumping.
-    p.pushWeight = 0;
-    if (!pushAllowed) p.pushWeight = 0;
+    // Propel with a single trailing-foot stride; keep the leading foot locked
+    // to the deck. Fade out on braking, charging, takeoff or grind rather than
+    // abruptly resetting the foot halfway through its stroke.
+    const pushTarget = pushAllowed && pushDemand ? 1 : 0;
+    const pushBlend = 1 - Math.exp(-(pushTarget ? 10 : 18) * Math.max(0, delta));
+    p.pushWeight = clamp(p.pushWeight + (pushTarget - p.pushWeight) * pushBlend, 0, 1);
     if (p.pushWeight > 0.005) {
-      // Advance from actual rolling speed; do not restart the cycle whenever
-      // automatic propulsion crosses its cruise threshold.
-      p.pushClock += delta * clamp(0.8 + speed / 13, 0.8, 1.8);
+      p.pushClock += Math.max(0, delta) * clamp(0.8 + speed / 13, 0.8, 1.8);
       p.pushPhase = p.pushClock % 1;
     } else {
-      p.pushPhase = 0;
+      // Keep clock continuity across autopush cruise-threshold changes.
       p.pushWeight = 0;
+      p.pushPhase = p.pushClock % 1;
     }
 
     const pumpSource = this.pumpState ?? this.pump ?? this.pumping ?? null;
@@ -313,12 +315,12 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       this.visual.quaternion.slerp(this._targetVisualRotation,1-Math.exp(-23*delta));
     }
 
-    const grabActive = Boolean(this.grabState && input.grabHeld && !this.flipState);
+    const grabActive = Boolean(this.grabState && !this.flipState && !this.grounded && this.bailTime <= 0);
     const p = this.presentation;
     if (grabActive) p.grabPose = { name: this.grabState.name };
     p.grabWeight = THREE.MathUtils.lerp(p.grabWeight, grabActive ? 1 : 0,
       1 - Math.exp(-28 * Math.max(0, delta)));
-    if (this.grounded || this.bailTime > 0 || this.flipState) p.grabWeight = 0;
+    if (this.bailTime > 0) p.grabWeight = 0;
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;

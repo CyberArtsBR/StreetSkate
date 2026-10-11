@@ -6,6 +6,7 @@ const EPSILON = 1e-8;
 export const TRAVEL_STATE_CONFIG = Object.freeze({
   signMemoryThreshold: 0.18,
   directionThreshold: 0.18,
+  alignmentHysteresis: 0.06,
 });
 
 export function horizontalUnit(source, fallback = null, out = new THREE.Vector3()) {
@@ -29,6 +30,7 @@ export function signedTravelRelativeToDeck({
   deckHeading = 0,
   previousSign = 1,
   threshold = TRAVEL_STATE_CONFIG.signMemoryThreshold,
+  alignmentHysteresis = TRAVEL_STATE_CONFIG.alignmentHysteresis,
 } = {}) {
   const planar = new THREE.Vector3(
     Number(velocity?.x) || 0,
@@ -39,7 +41,11 @@ export function signedTravelRelativeToDeck({
   const previous = Number(previousSign) < 0 ? -1 : 1;
   if (speed <= threshold) return previous;
   const deckForward = deckForwardFromHeading(deckHeading);
-  return planar.dot(deckForward) < 0 ? -1 : 1;
+  // Near-perpendicular slide is not proof that the skater switched from
+  // regular to fakie. Keep the sign until there is meaningful axial travel.
+  const alignment = planar.dot(deckForward) / speed;
+  if (Math.abs(alignment) < Math.max(0, alignmentHysteresis || 0)) return previous;
+  return alignment < 0 ? -1 : 1;
 }
 
 /**
@@ -67,6 +73,7 @@ export function resolveTravelState({
     deckHeading,
     previousSign,
     threshold: config.signMemoryThreshold,
+    alignmentHysteresis: config.alignmentHysteresis ?? TRAVEL_STATE_CONFIG.alignmentHysteresis,
   });
 
   const direction = new THREE.Vector3();

@@ -205,6 +205,31 @@ export function resolveTransferLaunchResult({
   deckConfig,
   copingConfig,
 } = {}) {
+  // An explicit Up tap does not grant a free jump from a stationary board.
+  // Low-energy/descending deck attempts recover toward the original wall.
+  if (frame?.rampInward && frame?.copingTangent && frame?.returnTarget
+    && (incomingSpeed < 4.8 || launchVertical < 1.5)) {
+    const retainedLateral = frame.copingTangent.clone()
+      .multiplyScalar((Number(lateralVelocity) || 0) * 0.35);
+    const velocity = frame.rampInward.clone().multiplyScalar(0.34)
+      .add(retainedLateral);
+    velocity.y = Math.max(0, Number(launchVertical) || 0);
+    return Object.freeze({
+      active: true,
+      mode: 'return',
+      transferring: false,
+      launchVertical: velocity.y,
+      launchHorizontal: horizontal(velocity),
+      velocity,
+      exitControl: {
+        geometryAware: true,
+        abortToReturn: true,
+        insufficientEnergy: true,
+        targetPoint: frame.returnTarget.clone(),
+      },
+    });
+  }
+
   const controlled = resolveControlledTransferLaunch({
     frame,
     incomingSpeed,

@@ -25,8 +25,27 @@ export function supportMatchesOriginalTransition(support, air, config) {
 
   const fromLip = support.position.clone().sub(air.frame.lipPoint);
   if (Number.isFinite(config.contactCorridor)) {
-    const lateral = horizontal(fromLip).dot(air.frame.copingTangent);
-    if (Math.abs(lateral) > config.contactCorridor) return false;
+    const lipPath = air.frame.lipPath;
+    if (Array.isArray(lipPath) && lipPath.length >= 2) {
+      // A diagonal carve can reconnect anywhere along the SAME authored rail.
+      // Only overhang past all coping segments is limited, never total distance
+      // from the original takeoff point. Radial/normal/height gates remain below.
+      let smallestOverhang = Infinity;
+      for (let i = 1; i < lipPath.length; i++) {
+        const a = lipPath[i - 1], b = lipPath[i];
+        const ab = horizontal(b.clone().sub(a));
+        const lengthSq = ab.lengthSq();
+        if (lengthSq < 1e-8) continue;
+        const t = horizontal(support.position.clone().sub(a)).dot(ab) / lengthSq;
+        const overhang = t < 0 ? -t * Math.sqrt(lengthSq)
+          : t > 1 ? (t - 1) * Math.sqrt(lengthSq) : 0;
+        smallestOverhang = Math.min(smallestOverhang, overhang);
+      }
+      if (smallestOverhang > config.contactCorridor) return false;
+    } else {
+      const lateral = horizontal(fromLip).dot(air.frame.copingTangent);
+      if (Math.abs(lateral) > config.contactCorridor) return false;
+    }
   }
 
   const signedOutward = horizontal(fromLip).dot(outward);
