@@ -81,3 +81,13 @@ An absent JSON, unexpected host, malformed SHA, HTTP failure, or SHA mismatch is
 - **FAIL**: executed and failed, including legitimate product defects or outdated assertions; classify with proof.
 - **NOT RUN**: not attempted / not observable. Never replace with PASS.
 - **UNVERIFIED**: external admin setting or deployment provenance cannot be read; do not claim it is enabled.
+
+
+## Observed implementation-branch CI evidence (2026-10-11)
+
+Run [38151099868](https://github.com/CyberArtsBR/StreetSkate/actions/runs/38151099868) (superseded by later QA-only commits):
+- PASS: required three-map asset structure, additional Agent10 security regressions, Vite production build, build SHA stamp, emitted asset/identity verification, browser renderer startup and packaged media availability.
+- FAIL: `npm test` reported **572 PASS / 10 FAIL / 582 tests** on the pinned baseline. Failures include retired Map 4 fixtures requiring unshipped `public/assets/warehouse/urban-warehouse.glb`, a stale relative import for `tools/load-geometry.mjs`, and assumptions about old Map 2/3 identities. Do **not** hide or skip these tests. Their owning agents must migrate or retire the obsolete cases with explicit review; any remaining user-facing physics failure remains blocking.
+- FAIL / INCONCLUSIVE: the independent map runner timed out on a Playwright *pointer action* against the title button under software WebGL, before any world-select assertions. It does **not** establish that Rooftop/ORBIT/Grand Warehouse failed to load; the map runner now invokes real DOM button handlers without pointer timing, while the original browser suite retains actual pointer-input coverage.
+- NOT RUN: full all-three-map and simulated gamepad PASS/FAIL outcome on the final branch tip; check its latest run before merging. Production deployment-SHA verification remains NOT RUN because no deployment was authorized.
+- The release decision was correctly **FAIL**. No publish was made.
