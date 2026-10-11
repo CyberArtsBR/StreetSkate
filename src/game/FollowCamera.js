@@ -25,6 +25,14 @@ export const THPS_CAMERA = Object.freeze({
   highSpeedFollowCap: 9,
   speedLookAheadGain: 0.065,
   speedLookAheadCap: 0.85,
+  // These affect only the camera; movement/physics stay entirely untouched.
+  maximumAimLag: 1.35,
+  fastAimRateGain: 0.14,
+  fastLookAheadGain: 0.07,
+  fastLookAheadCap: 1.25,
+  highSpeedFovGain: 0.14,
+  highSpeedFovCap: 3.5,
+  portraitFovCap: 2.5,
 
   // Classic skate cameras do not instantly orbit behind the rider every time a
   // quarter pipe reverses world travel. Normal carving recenters deliberately;
@@ -155,6 +163,7 @@ export class FollowCamera {
     this.trickZoomActive = false;
     this.zoom = 1;
     this.lookAhead = 0;
+    this.aimTarget = null;
   }
 
   setMode(mode, player = null) {
@@ -176,11 +185,13 @@ export class FollowCamera {
     this.lookYaw = 0; this.lookTilt = 0; this.lookHold = 0;
     this.trickZoomActive = false; this.zoom = 1;
     this.lookAhead = 0;
+    this.aimTarget = null;
     this.update(player, 1, {});
   }
 
   update(player, dt, input = {}) {
     dt = THREE.MathUtils.clamp(Number(dt) || 0, 0, 0.1);
+    const firstFrame = !this.initialized;
     const state = captureCameraState(player, {
       previousDirection: this.direction,
       initialized: this.initialized,
@@ -192,7 +203,9 @@ export class FollowCamera {
       if (!this.initialized) this.direction.copy(state.travelDirection);
       if (returning && !this.wasReturning) {
         this.vertDirection.copy(highFollow && state.returnDirection ? state.returnDirection : this.direction);
-        if (highFollow) { this.lookYaw = 0; this.lookTilt = 0; this.lookHold = 0; }
+        // A trick/vert transition must not reset a player-selected look angle
+        // in one frame. Release manual look through the normal damped recovery.
+        if (highFollow) this.lookHold = 0;
       }
       if (returning) this.returnHold = THPS_CAMERA.landingHoldTime;
       else {
@@ -242,8 +255,9 @@ export class FollowCamera {
       } else {
         this.lookHold = returning ? 0 : Math.max(0, this.lookHold - dt);
         if (!this.lookHold) {
-          this.lookYaw = wrapAngle(this.lookYaw) * Math.exp(-4 * dt);
-          this.lookTilt *= Math.exp(-4 * dt);
+          const recenterRate = returning ? 6.5 : 4;
+          this.lookYaw = wrapAngle(this.lookYaw) * Math.exp(-recenterRate * dt);
+          this.lookTilt *= Math.exp(-recenterRate * dt);
         }
       }
     } else {
@@ -273,7 +287,16 @@ export class FollowCamera {
     }
     const viewDirection = this.direction.clone();
     if (classic) viewDirection.applyAxisAngle(UP, this.lookYaw);
-    const lookAheadTarget = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }).lookAhead : classic && !returning ? 0.55 : 0;
+    // A small bounded lead keeps the approaching lip or narrow-run obstacle
+    // visible before the rider reaches it. Retaining the canonical travel
+    // direction prevents flip tricks and fakie stance from steering the aim.
+    const fastLead = Math.min(THPS_CAMERA.fastLookAheadCap,
+      Math.max(0, state.horizontalSpeed - 12) * THPS_CAMERA.fastLookAheadGain);
+    const baseLead = highFollow
+      ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }).lookAhead
+      : classic && !returning ? 0.55 : 0;
+    const lookAheadTarget = classic
+      ? baseLead + (returning ? 0 : fastLead * (highFollow ? 1 : 0.45)) : 0;
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
@@ -281,7 +304,31 @@ export class FollowCamera {
         height: this.height + (classic ? this.lookTilt * 3 : 0),
         lookAhead: this.lookAhead });
     this.position.copy(frame.desired);
-    this.target.copy(frame.target);
+    if (firstFrame || !this.aimTarget) this.aimTarget = frame.target.clone();
+    else {
+      const rate = THPS_CAMERA.targetFollowRate + Math.min(5,
+        state.horizontalSpeed * THPS_CAMERA.fastAimRateGain);
+      this.aimTarget.lerp(frame.target, 1 - Math.exp(-rate * dt));
+      const aimLag = this.aimTarget.distanceTo(frame.target);
+      if (aimLag > THPS_CAMERA.maximumAimLag) {
+        this.aimTarget.lerp(frame.target, 1 - THPS_CAMERA.maximumAimLag / aimLag);
+      }
+    }
+    this.target.copy(this.aimTarget);
+    // Fixed is intentionally a constant-lens, world-axis shot. Gameplay
+    // follow modes can gently open their lens at speed; portrait displays get
+    // extra visibility without altering the avatar or authored geometry.
+    const speedFov = this.mode === 'fixed' ? 0 : Math.min(
+      THPS_CAMERA.highSpeedFovCap,
+      Math.max(0, state.horizontalSpeed - 12) * THPS_CAMERA.highSpeedFovGain);
+    const portraitFov = this.mode === 'fixed' ? 0 : Math.min(
+      THPS_CAMERA.portraitFovCap, Math.max(0, 1.2 - (this.camera.aspect || 1.78)) * 3);
+    const requestedFov = 58 + speedFov + portraitFov;
+    if (Math.abs(this.camera.fov - requestedFov) > 0.05) {
+      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, requestedFov,
+        firstFrame ? 1 : 1 - Math.exp(-5 * dt));
+      this.camera.updateProjectionMatrix();
+    }
     this.initialized = true;
 
     // The tripod is intentionally smoothed, but all clearance rays originate
