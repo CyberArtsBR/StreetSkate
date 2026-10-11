@@ -103,6 +103,8 @@ test('graffiti HUD keeps a clear top margin and only sprites render the visible 
  const css=readFileSync('src/game-hud.css','utf8');
  assert.match(css,/top:clamp\(125px,18vh,190px\)/);
  assert.match(css,/#trick-feedback \.graffiti-word img\{[^}]*max-height:none;/);
+ assert.match(css,/#trick-feedback \.graffiti-lettering\{[^}]*--letter-height:inherit/,
+   'child lettering must not overwrite parent fitted sprite height');
  assert.match(css,/#trick-feedback::after\{content:none!important\}/);
  const main=readFileSync('src/game-main.js','utf8');
  assert.match(main,/scheduleTrickHudFit\(\)/);
