@@ -10,17 +10,18 @@
 | --- | --- | --- |
 | Diagonal quarter/halfpipe/bowl launches | Incoming speed included lateral travel in climb, then clipped along-coping speed to 1.1 m/s | Exclude real lateral speed from climb projection; retain along-coping vector. Rebalance vertical component against the existing launch energy budget |
 | Near-vertical takeoff | Entire XZ radial velocity set to zero for passive return | Retain a *small slope-dependent* outward radial component (at most 1.65 m/s) on steep coping; shallow normals retain existing return behavior |
-| Return flight | Lateral motion hard-clipped at 1.4 m/s and radial at 2.4 m/s per frame | Keep genuine diagonal lateral motion; corrections are acceleration-limited (no one-step clipping); retain gravitational Y unchanged |
+| Return flight | Lateral motion hard-clipped at 1.4 m/s and radial at 2.4 m/s per frame | Keep genuine diagonal lateral motion; never reverse direction just to revisit takeoff; corrections are acceleration-limited; retain gravitational Y unchanged |
 | Deck-target steering | 24/36 m/s² horizontal correction during ascent/descent | 6/9 m/s² corrections; conserve Y and apply bounded horizontal steering in fixed steps |
 | Transfer abuse | Up exit accepted with very little approach energy; staged transfer could produce a deck launch from almost nothing | Require credible takeoff speed/rise and abort low-energy deck planning to return without upward impulse |
 | Wrong transition | Coping candidate could select a nearby nearly perpendicular crossing rail | Reject candidates whose rail tangent is inconsistent with the measured slope normal |
 | Verified transfer reentry | Emergency original-wall sweep could catch a rider already headed for a verified deck | Original-wall emergency sweep is disabled during active verified deck transfers; deck support owns landing |
+| Diagonal reentry | Same-wall support was rejected outside 1.55 m from original takeoff point | Match real authored coping segments and their endpoints while still requiring original-side surface normal, radial depth and height |
 | Pump on hard seams | Large wheel-normal discontinuities qualified as curved transition compression | Reject incoherent curvature above 0.48 radians while preserving real bowl/quarter pumping and landing-window timing |
 | 180/360 | Legacy auto-yaw and landing orientation are already handled by a distinct orientation authority | Preserve existing player-only spin/heading logic; no automatic turnaround introduced |
 
 ### Physics model and ownership
 
-The vertical launch envelope and gravity remain owned by `TransitionController`. Start-of-air kinetic budget: `v_launch² <= v_inbound² + (0.72 * boost)²`. Near-vertical ramp return permits controlled finite outward drift; it never teleports the rider onto a return line. `VertReturnFlight` corrects velocity in the local ramp/coping plane and leaves Y ballistic. `TransferFlightResult` applies a limited horizontal acceleration, not scripted XZ teleportation.
+The vertical launch envelope and gravity remain owned by `TransitionController`. Start-of-air kinetic budget: `v_launch² <= v_inbound² + (0.72 * boost)²`. Near-vertical ramp return permits controlled finite outward drift; it never teleports the rider onto a return line. `VertReturnFlight` corrects velocity in the local ramp/coping plane and leaves Y ballistic. The reentry matcher uses the source transition's authored lip path instead of treating the original launch point as the entire landing rail. `TransferFlightResult` applies a limited horizontal acceleration, not scripted XZ teleportation.
 
 The low-energy transfer guard is applied only to the post-takeoff transfer plan. This *does not* override genuine collisions or wheel contacts. The original same-transition wheel-sweep/continuous-sweep support rules remain the landing authority. Existing pump timing, compression, cooldown, and hard-cap policy in `PumpSystem` remain unchanged, but its curvature eligibility now excludes hard seams. The phase-one runtime consumes this pure helper in `StatefulSkillStreetPhysics` (outside Agent 02 ownership). Pump speed limits should be jointly reviewed with Agent 01 before integration.
 
@@ -37,7 +38,7 @@ node tools/agent02-vert-trajectories.mjs
 npm run build
 ```
 
-New regression scenarios: fast straight/diagonal approach, opposite halfpipe wall, curvature-dependent departure, shallow lip rejection, 60/120 Hz trajectory parity, weak/unsupported transfers, aborted returns, bounded deck-target acceleration, high lateral speed without snap, crossing lip normals, hard-seam pumping rejection, original-wall sweep exclusion for verified transfers. Existing landing/rotation tests independently cover passive same-wall fakie, deliberate 180/360, early-flip auto-catch and rejected alignments.
+New regression scenarios: fast straight/diagonal approach, opposite halfpipe wall, curvature-dependent departure, shallow lip rejection, 60/120 Hz trajectory parity, weak/unsupported transfers, aborted returns, bounded deck-target acceleration, high lateral speed without snap, crossing lip normals, hard-seam pumping rejection, authored-span diagonal reentry, original-wall sweep exclusion for verified transfers. Existing landing/rotation tests independently cover passive same-wall fakie, deliberate 180/360, early-flip auto-catch and rejected alignments.
 
 `tools/agent02-vert-trajectories.mjs` emits deterministic 120 Hz JSON for quarter straight/diagonal, halfpipe opposing and 180-motion cases, bowl pocket, mini ramp, and a planned verified transfer. Report fields include incoming/launch speed, launch vertical speed, apex rise and time, first descending lip-plane crossing, lateral displacement and return error. **Lip-plane crossing is not a confirmed landing**; real GLB contact/collision must still be replayed.
 
