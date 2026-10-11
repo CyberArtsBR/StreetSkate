@@ -44,7 +44,25 @@ function sampleSpawnGeometry(map, collision, spawn, heading) {
   return surface;
 }
 
+// The Rooftop collision generator also initializes textures. Supply only the
+// minimal image/canvas DOM used by material setup, never a fake physics mesh.
+function installHeadlessTextureDom() {
+  if (globalThis.document) return;
+  const gradient = () => ({ addColorStop() {} });
+  const context = new Proxy({
+    createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
+    getImageData: (x, y, width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
+    createRadialGradient: gradient, createLinearGradient: gradient,
+    measureText: () => ({ width: 10 }),
+  }, { get: (target, name) => target[name] ?? (() => {}) });
+  globalThis.document = {
+    createElement: () => ({ width: 512, height: 512, getContext: () => context }),
+    createElementNS: () => ({ addEventListener() {}, removeEventListener() {}, set src(_url) {} }),
+  };
+}
+
 test('Agent04 shipping Skyline Rooftop: entrance four-wheel and 25 area probes', () => {
+  installHeadlessTextureDom();
   const world = createSolarDockPark();
   sampleSpawnGeometry('Skyline Rooftop', world.collision, world.manifest.spawn,
     world.manifest.spawnHeading || 0);
