@@ -104,7 +104,8 @@ export class GameShell {
     target?.focus({preventScroll:true});
     // Controller focus may be below the fold in the stacked/mobile loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
-    if(this.phase==='select')target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
+    if(['select','pause','options','graphics','results'].includes(this.phase))
+      target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
   // Keyboard and gamepad share the same logical layout-aware focus route.
   moveSelection(axis, sign) {
