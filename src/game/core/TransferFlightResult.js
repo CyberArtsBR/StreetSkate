@@ -73,8 +73,11 @@ export function resolveTransferFlightStep({
           : clamp(distance * 2.0, 0.55, control.horizontalSpeed);
         desired.copy(toTarget).multiplyScalar(desiredSpeed / distance);
       }
+      // A geometry target may correct the flight, but it must not act like
+      // a hidden 24-36 m/s² thruster that teleports horizontal momentum.
+      // Descent has modestly more authority for last-metre wheel placement.
       const delta = desired.sub(current);
-      const maxDelta = (apexPassed ? 36 : 24) * dt;
+      const maxDelta = (apexPassed ? 9 : 6) * Math.max(0, dt);
       if (delta.length() > maxDelta) delta.setLength(maxDelta);
       next = current.clone().add(delta);
       returnError = distance;
@@ -93,7 +96,7 @@ export function resolveTransferFlightStep({
     const lateral = frame.copingTangent.clone()
       .multiplyScalar((Number(air.lateralVelocity) || 0) * Math.exp(-2.4 * age) * 0.24);
     const desired = frame.deckOutward.clone().multiplyScalar(outwardSpeed).add(lateral);
-    next = accelerateToward(current, desired, (apexPassed ? 28 : 18) * dt);
+    next = accelerateToward(current, desired, (apexPassed ? 9 : 6) * Math.max(0, dt));
     returnError = Math.abs(control.targetDistance - outwardDistance);
   }
 
