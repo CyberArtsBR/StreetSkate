@@ -9,6 +9,8 @@ export const VERT_RETURN = Object.freeze({
   lateralDrag: 1.8,
   lateralCorridor: 0.80,
   maxLateralSpeed: 1.4,
+  // Diagonal airs can retain more speed along the lip than straight returns.
+  maxCarveLateralSpeed: 7.5,
   // A return should not completely disengage after a modest off-axis arc.
   // Corrections stay acceleration-limited, preserving momentum and gravity.
   maxPlaneError: 3.4,
@@ -51,22 +53,24 @@ export function resolveVertReturnVelocity(air, position, velocity, dt) {
 
   const maxStep = VERT_RETURN.acceleration * assist * dt;
   const radial = velocity.dot(frame.rampInward);
+  // Do not hard-clip an already-moving board to 2.4 m/s in one frame.
+  // Correction is always acceleration limited, including aborted transfers.
   const targetRadial = clamp(-radialError * VERT_RETURN.radialGain
     - radial * 0.45 * assist, -VERT_RETURN.maxRadialSpeed,
   VERT_RETURN.maxRadialSpeed);
-  const nextRadial = clamp(radial + clamp(targetRadial - radial, -maxStep, maxStep),
-    -VERT_RETURN.maxRadialSpeed, VERT_RETURN.maxRadialSpeed);
+  const nextRadial = radial + clamp(targetRadial - radial, -maxStep, maxStep);
 
   const lateral = velocity.dot(frame.copingTangent);
+  const lateralLimit = clamp(Math.abs(Number(air.lateralVelocity) || 0),
+    VERT_RETURN.maxLateralSpeed, VERT_RETURN.maxCarveLateralSpeed);
   let targetLateral = lateral;
   if (Math.abs(lateralOffset) > VERT_RETURN.lateralCorridor) {
     const excess = Math.abs(lateralOffset) - VERT_RETURN.lateralCorridor;
     targetLateral = -Math.sign(lateralOffset)
-      * Math.min(VERT_RETURN.maxLateralSpeed, excess * 3);
+      * Math.min(lateralLimit, excess * 3);
   }
-  const nextLateral = clamp(lateral
-    + clamp(targetLateral - lateral, -maxStep, maxStep),
-  -VERT_RETURN.maxLateralSpeed, VERT_RETURN.maxLateralSpeed);
+  const nextLateral = lateral
+    + clamp(targetLateral - lateral, -maxStep, maxStep);
 
   next.copy(frame.rampInward).multiplyScalar(nextRadial)
     .addScaledVector(frame.copingTangent, nextLateral);
