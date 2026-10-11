@@ -27,7 +27,7 @@ await context.addInitScript(()=>{
   });
 });
 const page = await context.newPage();
-page.setDefaultTimeout(45000);
+page.setDefaultTimeout(90000);
 page.on('pageerror',err=>result.errors.push(String(err.stack||err)));
 page.on('requestfailed',req=>{
   if(req.url().startsWith(base))result.failedRequests.push(req.url()+': '+req.failure()?.errorText);
@@ -43,18 +43,27 @@ async function loadedTitle() {
   await page.locator('body[data-screen="title"]').waitFor();
   assert.equal(await page.locator('#viewport canvas').count(),1);
 }
+// The separate browser-qa suite checks genuine Playwright pointer clicks.
+ // This runner exercises the same user-facing button handlers directly to
+ // isolate three-world load reliability from SwiftShader pointer-action stalls.
+async function clickMenu(selector) {
+  await page.locator(selector).evaluate(button=>{
+    if(button.disabled)throw new Error('Required menu button disabled: '+button.dataset.action);
+    button.click();
+  });
+}
 async function chooseLocation(id) {
-  await page.locator('[data-action="start"]').click();
+  await clickMenu('[data-action="start"]');
   await page.locator('body[data-screen="select"]').waitFor();
   const locations=await page.locator('.loadout-location').evaluateAll(nodes=>nodes.map(n=>n.dataset.location));
   assert.deepEqual(locations,LOCATION_IDS,'Loadout cards must exactly match shipped maps');
   assert.equal(await page.locator('.loadout-location[disabled]').count(),0);
-  await page.locator('.loadout-location[data-location="'+id+'"]').click();
-  await page.locator('.loadout-character[data-index="0"]').click();
-  await page.locator('.loadout-deck[data-index="0"]').click();
+  await clickMenu('.loadout-location[data-location="'+id+'"]');
+  await clickMenu('.loadout-character[data-index="0"]');
+  await clickMenu('.loadout-deck[data-index="0"]');
   const confirm=page.locator('[data-action="confirmLoadout"]');
   assert.equal(await confirm.isEnabled(),true);
-  await confirm.click();
+  await clickMenu('[data-action="confirmLoadout"]');
   await page.locator('body[data-screen="playing"]').waitFor({timeout:90000});
   await page.waitForFunction(target=>window.streetSkate?.currentLocation===target,id,{timeout:30000});
 }
@@ -89,7 +98,7 @@ async function assertLiveness(id) {
 async function toTitle(){
   await page.keyboard.press('Escape');
   await page.locator('body[data-screen="pause"]').waitFor();
-  await page.locator('[data-action="title"]').click();
+  await clickMenu('[data-action="title"]');
   await page.locator('body[data-screen="title"]').waitFor();
 }
 async function setButton(index,pressed){
