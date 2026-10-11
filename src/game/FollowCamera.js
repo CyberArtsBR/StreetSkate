@@ -33,6 +33,9 @@ export const THPS_CAMERA = Object.freeze({
   highSpeedFovGain: 0.14,
   highSpeedFovCap: 3.5,
   portraitFovCap: 2.5,
+  // Prevent a momentary 180° downhill reversal from whipping the camera.
+  maximumTrackedYawRadiansPerSecond: 6.9,
+  occlusionSideFollowRate: 18,
 
   // Classic skate cameras do not instantly orbit behind the rider every time a
   // quarter pipe reverses world travel. Normal carving recenters deliberately;
@@ -65,7 +68,7 @@ function wrapAngle(value) {
  * where opposite vectors shrink toward zero and then suddenly flip. This is the
  * key to keeping the camera on a Tony-Hawk-like side during vert reversals.
  */
-export function smoothCameraDirection(current, target, dt, rate) {
+export function smoothCameraDirection(current, target, dt, rate, maximumYawRate = null) {
   const from = current?.clone?.() || new THREE.Vector3(0, 0, -1);
   const to = target?.clone?.() || new THREE.Vector3(0, 0, -1);
   from.y = 0;
@@ -79,7 +82,9 @@ export function smoothCameraDirection(current, target, dt, rate) {
   const toYaw = Math.atan2(to.x, to.z);
   const delta = wrapAngle(toYaw - fromYaw);
   const alpha = 1 - Math.exp(-Math.max(0, Number(rate) || 0) * Math.max(0, Number(dt) || 0));
-  const yaw = fromYaw + delta * alpha;
+  const limit = Number(maximumYawRate) > 0
+    ? Number(maximumYawRate) * Math.max(0, Number(dt) || 0) : Infinity;
+  const yaw = fromYaw + THREE.MathUtils.clamp(delta * alpha, -limit, limit);
   return new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
 }
 
@@ -226,12 +231,14 @@ export class FollowCamera {
           // Even a true 180-degree coping reversal must not whip the camera.
           const reverse = this.direction.dot(this.vertDirection) < THPS_CAMERA.reverseDotThreshold;
           const rate = reverse ? THPS_CAMERA.reverseReturnReframeRate : THPS_CAMERA.returnReframeRate;
-          this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, rate));
+          this.direction.copy(smoothCameraDirection(this.direction, this.vertDirection, dt, rate,
+            THPS_CAMERA.maximumTrackedYawRadiansPerSecond));
         } else this.direction.copy(this.vertDirection);
       }
       else if (!state.bailing) this.direction.copy(smoothCameraDirection(
         this.direction, state.travelDirection, dt,
-        cameraDirectionRate(this.direction, state.travelDirection)));
+        cameraDirectionRate(this.direction, state.travelDirection),
+        THPS_CAMERA.maximumTrackedYawRadiansPerSecond));
       if (returning && state.doingTrick) this.trickZoomActive = true;
       if (!returning) this.trickZoomActive = false;
       const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
@@ -344,6 +351,7 @@ export class FollowCamera {
     const resolvedPosition = resolveCameraClearance(
       player?.surface, riderAnchor, this.position, this.camera.position, this.clearanceCache,
     );
+    const wasOccluded = this.occlusionActive;
     const eyeOffset = resolvedPosition.clone().sub(riderAnchor);
     const clearDistance = eyeOffset.length();
     const clipped = resolvedPosition.distanceToSquared(this.position) > 0.0001;
@@ -363,7 +371,20 @@ export class FollowCamera {
     const safeDistance = Math.min(clearDistance, Math.max(minArm, this.occlusionDistance));
     if (clearDistance > 1e-8) eyeOffset.multiplyScalar(safeDistance / clearDistance);
     this.occlusionActive = clipped || safeDistance < clearDistance - 0.02;
-    this.camera.position.copy(riderAnchor).add(eyeOffset);
+    const safeEye = riderAnchor.clone().add(eyeOffset);
+    // Smooth the lateral/vertical escape once the old camera is still in a
+    // valid third-person space. A final collision sweep is mandatory: never
+    // visually interpolate through a wall for the sake of a smooth transition.
+    if (!firstFrame && (clipped || wasOccluded) && player?.surface?.camera) {
+      const intermediate = this.camera.position.clone().lerp(safeEye,
+        1 - Math.exp(-THPS_CAMERA.occlusionSideFollowRate * dt));
+      const checked = player.surface.camera(riderAnchor, intermediate, 0.28);
+      const unobstructed = checked.distanceToSquared(intermediate) < 0.0025
+        && checked.distanceTo(riderAnchor) >= minArm;
+      this.camera.position.copy(unobstructed ? intermediate : safeEye);
+    } else {
+      this.camera.position.copy(safeEye);
+    }
     // Even when geometry offers no minimum-clearance solution, never hide the
     // model or choose an untested point through a solid surface.
     if (player?.visual) player.visual.visible = true;
