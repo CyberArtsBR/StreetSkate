@@ -20,13 +20,13 @@ export function ensureGrandWarehouseSpawns(world) {
   }
   const inBounds = p => regions.some(r=>
     p.x>r.minX+2 && p.x<r.maxX-2 && p.z>r.minZ+2 && p.z<r.maxZ-2);
-  const candidateAt = (point, heading) => {
+  const candidateAt = (point, heading, preferredHeight) => {
     if (!inBounds(point)) return null;
     if (reserved.some(p=>p.distanceToSquared(point)<5)) return null;
     const support=contact.snapToGround(point,heading,.5,1);
     if (!support.supported || support.count!==4 || support.normal.y<.985) return null;
     const adjusted=support.position;
-    if (!adjusted || Math.abs(adjusted.y-.15)>.38) return null;
+    if (!adjusted || Math.abs(adjusted.y-preferredHeight)>.38) return null;
     const sweep=surface.move(adjusted,adjusted,new THREE.Vector3(),{grounded:false});
     if (sweep.contacts.length || sweep.position.distanceToSquared(adjusted)>.001) return null;
     return adjusted.clone();
@@ -34,8 +34,8 @@ export function ensureGrandWarehouseSpawns(world) {
   const place = (coords, heading, label) => {
     const source = new THREE.Vector3(...coords);
     for (const [dx,dz] of offsets) {
-      const candidate=new THREE.Vector3(source.x+dx,.15,source.z+dz);
-      const safe=candidateAt(candidate,heading);
+      const candidate=new THREE.Vector3(source.x+dx,source.y,source.z+dz);
+      const safe=candidateAt(candidate,heading,source.y);
       if (!safe) continue;
       reserved.push(safe);
       return safe.toArray();
