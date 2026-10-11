@@ -35,6 +35,29 @@ function anchor(rider, board, side, yaw = board._yawHold) {
 }
 
 for (const name of avatars) {
+  test(name + ': pushing, coasting, turning and braking keep the stopped A-pose arms', async () => {
+    const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
+    const board = boardFixture();
+    rider.resetPresentation();
+    for (const state of ['IDLE','PUSH','COAST','BRAKE','COAST','IDLE']) {
+      for (let frame=0;frame<45;frame++) {
+        rider.update({board,presentation:{state},speedRatio:state==='IDLE'?0:.65,
+          steer:state==='COAST'?.7:0,pushWeight:state==='PUSH'?1:0,pushPhase:frame/45,dt:1/60});
+        // Switching between ground states must never blend back into folded arms.
+        for (const side of ['l','r']) {
+          const shoulder=rider.root.worldToLocal(rider.bones['upperarm_'+side].getWorldPosition(v()));
+          const elbow=rider.root.worldToLocal(rider.bones['lowerarm_'+side].getWorldPosition(v()));
+          const wrist=rider.root.worldToLocal(rider.bones['hand_'+side].getWorldPosition(v()));
+          const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
+          const direction=wrist.clone().sub(shoulder).normalize();
+          assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${state}/${frame}/${side}: folded elbow`);
+          assert.ok(direction.dot(rider.armOutward[side])>.58,`${name}/${state}/${side}: arm against torso`);
+          assert.ok(direction.y<-.7,`${name}/${state}/${side}: arm not in A-pose`);
+        }
+      }
+    }
+    rider.dispose();
+  });
   test(name + ': actual GLB has a deep crouch, forward knees and planted shoes', async () => {
     const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
     const board = boardFixture();

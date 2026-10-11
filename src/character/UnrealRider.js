@@ -475,18 +475,20 @@ export class UnrealRider {
       const world = boundedNeutralHandTarget(
         shoulderWorld, this.root.localToWorld(target.clone()), armLength,
       );
-      // At rest use an anatomical A-pose instead of folding the elbows out
-      // while pinning both wrists against the hips. Scale to each avatar's
+      // Standing and ordinary ground movement share an anatomical A-pose.
+      // Do not fold elbows outward by pinning both wrists to the hips. Scale to each avatar's
       // actual arm length; almost straight elbows avoid the broken-shoulder
       // silhouette on the short Chimpions rigs. State blending preserves the
       // authored crouch, flick, balance and grab targets.
-      const idleArms = this.w(PRESENTATION_STATES.IDLE) * (1-grab) * (1-flat) * (bail ? 0 : 1);
-      if (idleArms > 0) {
+      const neutralArms = C(this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
+        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE),0,1)
+        * (1-grab) * (1-flat) * (bail ? 0 : 1);
+      if (neutralArms > 0) {
         const angle = THREE.MathUtils.degToRad(40);
         const direction = lateral.clone().multiplyScalar(Math.sin(angle))
           .add(V(0,-Math.cos(angle),0)).addScaledVector(this.kneeForward,.025).normalize();
         const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.99);
-        world.lerp(restingHand,idleArms);
+        world.lerp(restingHand,neutralArms);
       }
       const reachWeight = handstand ? flat : grab;
       if (reach) {
@@ -499,10 +501,10 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
-      if (idleArms > 0) {
+      if (neutralArms > 0) {
         const restingPole = shoulderWorld.clone().lerp(world,.5)
           .addScaledVector(this.kneeForward.clone().applyQuaternion(rootQ),armLength*.18);
-        elbowPole.lerp(restingPole,idleArms);
+        elbowPole.lerp(restingPole,neutralArms);
       }
       limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {

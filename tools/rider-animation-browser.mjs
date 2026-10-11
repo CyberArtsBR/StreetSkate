@@ -28,12 +28,14 @@ try {
       const g = window.streetSkate; await g.skater.setRiderModel(`/assets/rider/${name}.glb`);
       g.skater.update(0, {}, 0);
     }, name);
-    for (const pose of ['idle', 'crouch', 'flick', 'spin', 'catch']) {
+    for (const pose of ['idle', 'coast', 'push', 'brake', 'turn', 'crouch', 'flick', 'spin', 'catch']) {
       const result = await page.evaluate(pose => {
         const g = window.streetSkate, s = g.skater, r = s.rider, b = s.board;
         const flip = ['flick', 'spin', 'catch'].includes(pose);
         const progress = pose === 'flick' ? .34 : pose === 'spin' ? .6 : .97;
-        const params = { presentation: { state: flip ? 'AIR' : pose === 'crouch' ? 'CROUCH' : 'IDLE' },
+        const movement={coast:'COAST',push:'PUSH',brake:'BRAKE',turn:'COAST'};
+        const params = { presentation: { state: flip ? 'AIR' : pose === 'crouch' ? 'CROUCH' : movement[pose]||'IDLE' },
+          speedRatio:movement[pose] ? .65 : 0,steer:pose==='turn'?.7:0,pushWeight:pose==='push'?1:0,pushPhase:.5,
           crouch: pose === 'crouch' ? 1 : 0, airborne: flip,
           flipState: flip ? { name: 'Kickflip', progress, roll: 1, yaw: 0, pitch: 0 } : null, dt: 1 / 60 };
         b.resetPresentation(); r.resetPresentation();
@@ -91,7 +93,7 @@ try {
       throw new Error(`${name}: crouch did not visibly lower hips and head`);
   }
   if (checks.some(c => !c.finite) || gameplay.some(c => !c.finite)) throw new Error('Nonfinite animation');
-  if(checks.filter(c=>c.pose==='idle').some(c=>c.arms.some(a=>a.flex>22||a.outward<.58||a.down>-.7))) throw new Error('Idle A-pose folds arms or shoulders inward');
+  if(checks.filter(c=>['idle','coast','push','brake','turn'].includes(c.pose)).some(c=>c.arms.some(a=>a.flex>22||a.outward<.58||a.down>-.7))) throw new Error('Ground movement lost the stopped A-pose');
   if (!gameplay.some(c => c.state === 'CROUCH' && c.charge > .9) || !gameplay.some(c => c.flip !== null)
     || !gameplay.some(c => c.state === 'LAND')) throw new Error('Input sequence did not charge, flip and land');
   console.log(JSON.stringify({ avatars: 5, poses: checks.length, gameplayFrames: gameplay.length,
