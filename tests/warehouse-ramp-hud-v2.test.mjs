@@ -32,6 +32,27 @@ test('nose/tail sweep and wallride probes never treat a rideable steep ramp as a
     'ramp triggered an unintended wallride');
 });
 
+test('reversed winding on a steep authored corner remains a riding skin, not a capsule or sphere wall', () => {
+  const mesh = new THREE.Mesh(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-2,0,-.08),new THREE.Vector3(2,0,-.08),new THREE.Vector3(-2,2,.08),
+      new THREE.Vector3(2,0,-.08),new THREE.Vector3(2,2,.08),new THREE.Vector3(-2,2,.08),
+    ]),
+    new THREE.MeshBasicMaterial({side:THREE.DoubleSide}),
+  );
+  mesh.userData.surface='rideable';
+  mesh.userData.transitionSkin=true;
+  const root = new THREE.Group();root.add(mesh);
+  const collision = new ParkCollision(root);
+  assert.equal(collision.ridingMeshes.length,1);
+  assert.equal(collision.blocks.triangles.length,0,
+    'negative nearly vertical ramp winding became a phantom body wall');
+  const from=new THREE.Vector3(0,0,-.7);
+  const end=new THREE.Vector3(0,0,.7);
+  const moved=collision.move(from,end,new THREE.Vector3(0,0,6),{grounded:false});
+  assert.equal(moved.contacts.length,0,'body capsule stopped on real transition skin');
+});
+
 test('real structural wall still stops skateboard nose/tail and remains wallride-eligible', () => {
   const solid = verticalPanel('solid',false);
   const from = new THREE.Vector3(0,0.9,-0.65);
