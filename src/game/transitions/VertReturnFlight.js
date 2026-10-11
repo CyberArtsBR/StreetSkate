@@ -9,8 +9,6 @@ export const VERT_RETURN = Object.freeze({
   lateralDrag: 1.8,
   lateralCorridor: 0.80,
   maxLateralSpeed: 1.4,
-  // Diagonal airs can retain more speed along the lip than straight returns.
-  maxCarveLateralSpeed: 7.5,
   // A return should not completely disengage after a modest off-axis arc.
   // Corrections stay acceleration-limited, preserving momentum and gravity.
   maxPlaneError: 3.4,
