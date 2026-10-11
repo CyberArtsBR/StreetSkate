@@ -148,6 +148,29 @@ function makeSyntheticRig() {
   return { rider, board };
 }
 
+
+test('neutral arm IK directs elbows INWARD with compact wrists on either anatomical side', () => {
+  const { rider, board } = makeSyntheticRig();
+  for (const state of ['IDLE', 'COAST', 'PUSH']) {
+    rider.resetPresentation();
+    for (let i = 0; i < 12; i++)
+      rider.update({ board, presentation: { state }, dt: 1 / 60, time: i / 60 });
+    rider.root.updateWorldMatrix(true, true);
+    for (const side of ['l', 'r']) {
+      const sign = side === 'l' ? -1 : 1;
+      const outward = new THREE.Vector3(sign, 0, 0);
+      const shoulder = rider.bones['upperarm_' + side].getWorldPosition(new THREE.Vector3());
+      const elbow = rider.bones['lowerarm_' + side].getWorldPosition(new THREE.Vector3());
+      const wrist = rider.bones['hand_' + side].getWorldPosition(new THREE.Vector3());
+      const axisMid = shoulder.clone().lerp(wrist, 0.5);
+      const bend = elbow.clone().sub(axisMid).dot(outward);
+      const spread = wrist.clone().sub(shoulder).dot(outward);
+      assert.ok(bend < -0.005, `${state}/${side}: elbow must curve toward body, bend=${bend}`);
+      assert.ok(spread >= -0.005 && spread < 0.15, `${state}/${side}: wrist should stay near torso, spread=${spread}`);
+    }
+  }
+});
+
 test('IK remains finite with planted feet during idle, fakie, manual, grind, air and bail', () => {
   const { rider, board } = makeSyntheticRig();
   const states = [
