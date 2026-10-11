@@ -34,7 +34,7 @@ test('Grand Warehouse completes the loader and retains its stair exclusion count
     },
     createUrbanRubberFloorMaterial: () => ({ dispose() {} }),
     excludeGrandWarehouseNineStair: () => { exclusionCalls++; return 35; },
-    buildImportedWarehouseCollision: () => ({ collision: {}, rails: [], triangles: 120, surfaces: [] }),
+    buildImportedWarehouseCollision: () => ({ collision: { children: [] }, rails: [], triangles: 120, surfaces: [] }),
     batchWarehouseVisuals: () => ({
       park: {}, sourceMeshes: 1400, visualTriangles: 10000,
       drawCalls: 30, rubberFloorMeshes: 1,
