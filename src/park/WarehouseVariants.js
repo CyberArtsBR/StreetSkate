@@ -7,6 +7,7 @@ import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubber
 import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
 import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFilter.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
+import { refineWarehouseMaterials } from './WarehouseMaterialPresentation.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -206,6 +207,7 @@ export async function createWarehouseVariant(id) {
   // paths are inherited from the verified original warehouse.
   releaseVisualRoot(world.park);
   world.park = batched.park;
+  if(id==='grand-warehouse')refineWarehouseMaterials(world.park);
   if (imported) {
     releaseVisualRoot(world.collision);
     world.collision = imported.collision;

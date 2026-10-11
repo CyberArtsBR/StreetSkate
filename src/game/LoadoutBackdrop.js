@@ -7,6 +7,7 @@ export class LoadoutBackdrop {
     this.active = false;
     this.disposed = false;
     this.pointer = new THREE.Vector2();
+    this.motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#10121c');
     this.scene.fog = new THREE.Fog('#10121c', 16, 36);
@@ -55,12 +56,15 @@ export class LoadoutBackdrop {
     this.paint('STREETSKATE', 'cyan-purple', -7, 5.1, 1.4);
     this.paint('BUILD YOUR LINE', 'gold', -6.5, 2.8, .85);
     this.paint('01 02', 'cyan-purple', 6.7, .7, .65);
-    this.resize = new ResizeObserver(() => { if (this.active) this.draw(); });
+    this.resize = new ResizeObserver(() => this.requestDraw());
     this.resize.observe(host);
     this.move = event => {
       this.pointer.set(event.clientX / innerWidth - .5, event.clientY / innerHeight - .5);
+      if(!this.motionPreference.matches)this.requestDraw();
     };
     host.addEventListener('pointermove', this.move, {passive:true});
+    this.motionChanged=()=>this.requestDraw();
+    this.motionPreference.addEventListener('change',this.motionChanged);
   }
   paint(text, tone, startX, y, height) {
     let x = startX;
@@ -75,7 +79,7 @@ export class LoadoutBackdrop {
           new THREE.MeshBasicMaterial({ map:loaded, transparent:true, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1 }));
         mesh.position.set(at,y,.025); mesh.rotation.z = .04 * Math.sin(at * 4);
         this.scene.add(mesh);
-        if (this.active) this.draw();
+        this.requestDraw();
       });
       this.textures.push(texture);
       x += height * .71;
@@ -86,15 +90,16 @@ export class LoadoutBackdrop {
     this.active = active;
     this.renderer.domElement.hidden = !active;
     cancelAnimationFrame(this.frame);
-    if (active) {
-      let last = 0;
-      const tick = time => {
-        if (!this.active) return;
-        if (!document.hidden && time - last > 1000 / 24) { this.draw(); last = time; }
-        this.frame = requestAnimationFrame(tick);
-      };
-      this.draw(); this.frame = requestAnimationFrame(tick);
-    }
+    this.frame=null;
+    if (active) this.requestDraw();
+  }
+  requestDraw() {
+    if(!this.active||this.disposed||this.frame!=null)return;
+    // Static alley: draw only for resize, new artwork or pointer movement.
+    this.frame=requestAnimationFrame(()=>{
+      this.frame=null;
+      if(this.active&&!this.disposed&&!document.hidden)this.draw();
+    });
   }
   draw() {
     const width = this.host.clientWidth, height = this.host.clientHeight;
@@ -102,7 +107,7 @@ export class LoadoutBackdrop {
     const size = this.renderer.getSize(new THREE.Vector2());
     if (size.x !== width || size.y !== height) this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
-    const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
+    const motion = this.motionPreference.matches ? 0 : 1;
     this.camera.position.set(this.pointer.x * .4 * motion, 3.3 + this.pointer.y * .15 * motion, 10.5);
     this.camera.lookAt(0,3.25,0);
     this.renderer.render(this.scene,this.camera);
@@ -110,6 +115,7 @@ export class LoadoutBackdrop {
   dispose() {
     this.disposed = true; this.setActive(false); this.resize.disconnect();
     this.host.removeEventListener('pointermove',this.move);
+    this.motionPreference.removeEventListener('change',this.motionChanged);
     const geometry = new Set(), materials = new Set();
     this.scene.traverse(item => { if(item.geometry) geometry.add(item.geometry); if(item.material) materials.add(item.material); });
     geometry.forEach(item => item.dispose()); materials.forEach(item => item.dispose());

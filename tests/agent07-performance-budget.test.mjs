@@ -55,7 +55,7 @@ test('agent07: rider-centered shadows improve contact resolution without moving 
 
 test('agent07: static bloom mesh lists are reused rather than traversing scene twice every frame', () => {
   const wood = { isMesh:true, material:{ name:'plywood' } };
-  const riderMesh = { isMesh:true, material:{ name:'rider' } };
+  const riderMesh = { isMesh:true, material:{ name:'rider', emissive:{getHex:()=>0xffaa22}, emissiveIntensity:1 } };
   let walks = 0, renders = 0;
   const scene = {
     children:[wood,riderMesh], background:'sky', fog:'fog', overrideMaterial:null,

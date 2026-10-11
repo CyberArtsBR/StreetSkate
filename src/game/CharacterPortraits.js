@@ -4,6 +4,8 @@ import { PortraitPromiseCache } from './PortraitPromiseCache.js';
 
 const cache = new PortraitPromiseCache(8);
 let renderer = null;
+const bakedPortraits=new Map(['The_Heretic','The_AdolescentUR','The_Anchor','TuxR']
+  .map(name=>[`/assets/rider/${name}.glb`,`/assets/menu/riders/${name}.png?v=full-body-2`]));
 
 /** Drop cached previews before revoking an uploaded character's blob URL. */
 export function forgetCharacterPortrait(url) {
@@ -44,7 +46,7 @@ function disposePortraitModel(model) {
 }
 
 /** Render an imported GLB as a small static image, never keeping its mesh alive. */
-async function renderPortrait(url) {
+export async function renderPortrait(url) {
   const rider = await new UnrealRider(url).load();
   const model = rider.root;
   try {
@@ -64,6 +66,10 @@ async function renderPortrait(url) {
     const key = new THREE.DirectionalLight('#ffe8ce', 3);
     key.position.set(-3, 7, 5);
     scene.add(key);
+    const fill = new THREE.DirectionalLight('#bce9ff', 1.2);
+    fill.position.set(3, 3, 4);scene.add(fill);
+    const rim = new THREE.DirectionalLight('#c5b4ff', 1.8);
+    rim.position.set(1, 4, -3);scene.add(rim);
     // Preview the same planted, bent-knee stance used during a session.
     for(let frame=0;frame<40;frame++) rider.update({dt:1/60,time:frame/60});
     const bounds = new THREE.Box3().setFromObject(model);
@@ -77,13 +83,16 @@ async function renderPortrait(url) {
     const center = scaledBounds.getCenter(new THREE.Vector3());
     model.position.sub(center);
     model.rotation.y = -Math.PI / 3;
-    // Frame face, ears, headwear and shoulders at thumbnail scale.
-    const camera = new THREE.PerspectiveCamera(39, 320 / 340, 0.05, 40);
-    // Oversized Chimpions heads and muzzle shapes extend well below the cranium.
-    // Fit the full original normalized model in the vertical preview so the
-    // mouth, ears and hats never disappear beneath the portrait's bottom edge.
-    camera.position.set(0, 0.2, 3.4);
-    camera.lookAt(0, 0.18, 0);
+    // Fit the actual posed, rotated bounds, including feet and headwear.
+    // A raised perspective aim previously clipped feet in the baked PNG itself.
+    const framedBounds = new THREE.Box3().setFromObject(model);
+    const framedSize = framedBounds.getSize(new THREE.Vector3());
+    const framedCenter = framedBounds.getCenter(new THREE.Vector3());
+    const aspect = 320 / 340;
+    const halfHeight = Math.max(framedSize.y / 2, framedSize.x / (2 * aspect)) * 1.12;
+    const camera = new THREE.OrthographicCamera(-halfHeight * aspect, halfHeight * aspect, halfHeight, -halfHeight, .05, 40);
+    camera.position.set(framedCenter.x, framedCenter.y, framedBounds.max.z + 4);
+    camera.lookAt(framedCenter);
     renderer.setClearColor(0, 0);
     renderer.clear();
     renderer.render(scene, camera);
@@ -97,5 +106,16 @@ async function renderPortrait(url) {
 }
 
 export function characterPortrait(url) {
-  return cache.getOrLoad(url, () => renderPortrait(url));
+  return cache.getOrLoad(url, async () => {
+    const baked=bakedPortraits.get(url);
+    if(baked){
+      try{
+        await new Promise((resolve,reject)=>{
+          const image=new Image();image.onload=resolve;image.onerror=reject;image.src=baked;
+        });
+        return baked;
+      }catch{ /* A missing static asset falls back to the real GLB preview. */ }
+    }
+    return renderPortrait(url);
+  });
 }

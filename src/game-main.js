@@ -13,16 +13,23 @@ import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
-import { graffitiLettering, graffitiPalette } from './game/GraffitiLettering.js';
+import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
 import './game-hud.css';
+import './menu-presentation.css';
 
 const container = document.querySelector('#viewport');
+installGraffitiFallback();
 const app = document.querySelector('#app');
+let sceneNeedsRender=true;
+let artCaptureMap=null;
+// Cache HUD nodes once; unchanged values need no DOM writes at 144 Hz.
+const hud = Object.fromEntries(['speed-value','charge-fill','state-value','score-value','trick-feedback']
+  .map(id => [id, document.getElementById(id)]));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#25363d');
 scene.fog = new THREE.FogExp2('#25363d', 0.005);
@@ -122,6 +129,8 @@ const gameShell = new GameShell({
   pause: value => setPaused(value),
   camera: mode => setCameraMode(mode),
   graphics: name => applyGraphicsPreset(name),
+  graphicsStatus: () => graphicsPipeline.getStatus(),
+  screenChanged: () => { sceneNeedsRender=true; },
   score: () => skater?.score || 0,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
@@ -136,12 +145,13 @@ applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
 function applyGraphicsPreset(name) {
+  sceneNeedsRender=true;
   graphicsPreset = normalizedGraphicsPreset(name);
   graphicsPipeline.setQuality(graphicsPreset, {
     devicePixelRatio: window.devicePixelRatio,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
-  });
+  }, { bloomEnabled: gameShell.bloomEnabled });
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
   storeGraphicsPreset(graphicsStorage, graphicsPreset);
   if (currentWorld) {
@@ -309,8 +319,10 @@ function setMode(nextMode) {
 function updateHud() {
   if (!skater) return;
   const kmh = Math.round(Math.abs(skater.speed) * 3.6);
-  document.querySelector('#speed-value').textContent = String(kmh).padStart(2, '0');
-  document.querySelector('#charge-fill').style.transform = `scaleX(${skater.charge.toFixed(3)})`;
+  const speedText=String(kmh).padStart(2,'0');
+  if(hud['speed-value'].textContent!==speedText)hud['speed-value'].textContent=speedText;
+  const chargeScale=`scaleX(${skater.charge.toFixed(2)})`;
+  if(hud['charge-fill'].style.transform!==chargeScale)hud['charge-fill'].style.transform=chargeScale;
   let state = skater.grounded ? 'RIDING' : 'AIR';
   if (skater.transitionAir && !skater.transitionAir.transferring) state = 'VERT';
   if (skater.manual) state = skater.manual === 'noseManual' ? 'NOSE MANUAL' : 'MANUAL';
@@ -318,9 +330,10 @@ function updateHud() {
   if (skater.wallRide) state = 'WALL RIDE';
   if (skater.bailTime > 0) state = 'BAIL';
   if (paused) state = 'PAUSED';
-  document.querySelector('#state-value').textContent = state;
-  document.querySelector('#score-value').textContent = skater.score.toLocaleString();
-  const trickNode = document.querySelector('#trick-feedback');
+  if(hud['state-value'].textContent!==state)hud['state-value'].textContent=state;
+  const scoreText=skater.score.toLocaleString();
+  if(hud['score-value'].textContent!==scoreText)hud['score-value'].textContent=scoreText;
+  const trickNode = hud['trick-feedback'];
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
   // Do not reset the pop animation on every render frame.
   if (trickNode.dataset.graffitiText !== trickLabel) {
@@ -333,7 +346,7 @@ function updateHud() {
       trickNode.classList.add('graffiti-pop');
     }
   }
-  document.querySelector('#state-value').classList.toggle('air', !skater.grounded || Boolean(skater.grind));
+  hud['state-value'].classList.toggle('air', !skater.grounded || Boolean(skater.grind));
 }
 
 function showError(error) {
@@ -547,6 +560,24 @@ async function loadGame() {
       transitionDebug,
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
+    // Local art-director capture route; Vite removes this block from production.
+    if(import.meta.env.DEV){
+      const captureMap=new URLSearchParams(location.search).get('art-capture');
+      if(['rooftop','orbit','grand-warehouse'].includes(captureMap)){
+        if(captureMap!==currentWorld.id)await selectLocation(captureMap);
+        setMode('explore');setExploreView('overview',true);
+        const center=currentWorld.presentation.center;
+        camera.position.set(center[0]+88,center[1]+55,center[2]+100);
+        controls.target.set(...center);camera.lookAt(...center);controls.update();
+        if(captureMap==='grand-warehouse'){
+          camera.position.set(45,24,42);controls.target.set(-5,2,-15);
+          camera.lookAt(controls.target);controls.update();
+        }
+        gameShell.phase='capture';gameShell.root.hidden=true;gameShell.timer.hidden=true;
+        document.body.dataset.screen='capture';gameShell.song.hidden=true;
+        artCaptureMap=captureMap;
+      }
+    }
   } catch (error) {
     loaded = false;
     gameShell.ready = false;
@@ -587,6 +618,7 @@ document.querySelector('#lighting').onclick = (event) => {
 };
 
 window.addEventListener('resize', () => {
+  sceneNeedsRender=true;
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -657,5 +689,17 @@ renderer.setAnimationLoop(() => {
   updateWorldVisibility();
   // The selector supplies its own lit 3D alley. Avoid drawing the hidden park
   // and its postprocessing at the same time, especially on mobile GPUs.
-  if(gameShell.phase!=='select') graphicsPipeline.render();
+  // Menus show a static park frame. Redraw on settings/screen/viewport changes,
+  // rather than running HDR and bloom behind an opaque title/options screen.
+  if(gameShell.phase!=='select'&&(gameShell.active||mode==='explore'||sceneNeedsRender)){
+    graphicsPipeline.render();sceneNeedsRender=false;
+    if(import.meta.env.DEV&&artCaptureMap&&!document.getElementById('art-thumbnail')){
+      // Bake a compact WebP directly from the rendered canvas, after this frame.
+      const thumbnail=document.createElement('canvas');thumbnail.width=768;thumbnail.height=432;
+      thumbnail.getContext('2d').drawImage(renderer.domElement,0,0,768,432);
+      const image=document.createElement('img');image.id='art-thumbnail';image.hidden=true;
+      image.style.display='none';image.alt=artCaptureMap;image.src=thumbnail.toDataURL('image/webp',.88);
+      document.body.append(image);
+    }
+  }
 });

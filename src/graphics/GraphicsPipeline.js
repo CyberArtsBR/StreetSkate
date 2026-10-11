@@ -231,7 +231,12 @@ export class GraphicsPipeline {
     if (!this.glowRoot?.parent) return false;
     const allowed = new Set();
     this.glowRoot.traverse(object => {
-      if (object.isMesh) allowed.add(object);
+      if (!object.isMesh) return;
+      const materials=Array.isArray(object.material)?object.material:[object.material];
+      // Light-colored costumes are reflective surfaces, not light sources.
+      // Bloom the board's neon and authored emissive details; leave faces and
+      // fabric out of the glow mask so ordinary highlights retain definition.
+      if(materials.some(material=>material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0))allowed.add(object);
     });
     const childCount = this.scene.children?.length ?? 0;
     // Recheck occasionally for procedural objects, immediately for rider swaps
@@ -303,8 +308,8 @@ export class GraphicsPipeline {
     });
   }
 
-  setQuality(key, capabilities) {
-    const settings = resolveGraphicsSettings(key, capabilities);
+  setQuality(key, capabilities, overrides) {
+    const settings = resolveGraphicsSettings(key, capabilities, overrides);
     this.settings = settings;
     this.renderer.setPixelRatio(settings.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
@@ -346,12 +351,24 @@ export class GraphicsPipeline {
     return settings;
   }
 
+  getStatus() {
+    if (!this.settings) return null;
+    return { ...this.settings,
+      bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
+      postProcessingAvailable: !this.faulted,
+      renderWidth: Math.round(this.width * this.settings.pixelRatio),
+      renderHeight: Math.round(this.height * this.settings.pixelRatio),
+    };
+  }
+
   configureBloom() {
     if (!this.settings) return;
     const orbit = Boolean(this.world?.userData.environmentBloom);
     // Performance means no extra scene pass, even on emissive-heavy ORBIT.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
-    this.bloom.strength = orbit ? .24 : this.settings.bloomStrength * this.settings.vfxScale;
+    this.bloom.strength = orbit
+      ? (this.settings.name==='high-refresh' ? .2 : .24)
+      : this.settings.bloomStrength * this.settings.vfxScale;
     this.bloom.radius = .24;
     this.bloom.threshold = orbit ? 1.25 : .88;
     this.bloomComposite.uniforms.bloomMix.value = orbit ? .55 : .32;

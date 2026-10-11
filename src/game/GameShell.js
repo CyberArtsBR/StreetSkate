@@ -9,7 +9,7 @@ import { characterPortrait, forgetCharacterPortrait } from './CharacterPortraits
 import { boardPortraits } from './BoardPortraits.js';
 import { graffitiLettering } from './GraffitiLettering.js';
 import { LoadoutBackdrop } from './LoadoutBackdrop.js';
-import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
+import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, GRAPHICS_DESCRIPTIONS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -25,6 +25,8 @@ export class GameShell {
     this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];
     this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
+    this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
+    this.songToastRemaining=4;
     this.sound=stored('streetskate.sound','on')!=='off';this.finishIndex=0;this.inputGrace=0;
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
@@ -38,7 +40,10 @@ export class GameShell {
     this.song.innerHTML='<span class="song-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 17V6l10-2v11M10 9l10-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="17" rx="3" ry="2.5" fill="currentColor"/><ellipse cx="17" cy="15" rx="3" ry="2.5" fill="currentColor"/></svg></span><div class="song-copy"><span class="song-label">NOW PLAYING</span><strong class="song-title" aria-live="polite"></strong><span class="song-skip">Press <kbd>Select</kbd> / <kbd>Backspace</kbd> to skip</span><span class="song-note" hidden></span></div>';
     document.body.append(this.song);
     const songTitle=this.song.querySelector('.song-title'),songNote=this.song.querySelector('.song-note');
-    this.music=new MusicPlayer((title,note)=>{songTitle.textContent=title;songNote.textContent=note||'';songNote.hidden=!note;});
+    this.music=new MusicPlayer((title,note)=>{
+      songTitle.textContent=title;songNote.textContent=note||'';songNote.hidden=!note;
+      this.songToastRemaining=4;this.song.classList.remove('song-compact');
+    });
     this.avatarInput=document.createElement('input');
     this.avatarInput.type='file';this.avatarInput.accept='.glb,model/gltf-binary';this.avatarInput.hidden=true;
     document.body.append(this.avatarInput);
@@ -122,7 +127,9 @@ export class GameShell {
     // screens give it a layout slot so it never covers their heading/cards.
     if(this.song&&this.song.parentElement!==document.body)document.body.append(this.song);
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
+    this.actions.screenChanged?.(this.phase);
     this.timer.hidden=!this.active;this.updateTimer();
+    this.song.classList.remove('song-compact');this.songToastRemaining=4;
     this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':'menu-screen';
     if(this.phase==='select'&&!this.backdrop) {
       try { this.backdrop=new LoadoutBackdrop(this.root); } catch { /* CSS alley remains available without WebGL. */ }
@@ -135,7 +142,7 @@ export class GameShell {
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
-        <span class="rider-portrait" data-portrait-url="${safe(hero.url)}"><span class="rider-initial">${safe(hero.name[0]||'?')}</span></span>
+        <span class="rider-portrait" data-portrait-url="${safe(hero.url)}" data-preview-state="loading"><span class="rider-initial">${safe(hero.name[0]||'?')}</span><span class="preview-status">Loading preview…</span></span>
         <strong>${safe(hero.name)}</strong><small>${safe(hero.subtitle)}</small></button>`).join('');
       const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${this.boardConfirmed&&i===this.boardIndex?'is-chosen':''}"
         style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-thumb" data-board-preview="${i}"><span class="deck-preview"></span></span><b>${safe(board.label)}</b><span class="deck-swatch" aria-hidden="true"></span></button>`).join('');
@@ -146,7 +153,10 @@ export class GameShell {
         <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
-        <div class="loadout-roster">${cards}</div><div class="selection-note"><span>${this.heroConfirmed?'RIDER LOCKED IN':'CHOOSE YOUR RIDER'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong></div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
+        <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}">
+          <span class="rider-portrait" data-portrait-url="${safe(this.heroes[this.heroIndex].url)}" data-preview-state="loading"><span class="preview-status">Loading preview…</span></span>
+          <div class="selected-rider-copy"><span>${this.heroConfirmed?'YOUR RIDER':'MEET THE CREW'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong><small>${safe(this.heroes[this.heroIndex].subtitle)}</small></div>
+        </div><div class="loadout-roster">${cards}</div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
         <section class="loadout-section deck-panel" aria-label="Choose your skateboard"><div class="loadout-heading"><span class="section-number">02</span><h3>${graffitiLettering('DECK','gold')}</h3><span class="panel-kicker">GRADIENT GLOW</span></div>
         <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
         <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">THREE PARKS. YOUR LINE.</span></div>
@@ -167,11 +177,15 @@ export class GameShell {
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
         +this.button('BACK','back');
     } else if(this.phase==='graphics') {
-      const preset=GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]];
+      const key=GRAPHICS_PRESET_ORDER[this.graphicsIndex];
+      const preset=GRAPHICS_PRESETS[key];
+      const effective=this.actions.graphicsStatus?.();
       title='GRAPHICS';
-      body='<p class="graphics-details">GPU-safe shadow map: <b>1024² on ALL presets</b>. Bloom and sharpening scale with quality; SSR activates on Ultra and Cinematic.</p>'
-        +GRAPHICS_PRESET_ORDER.map((key,i)=>`<button data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}">${i===this.graphicsIndex?'✓ ':'　'}${GRAPHICS_PRESETS[key].label.toUpperCase()} · ${GRAPHICS_PRESETS[key].pixelRatioCap}× DPR</button>`).join('')
-        +`<p class="graphics-details">CURRENT · ${preset.anisotropy}× filtering · ${preset.bloomStrength?'Bloom ON':'Bloom OFF'} · ${preset.ssr?'SSR ON':'SSR OFF'} · CAS sharpen ${preset.sharpen.toFixed(2)} · GPU capabilities may reduce the effective quality.</p>`
+      body='<p class="graphics-intro">Keep your line clear. Choose the detail and responsiveness that suit your display.</p>'
+        +GRAPHICS_PRESET_ORDER.map((name,i)=>`<button class="graphics-preset" data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}"><strong>${i===this.graphicsIndex?'✓ ':''}${GRAPHICS_PRESETS[name].label}</strong><span>${GRAPHICS_DESCRIPTIONS[name]}</span></button>`).join('')
+        +`<button class="graphics-toggle" data-menu data-action="bloomToggle" aria-pressed="${this.bloomEnabled}">NEON GLOW · ${this.bloomEnabled?'ON':'OFF'}</button>`
+        +`<p class="graphics-details">${safe(effective?.label||preset.label)} · ${effective?.bloomEnabled?'Glow on':'Glow off'} · stable environment reflections.<br>144 FPS is a target; actual performance depends on your hardware and display.</p>`
+        +(effective?`<details class="graphics-advanced"><summary>Rendering details</summary><p>${effective.renderWidth} × ${effective.renderHeight} internal resolution · ${effective.anisotropy}× filtering · ${effective.msaaSamples}× edge samples · 1024² local shadows${effective.postProcessingAvailable?'':' · post effects unavailable'}</p></details>`:'')
         +this.button('← BACK TO OPTIONS','back');
     } else if(this.phase==='results') {
       title='TIME’S UP';body=`<p class="result-score">${this.finalScore.toLocaleString()}<small>POINTS BANKED</small></p>`
@@ -181,7 +195,7 @@ export class GameShell {
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${graffitiLettering(title,'gold')}</h2>${body}</div>`;
+    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><small>CHIMP HAWK / UNDERGROUND</small><h2>${safe(title)}</h2>${body}</div>`;
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
@@ -220,7 +234,13 @@ export class GameShell {
         const thumb=document.createElement('img');
         thumb.src=image;thumb.alt='';thumb.draggable=false;
         el.replaceChildren(thumb);
-      }).catch(()=>{}); // Monogram remains visible if a model is unavailable.
+        el.dataset.previewState='ready';
+      }).catch(()=>{
+        if(!el.isConnected)return;
+        el.dataset.previewState='unavailable';
+        const status=el.querySelector('.preview-status');
+        if(status)status.textContent='Preview unavailable';
+      });
     }
   }
   loadBoardPreviews(){
@@ -289,6 +309,7 @@ export class GameShell {
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
+      case 'bloomToggle':this.bloomEnabled=!this.bloomEnabled;persist('streetskate.bloomEnabled',this.bloomEnabled?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'volumeDown':this.adjustMaster(-.1);break;
       case 'volumeUp':this.adjustMaster(.1);break;
       case 'sound':this.sound=!this.sound;persist('streetskate.sound',this.sound?'on':'off');this.actions.sound(this.sound);this.render();break;
@@ -327,13 +348,19 @@ export class GameShell {
   }
   updateTimer(){
     const warn=sessionWarning(this.remaining,this.practice);
-    this.timer.textContent=this.practice?'∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
+    const text=this.practice?'∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
+    if(this.timer.textContent===text&&this.timer.dataset.timerWarning===warn)return;
+    this.timer.textContent=text;this.timer.dataset.timerWarning=warn;
     this.timer.classList.toggle('time-low',warn!=='none');
     this.timer.classList.toggle('time-critical',warn==='critical');
     this.timer.dataset.warningLabel=warn==='critical'?'FINAL 5 SECONDS':warn==='warning'?'10 SECONDS LEFT':'';
   }
   update(dt){
     this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
+    if(this.active&&this.songToastRemaining>0){
+      this.songToastRemaining=Math.max(0,this.songToastRemaining-dt);
+      if(!this.songToastRemaining&&this.song.querySelector('.song-note').hidden)this.song.classList.add('song-compact');
+    }
     const focused=document.hasFocus();
     const pad=[...(navigator.getGamepads?.()||[])].find(p=>p?.connected);
     const padIdentity=pad ? String(pad.index)+':'+String(pad.id) : null;

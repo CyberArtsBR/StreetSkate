@@ -4,7 +4,15 @@ import { SKATEBOARD_FINISHES } from '../skateboard/BoardFinishes.js';
 
 let previews;
 export function boardPortraits() {
-  return previews ||= renderBoards().catch(error => { previews = null; throw error; });
+  return previews ||= loadBakedBoards().catch(()=>renderBoards())
+    .catch(error => { previews = null; throw error; });
+}
+async function loadBakedBoards(){
+  const images=SKATEBOARD_FINISHES.map((_,index)=>`/assets/menu/decks/${index}.png`);
+  await Promise.all(images.map(src=>new Promise((resolve,reject)=>{
+    const image=new Image();image.onload=resolve;image.onerror=reject;image.src=src;
+  })));
+  return images;
 }
 async function renderBoards() {
   // Preview loads never change the player's saved finish.

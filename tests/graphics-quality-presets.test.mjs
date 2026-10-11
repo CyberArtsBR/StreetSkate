@@ -7,13 +7,26 @@ import {
   loadGraphicsPreset, storeGraphicsPreset, qualityFogDistance,
 } from '../src/graphics/GraphicsSettings.js';
 
-test('all five user-facing presets use 1024 shadow resolution', () => {
-  assert.deepEqual(GRAPHICS_PRESET_ORDER, ['performance','balanced','high','ultra','cinematic']);
+test('existing tiers and the high-refresh profile retain 1024 shadow resolution', () => {
+  assert.deepEqual(GRAPHICS_PRESET_ORDER, ['performance','high-refresh','balanced','high','ultra','cinematic']);
   for (const key of GRAPHICS_PRESET_ORDER) {
     const p = GRAPHICS_PRESETS[key];
     assert.equal(p.shadowResolution, 1024, key);
     assert.ok(p.pixelRatioCap >= 1);
     assert.ok(p.bloomScale > 0 && p.bloomScale <= 1);
+  }
+});
+
+test('high-refresh preserves High material response at lower render cost, and explicit glow off survives tier changes', () => {
+  const caps={devicePixelRatio:2,maxAnisotropy:16,maxSamples:4};
+  const fast=resolveGraphicsSettings('high-refresh',caps);
+  const high=resolveGraphicsSettings('high',caps);
+  assert.equal(fast.pixelRatio,1);
+  assert.equal(fast.environmentIntensity,high.environmentIntensity);
+  assert.equal(fast.metalReflectionStrength,high.metalReflectionStrength);
+  assert.ok(fast.bloomScale<high.bloomScale);
+  for(const name of GRAPHICS_PRESET_ORDER){
+    assert.equal(resolveGraphicsSettings(name,caps,{bloomEnabled:false}).bloomStrength,0);
   }
 });
 
