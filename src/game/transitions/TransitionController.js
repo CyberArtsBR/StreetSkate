@@ -281,7 +281,7 @@ export class TransitionController {
       // component rather than annihilating radial velocity in one frame.
       // Rounded/shallow lip samples do NOT create a deck-crossing catapult.
       const outwardSpeed = Math.max(0, incomingVelocity.dot(edge.deckOutward));
-      const vertAmount = clamp((0.72 - normalY) / 0.52, 0, 1);
+      const vertAmount = clamp((0.42 - normalY) / 0.24, 0, 1);
       const radialRetention = Math.min(1.65, outwardSpeed * 0.22 * vertAmount);
       launchHorizontal = edge.copingTangent.clone()
         .multiplyScalar(lateralVelocity)
