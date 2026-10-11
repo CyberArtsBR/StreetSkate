@@ -78,6 +78,9 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   if (lateral.lengthSq() < 1e-8) return null;
   lateral.normalize();
   const face = forward?.isVector3 ? forward.clone().setY(0) : new THREE.Vector3();
+  // Some custom rig sagittal axes are nearly parallel to their shoulder axis.
+  // Do not let this cancel the inward elbow pole or bias left/right unequally.
+  face.addScaledVector(lateral, -face.dot(lateral));
   if (face.lengthSq() > 1e-8) face.normalize();
   const spread = THREE.MathUtils.degToRad(12);
   const direction = lateral.clone().multiplyScalar(Math.sin(spread))
