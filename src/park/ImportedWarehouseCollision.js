@@ -99,7 +99,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     const rideable = joinedRamp ? joinedRiding
       : (grandMixedTubePart || grandMixedRampPart)
         ? /Foundry_Plywood(?:\.\d+)?$/.test(materialName)
-        : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name));
+        : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
     const tube = joinedCoping || (/___tube/.test(name) && (!grandMode || grandMetal));
     const solid = joinedRamp || grandMixedTubePart || grandMixedRampPart || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
