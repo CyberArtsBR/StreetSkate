@@ -29,7 +29,7 @@ const VARIANTS = Object.freeze({
     ground: '#544434',
     background: '#3f4549',
     floor: '#24272a',
-    theme: 'Revised Foundry / marble plaza / expanded ramp lines',
+    theme: 'Revised Foundry / charcoal plaza / expanded ramp lines',
   },
 });
 

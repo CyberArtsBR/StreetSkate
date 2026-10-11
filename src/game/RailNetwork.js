@@ -88,7 +88,7 @@ export class RailNetwork {
       const tangentHorizontal = hit.tangent.clone().setY(0);
       if (horizontal.lengthSq() < 1e-8 || tangentHorizontal.lengthSq() < 1e-8) continue;
       horizontal.normalize(); tangentHorizontal.normalize();
-      const tangentAlignment = horizontal.dot(tangentHorizontal);
+      const tangentAlignment = clamp(horizontal.dot(tangentHorizontal), -1, 1);
       const tangentSpeed = velocity.dot(hit.tangent);
       const eligibility = captureEligibility({
         surfaceDistance,

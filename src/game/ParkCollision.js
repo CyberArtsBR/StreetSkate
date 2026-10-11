@@ -16,7 +16,7 @@ export class ParkCollision {
   constructor(root) {
     this.root = root;
     this.ray = new THREE.Raycaster();
-    this.meshes = []; this.ridingMeshes = [];
+    this.meshes = []; this.ridingMeshes = []; this.cameraMeshes = [];
     this.blocks = new BlockTriangleIndex();
     this.capsule = new Capsule();
     this._normalMatrix = new THREE.Matrix3();
@@ -49,6 +49,10 @@ export class ParkCollision {
       if (!mesh.isMesh) return;
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.side = THREE.DoubleSide;
       this.meshes.push(mesh);
+      // A thin grind bar beside the rider must not collapse the entire chase
+      // arm into the avatar. Rails still block the body; walls, steps and ramp
+      // shells remain camera occluders.
+      if (!mesh.userData.railId && !mesh.userData.cameraTransparent) this.cameraMeshes.push(mesh);
       const rideable = mesh.userData.surface !== 'solid';
       if (rideable) this.ridingMeshes.push(mesh);
       const geometry = mesh.geometry, position = geometry.attributes.position, index = geometry.index;
@@ -348,7 +352,7 @@ export class ParkCollision {
       up.clone().multiplyScalar(-radius)]) {
       this._cameraRay.set(from.clone().add(offset), direction); this._cameraRay.far = length;
       this._cameraHits.length = 0;
-      const hit = this._cameraRay.intersectObjects(this.meshes, false, this._cameraHits)[0];
+      const hit = this._cameraRay.intersectObjects(this.cameraMeshes, false, this._cameraHits)[0];
       if (hit) clearance = Math.min(clearance, Math.max(0, hit.distance - radius));
     }
     return from.clone().addScaledVector(direction, clearance);

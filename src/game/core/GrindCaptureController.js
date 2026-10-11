@@ -92,7 +92,7 @@ export function resolveStrictGrindCapture({
     if (horizontalVelocity.lengthSq() < 1e-8 || tangentHorizontal.lengthSq() < 1e-8) continue;
     horizontalVelocity.normalize();
     tangentHorizontal.normalize();
-    const tangentAlignment = horizontalVelocity.dot(tangentHorizontal);
+    const tangentAlignment = clamp(horizontalVelocity.dot(tangentHorizontal), -1, 1);
     const tangentSpeed = velocity.dot(hit.tangent);
 
     const eligibility = captureEligibility({
@@ -156,7 +156,7 @@ export function resolveMagneticGrindCapture({
     const surfaceDistance = Math.max(0, hit.distance - hit.rail.radius);
     const horizontalVelocity = horizontal(velocity, flatForward);
     const tangentHorizontal = horizontal(hit.tangent);
-    const tangentAlignment = horizontalVelocity.dot(tangentHorizontal);
+    const tangentAlignment = clamp(horizontalVelocity.dot(tangentHorizontal), -1, 1);
     const tangentSpeed = velocity.dot(hit.tangent);
 
     if (!grindCaptureEligibility({
