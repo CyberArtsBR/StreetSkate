@@ -9,6 +9,7 @@ import { PARK_REGISTRY, prepareParkRuntime } from '../src/game/ParkRegistry.js';
 import { createWarehousePark } from '../src/park/WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/park/ImportedWarehouseCollision.js';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
+import { ensureGrandWarehouseSpawns } from '../src/park/GrandWarehouseSpawns.js';
 
 const file = 'public/assets/warehouse/granwarehouse.glb';
 const expectedHash = 'f0f47613e0aad90fd1ba7903ec218d46fea7bdc9433d437f3a1b26a72d41d886';
@@ -52,6 +53,7 @@ root.traverse(node => {
 const imported = buildImportedWarehouseCollision(root, baseline.manifest.rails, { grandMode: true });
 baseline.collision = imported.collision;
 baseline.manifest.rails = imported.rails;
+ensureGrandWarehouseSpawns(baseline);
 const runtime = prepareParkRuntime(baseline);
 const objectNames = imported.surfaces.join(';');
 
