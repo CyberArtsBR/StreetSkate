@@ -1,0 +1,28 @@
+/* Minimal gameplay instruments: digits for time, digits + KM for speed. */
+.skate-hud .session-score,.skate-hud .ride-state{display:none}
+.skate-hud{left:24px;bottom:24px!important;padding:14px 19px 12px;border:1px solid #d5dfff25;border-radius:18px;background:linear-gradient(145deg,#161a2cce,#101423a6);box-shadow:0 8px 30px #0003;backdrop-filter:blur(10px)}
+.skate-hud .speed{align-items:baseline;gap:9px}
+.skate-hud .speed>span{font:400 clamp(42px,4.4vw,60px)/.9 'Bangers',Impact,sans-serif;letter-spacing:.015em;color:#fff1b5;-webkit-text-stroke:.5px #191028;text-shadow:1px 2px 0 #100816,2px 3px 0 #170828}
+.skate-hud .speed small{font:800 11px/1 'DM Sans',sans-serif;color:#a9edf1;letter-spacing:.12em;margin:0}
+#run-timer{top:22px;right:24px;min-width:106px;padding:13px 18px 10px;border:1px solid #d5dfff25;border-radius:18px;background:linear-gradient(145deg,#161a2cce,#101423a6);box-shadow:0 8px 30px #0003;backdrop-filter:blur(10px);font:400 clamp(36px,3.6vw,48px)/1 'Bangers',Impact,sans-serif;letter-spacing:.04em;color:#fff1b5;-webkit-text-stroke:.5px #191028;text-shadow:1px 2px 0 #100816,2px 3px 0 #170828}
+#run-timer::after{display:none!important}
+#run-timer.time-low{color:#ffc885;border-color:#f8c47266}
+#run-timer.time-critical{color:#fff4d7;background:#982143d9;border-color:#ffadb780}
+/* The title has its own visual hierarchy; skip instructions stay readable. */
+#now-playing{position:fixed;left:24px;top:22px;z-index:70;display:flex;align-items:center;gap:13px;width:370px;max-width:calc(100vw - 170px);padding:13px 16px;border:1px solid #aab4de38;border-radius:18px;background:linear-gradient(120deg,#20203bea,#101b2be8);color:#f4f1ff;box-shadow:0 8px 30px #0004,inset 0 1px 0 #fff1;backdrop-filter:blur(12px);letter-spacing:0;pointer-events:none}
+.song-emblem{display:grid;place-items:center;flex:0 0 46px;height:46px;border:1px solid #dbb3ff55;border-radius:13px;color:#a7f5f2;background:linear-gradient(140deg,#75509c70,#22476680);box-shadow:inset 0 0 18px #9c79d01a}
+.song-emblem svg{width:26px;height:26px}
+.song-copy{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+#now-playing .song-label{font:800 9px/1 'DM Sans',sans-serif;letter-spacing:.19em;color:#b3aed1}
+#now-playing .song-title{font:800 21px/1.15 'DM Sans',sans-serif;letter-spacing:.005em;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;color:#fff7e5}
+#now-playing .song-skip{font:500 11px/1.5 'DM Sans',sans-serif;color:#bfc8dd;white-space:normal}
+#now-playing kbd{font:inherit;font-weight:700;color:#dcecf6;border:1px solid #adb9d532;background:#8c9aa41b;border-radius:4px;padding:2px 4px}
+#now-playing .song-note{font:500 10px/1.4 'DM Sans',sans-serif;color:#f3c091}
+#now-playing .song-note[hidden]{display:none}
+.music-menu-slot{position:absolute;top:0;right:0;width:340px}
+.music-menu-slot #now-playing{position:static;width:100%;max-width:none}
+#game-shell.loadout-screen .loadout-shell header{padding-right:360px;min-height:96px}
+#game-shell.loadout-screen .loadout-shell header h2{font-size:clamp(35px,4.2cqw,60px)}
+@media(max-width:1050px){.music-menu-slot{width:280px}.music-menu-slot #now-playing{padding:11px;gap:10px}.music-menu-slot .song-emblem{flex-basis:34px;height:34px}.music-menu-slot #now-playing .song-title{font-size:17px}#game-shell.loadout-screen .loadout-shell header{padding-right:298px}#game-shell.loadout-screen .loadout-shell header h2{font-size:32px}}
+@media(max-width:720px){#now-playing{top:12px;left:12px;padding:10px 12px;gap:9px;max-width:calc(100vw - 130px);border-radius:14px}.song-emblem{flex-basis:30px;height:34px;border-radius:9px}.song-emblem svg{width:21px;height:21px}#now-playing .song-title{font-size:17px}#now-playing .song-label{font-size:8px}#now-playing .song-skip{font-size:10px}#run-timer{top:12px;right:12px;min-width:86px;font-size:34px;padding:12px 13px;border-radius:14px}.skate-hud{left:12px;bottom:15px!important;padding:12px 15px;border-radius:14px}.skate-hud .speed>span{font-size:44px}.skate-hud .speed small{font-size:10px}.music-menu-slot{position:static;width:100%;margin-top:17px}.music-menu-slot #now-playing{max-width:none;padding:12px 14px}.music-menu-slot .song-emblem{flex-basis:38px;height:38px}.music-menu-slot #now-playing .song-title{font-size:20px}#game-shell.loadout-screen .loadout-shell header{padding-right:6px;min-height:0}#game-shell.loadout-screen .loadout-shell header h2{font-size:clamp(28px,7.7vw,52px)}}
+@media(max-height:500px) and (min-width:721px){#now-playing{top:10px;left:14px;padding:10px 12px;width:330px}#run-timer{top:10px;right:14px;font-size:34px;padding:10px 15px}.song-emblem{flex-basis:37px;height:37px}#now-playing .song-title{font-size:18px}}

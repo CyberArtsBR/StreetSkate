@@ -19,6 +19,7 @@ import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normali
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
+import './game-hud.css';
 
 const container = document.querySelector('#viewport');
 const app = document.querySelector('#app');

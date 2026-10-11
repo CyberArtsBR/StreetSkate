@@ -28,8 +28,11 @@ export class GameShell {
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ ← → / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
     this.timer=document.createElement('div');this.timer.id='run-timer';document.querySelector('#app').append(this.timer);
-    this.song=document.createElement('div');this.song.id='now-playing';document.body.append(this.song);
-    this.music=new MusicPlayer((title,note)=>{this.song.textContent=`♫ ${title} · Backspace / View to skip${note?' · '+note:''}`;});
+    this.song=document.createElement('aside');this.song.id='now-playing';this.song.setAttribute('aria-label','Soundtrack');
+    this.song.innerHTML='<span class="song-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 17V6l10-2v11M10 9l10-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="17" rx="3" ry="2.5" fill="currentColor"/><ellipse cx="17" cy="15" rx="3" ry="2.5" fill="currentColor"/></svg></span><div class="song-copy"><span class="song-label">NOW PLAYING</span><strong class="song-title" aria-live="polite"></strong><span class="song-skip">Press <kbd>Select</kbd> / <kbd>Backspace</kbd> to skip</span><span class="song-note" hidden></span></div>';
+    document.body.append(this.song);
+    const songTitle=this.song.querySelector('.song-title'),songNote=this.song.querySelector('.song-note');
+    this.music=new MusicPlayer((title,note)=>{songTitle.textContent=title;songNote.textContent=note||'';songNote.hidden=!note;});
     this.avatarInput=document.createElement('input');
     this.avatarInput.type='file';this.avatarInput.accept='.glb,model/gltf-binary';this.avatarInput.hidden=true;
     document.body.append(this.avatarInput);
@@ -126,6 +129,9 @@ export class GameShell {
   }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
   render(){
+    // Keep the music panel alive while replacing menu contents; selection
+    // screens give it a layout slot so it never covers their heading/cards.
+    if(this.song&&this.song.parentElement!==document.body)document.body.append(this.song);
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
     this.timer.hidden=!this.active;this.updateTimer();
     this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':'menu-screen';
@@ -148,7 +154,7 @@ export class GameShell {
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='rooftop'?'ABOVE THE CITY':'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB</small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
-        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><span class="loadout-edition">STREETSKATE · VOL. 01</span></header>
+        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
         <div class="loadout-roster">${cards}</div><div class="selection-note"><span>${this.heroConfirmed?'RIDER LOCKED IN':'CHOOSE YOUR RIDER'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong></div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
@@ -187,6 +193,7 @@ export class GameShell {
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card"><small>CHIMP HAWK / UNDERGROUND</small><h2>${graffitiLettering(title,'gold')}</h2>${body}</div>`;
+    if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
       button.onpointerenter=()=>{this.selection=this.menuButtons().indexOf(button);this.focusSelection();};
@@ -324,7 +331,7 @@ export class GameShell {
   }
   updateTimer(){
     const warn=sessionWarning(this.remaining,this.practice);
-    this.timer.textContent=this.practice?'PRACTICE · ∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
+    this.timer.textContent=this.practice?'∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
     this.timer.classList.toggle('time-low',warn!=='none');
     this.timer.classList.toggle('time-critical',warn==='critical');
     this.timer.dataset.warningLabel=warn==='critical'?'FINAL 5 SECONDS':warn==='warning'?'10 SECONDS LEFT':'';
