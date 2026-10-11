@@ -25,7 +25,7 @@ export function nextMenuIndex(buttons, selected, axis, sign, loadout = false) {
     const primary = (axis==='x'?target.x-start.x:target.y-start.y)*sign;
     const secondary = axis==='x'?target.y-start.y:target.x-start.x;
     const side = axis==='x'?Math.max(start.h,target.h):Math.max(start.w,target.w);
-    if (primary <= 2 || Math.abs(secondary) > Math.max(22,side*.78)) continue;
+    if (primary <= 2 || Math.abs(secondary) > Math.max(22,side*(axis==='y' ? 1.1 : 0.78))) continue;
     const score = primary + Math.abs(secondary)*1.65;
     if (score < bestScore) { best=i; bestScore=score; }
   }
