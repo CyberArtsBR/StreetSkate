@@ -16,7 +16,7 @@ export class ParkCollision {
   constructor(root) {
     this.root = root;
     this.ray = new THREE.Raycaster();
-    this.meshes = []; this.ridingMeshes = []; this.cameraMeshes = [];
+    this.meshes = []; this.ridingMeshes = []; this.solidMeshes = []; this.cameraMeshes = [];
     this.blocks = new BlockTriangleIndex();
     this.capsule = new Capsule();
     this._normalMatrix = new THREE.Matrix3();
@@ -57,6 +57,7 @@ export class ParkCollision {
       if (!mesh.userData.railId && !mesh.userData.cameraTransparent) this.cameraMeshes.push(mesh);
       const rideable = mesh.userData.surface !== 'solid';
       if (rideable) this.ridingMeshes.push(mesh);
+      else this.solidMeshes.push(mesh);
       const geometry = mesh.geometry, position = geometry.attributes.position, index = geometry.index;
       const count = index ? index.count : position.count;
       let finiteGeometry = true;
@@ -171,7 +172,10 @@ export class ParkCollision {
     // Centerline entry first: prevents a thin riser/ledge from being skipped at speed.
     this.ray.set(from, this._direction); this.ray.far = distance + radius;
     this._rayHits.length = 0;
-    this.ray.intersectObjects(this.meshes, false, this._rayHits);
+    // Nose/tail collision is only allowed to block against actual structural
+    // solids. Raycasting every mesh treated the steep rideable quarter/corner
+    // skin as a solid wall even when the body capsule classified it correctly.
+    this.ray.intersectObjects(this.solidMeshes, false, this._rayHits);
     for (const hit of this._rayHits) {
       if (ignoreRail && hit.object.userData.railId === ignoreRail) continue;
       this.normal(hit, normalOut);
@@ -351,7 +355,8 @@ export class ParkCollision {
     const origin = position.clone().addScaledVector(UP, 0.68).addScaledVector(wallNormal, 0.08);
     const direction = wallNormal.clone().negate().normalize();
     this.ray.set(origin, direction); this.ray.far = reach;
-    for (const hit of this.ray.intersectObjects(this.meshes, false)) {
+    // Rideable near-vertical quarters are not wallride triggers.
+    for (const hit of this.ray.intersectObjects(this.solidMeshes, false)) {
       const normal = this.normal(hit);
       if (normal.dot(direction) > 0) normal.negate();
       if (Math.abs(normal.y) < 0.35 && normal.dot(wallNormal) > 0.7) return { point: hit.point, normal, distance: hit.distance };
