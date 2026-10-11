@@ -86,7 +86,23 @@ export class StreetBoard {
     this.model.updateMatrixWorld(true);
     this.contactRig = this.deriveContactRig();
     this.root.add(this.model);
-    this.model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    // A board must never inherit transparent/blended faces from the imported
+    // GLB. Both sides of the deck, trucks and wheels must write real depth;
+    // especially important during flips and on pale warehouse ramps.
+    this.model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      const makeOpaque = source => {
+        const m = source.clone();
+        m.transparent = false; m.opacity = 1; m.alphaMap = null;
+        m.alphaTest = 0; m.alphaHash = false; m.depthTest = true;
+        m.depthWrite = true; m.side = THREE.DoubleSide;
+        if ('transmission' in m) m.transmission = 0;
+        m.needsUpdate = true;
+        return m;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(makeOpaque) : makeOpaque(o.material);
+    });
     this.root.userData.source = 'CyberArtsBR/Skate skateboard.glb';
     this.root.userData.contactRig = this.contactRig;
     this.wheelGlow = []; this.wheelGlowAmount = 0;
@@ -127,12 +143,13 @@ export class StreetBoard {
           m.alphaHash = false;
           m.depthTest = true;
           m.depthWrite = true;
+          m.side = THREE.DoubleSide;
           m.transmission = 0;
           m.vertexColors = true;
           m.color.set('#ffffff');
           m.roughness = 0.46;
-          m.emissive.set('#18212b');
-          m.emissiveIntensity = 0.16;
+          m.emissive.set('#ffffff');
+          m.emissiveIntensity = 0.48;
           return m;
         };
         mesh.material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
@@ -149,6 +166,12 @@ export class StreetBoard {
         material.vertexColors = false;
         const u = material.userData.halfPipeFinish || installHalfPipeFinish(material, transform, bounds);
         u.hpTail.value.setHex(finish.stops[0]); u.hpMiddle.value.setHex(finish.stops[1]); u.hpNose.value.setHex(finish.stops[2]);
+        // Keep the full-gradient deck opaque in every preset. Emission follows
+        // the selected finish; its contrast remains visible even without bloom.
+        material.emissive.setHex(finish.stops[1]);
+        material.emissiveIntensity = 0.42;
+        material.transparent = false; material.opacity = 1;
+        material.depthWrite = true; material.side = THREE.DoubleSide;
         material.needsUpdate = true;
       }
     });

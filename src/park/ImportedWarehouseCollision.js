@@ -64,8 +64,12 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     if (geometry.index) { const old = geometry; geometry = geometry.toNonIndexed(); old.dispose(); }
     for (const attribute of Object.keys(geometry.attributes)) if (attribute !== 'position') geometry.deleteAttribute(attribute);
     const cameraTransparent = Boolean(railId) || /vertical_post|Down_Rail_Support/.test(name);
-    const id = `${surface}:${railId || ''}:${cameraTransparent}`;
-    if (!buckets.has(id)) buckets.set(id, { geometries: [], surface, railId, cameraTransparent });
+    // Keep the actual rideable ramp skin separate from support walls in the
+    // merged collision BVH. A near-vertical tip is not a blocking wall.
+    const transitionSkin = surface === 'rideable'
+      && /Skateable_Surface|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*Transition|Flow.*ramp/i.test(name);
+    const id = `${surface}:${railId || ''}:${cameraTransparent}:${transitionSkin}`;
+    if (!buckets.has(id)) buckets.set(id, { geometries: [], surface, railId, cameraTransparent, transitionSkin });
     buckets.get(id).geometries.push(geometry);
     if (surface === 'rideable') surfaces.push(name);
   };
@@ -88,7 +92,9 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
       c.fromBufferAttribute(p, i + 2);
       const normal = edge1.subVectors(b, a).cross(edge2.subVectors(c, a));
       if (normal.lengthSq() < 1e-12) continue;
-      const vertices = normal.y > 0.015 * normal.length() ? up : side;
+      // Very steep quarter/corner lip triangles used to be misclassified as
+      // vertical structural walls, stopping the board just before takeoff.
+      const vertices = normal.y > 0.005 * normal.length() ? up : side;
       vertices.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
     }
     source.dispose();
@@ -204,6 +210,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     mesh.name = `Imported collision / ${bucket.surface} / ${bucket.railId || 'world'}`;
     mesh.userData.surface = bucket.surface;
     mesh.userData.cameraTransparent = bucket.cameraTransparent;
+    mesh.userData.transitionSkin = bucket.transitionSkin;
     if (bucket.railId) mesh.userData.railId = bucket.railId;
     collision.add(mesh); triangles += geometry.attributes.position.count / 3;
   }

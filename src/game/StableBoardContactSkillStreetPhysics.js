@@ -55,10 +55,18 @@ export function shouldReleaseRampLip({
 } = {}) {
   if (Math.abs(normalY) >= 0.985) return false;
   if (verticalSpeed <= 0.12 || Math.abs(speed) < 2.5) return false;
-  if (contactCount < 1 || contactCount > 2) return false;
+  if (contactCount < 1 || contactCount > 3) return false;
   const leadingSupported = travelSign < 0 ? rearSupported : frontSupported;
   const trailingSupported = travelSign < 0 ? frontSupported : rearSupported;
-  return !leadingSupported && Boolean(trailingSupported);
+  if (!trailingSupported) return false;
+  if (!leadingSupported) return true;
+  // On a diagonal quarter/corner crossing, one leading wheel may cling to the
+  // coping while the other three have reached the end of ramp support. Allow
+  // release only when there is genuine steep upward momentum, not on flats,
+  // gentle rolling seams or ordinary uneven ground.
+  return contactCount === 3 && leadingSupported === 1
+    && trailingSupported === 2 && Math.abs(normalY) < 0.78
+    && verticalSpeed > 0.65 && Math.abs(speed) > 5.0;
 }
 
 /** Backward-compatible public helper now owned by canonical LandingResult. */
