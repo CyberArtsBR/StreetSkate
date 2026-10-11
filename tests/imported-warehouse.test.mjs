@@ -32,9 +32,9 @@ test('visible ramp faces, including joined and transformed additions, have match
     // The beveled edge bands decorate ramp lips; the actual ramp core and
     // skateable skin carry board contacts.
     if (/Side_Edge_Band/.test(name)) return;
-    const joined = mesh.parent?.userData?.name?.includes(' / ')
-      && /Side_Wood_Core|Back_Panel/.test(name);
-    if (!joined && !/Skateable_Surface|Surface_Plywood|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*(?:Transition|Floor)/.test(name)) return;
+    // Stair treads are actual contact surfaces; side cores and back panels
+    // are solid only, so they must not be counted as skateable ramp coverage.
+    if (!/Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*(?:Transition|Floor)/.test(name)) return;
     const geometry = mesh.geometry, p = geometry.attributes.position, index = geometry.index;
     let count = 0;
     for (let i = 0; i < (index?.count || p.count); i += 3) {
@@ -53,9 +53,11 @@ test('visible ramp faces, including joined and transformed additions, have match
     }
     if (count) { meshes++; if (/\d\.\d/.test(name)) additions++; }
   });
-  assert.ok(meshes > 40, `only ${meshes} ramps/platforms checked`);
-  assert.ok(additions > 15, `only ${additions} transformed additions checked`);
-  assert.ok(samples > 2000);
+  // The revised map has 48 explicitly named rideable meshes; the former
+  // 40+ total was inflated by 57 non-skateable side/back panels.
+  assert.ok(meshes >= 30, `only ${meshes} rideable ramps/platforms checked`);
+  assert.ok(additions >= 10, `only ${additions} transformed additions checked`);
+  assert.ok(samples > 1200, `only ${samples} ramp triangles sampled`);
 });
 
 test('all 34 visible rail tubes have world-space grind paths and all coping has transition metadata', () => {

@@ -138,6 +138,23 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     return desired;
   }
 
+  /**
+   * A wheel leaving a steep authored lip can momentarily lose all support
+   * before launchAt's narrow capture window sees the edge. Recover only a
+   * physically ascending, explicitly authored nearby quarter/bowl lip.
+   * Flat seams, downward drops and walls cannot become synthetic vert jumps.
+   */
+  releaseRisingRamp(impulse = 0) {
+    const rising = this.grounded
+      && this.velocity.y > 0.12
+      && this.normal.y >= 0
+      && this.normal.y < 0.93;
+    const edge = rising
+      ? this.transitions.approachAt(this.position, this.normal, this.velocity)
+      : null;
+    return this.takeoff(impulse, edge);
+  }
+
   resolveMotion(before, beforeUp, input = {}) {
     const collision = this.ensureCollisionResolver();
     const result = collision.resolveBody({
@@ -207,7 +224,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
         ? this.transitions.approachAt(this.position, this.normal, this.velocity)
         : null;
       if (armedVert) this.takeoff(this.vertJumpPending, armedVert);
-      else this.takeoff();
+      else this.releaseRisingRamp();
       return;
     }
 
@@ -224,7 +241,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       normalContinuity,
     })) {
       this.lastWheelSupport = null;
-      this.takeoff();
+      this.releaseRisingRamp();
       return;
     }
 
@@ -245,7 +262,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     })) {
       this.lastWheelSupport = support;
       const lipBoost = (this.rampExitIntentTime || 0) > 0 ? 0.9 : 0;
-      this.takeoff(lipBoost);
+      this.releaseRisingRamp(lipBoost);
       return;
     }
 

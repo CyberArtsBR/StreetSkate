@@ -10,6 +10,12 @@ const UP = new THREE.Vector3(0, 1, 0);
 const CAPTURE_SCALE = 1.3;
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
+// Tony Hawk-style height envelope: preserving a meaningful Ollie boost while
+// never allowing a steep quarter to turn 17 m/s of approach into a roof launch.
+export const VERT_LAUNCH_ENVELOPE = Object.freeze({
+  maximumVerticalSpeed: 10.6,
+  maximumPassiveVerticalSpeed: 9.4,
+});
 
 function horizontal(vector) {
   return vector.clone().setY(0);
@@ -247,6 +253,9 @@ export class TransitionController {
       Math.sqrt(baseVertical * baseVertical + verticalBoost * verticalBoost),
       energyBudget,
     ), 0, 15.5);
+    // This is a physical speed bound, not a scripted trajectory. It limits
+    // launch energy once at departure, then leaves gravity/steering unchanged.
+    launchVertical = Math.min(launchVertical, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     const lateralVelocity = clamp(tangentVelocity, -2.6, 2.6);
     const exitRequested = Boolean(edge.exitRequested);
 
@@ -255,7 +264,7 @@ export class TransitionController {
       const exitSpeed = clamp(incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
       const retainedLateral = edge.copingTangent.clone().multiplyScalar(lateralVelocity * 0.45);
       launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      launchVertical = clamp(launchVertical * 0.80, 3.2, 11.8);
+      launchVertical = clamp(launchVertical * 0.80, 3.2, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     } else {
       launchHorizontal = edge.copingTangent.clone().multiplyScalar(clamp(lateralVelocity, -1.1, 1.1));
     }

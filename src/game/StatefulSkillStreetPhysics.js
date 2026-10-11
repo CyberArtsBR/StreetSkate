@@ -16,6 +16,7 @@ import { PlayerState } from './core/PlayerState.js';
 import { legacyStateViolations } from './core/LegacyStateInvariants.js';
 import { rampLaunchBonus, updateRampLaunchMemory } from './core/LaunchEnergyModel.js';
 import { captureTakeoffContext } from './core/TakeoffContext.js';
+import { VERT_LAUNCH_ENVELOPE } from './transitions/TransitionController.js';
 import { resolveRuntimeMovementMode } from './core/MovementStateResolver.js';
 import {
   applyLandingPostPipeline,
@@ -352,6 +353,21 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
 
     this.takeoffOllieRequested = context.requestedImpulse >= 4;
     const result = super.takeoff(context.composedImpulse, edge);
+
+    // This is the actual shipping composition root (not the compatibility
+    // UnifiedRampFeel prototype). A generic ramp lip can miss the coping edge
+    // and add the remembered climb boost to an already large positive Y.
+    // Enforce the same one-shot energy envelope for *both* AIR and VERT_AIR,
+    // never on regular flat-ground Ollies or validated deck transfers.
+    if (context.rampContext && !this.transitionAir?.transferring) {
+      const maxY = context.requestedImpulse >= 4.5
+        ? VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed
+        : VERT_LAUNCH_ENVELOPE.maximumPassiveVerticalSpeed;
+      if (this.velocity.y > maxY) {
+        this.velocity.y = maxY;
+        if (this.transitionAir) this.transitionAir.launchVertical = maxY;
+      }
+    }
 
     if (this.transitionAir?.frame) {
       this.transitionAir.frame.takeoffFacing = context.takeoffFacing.clone();
