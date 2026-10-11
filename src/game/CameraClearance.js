@@ -1,78 +1,137 @@
 import * as THREE from 'three';
 
 const UP = new THREE.Vector3(0, 1, 0);
-export const CAMERA_CLEARANCE = Object.freeze({ minimumDistance: 1.8, radius: 0.28 });
+export const CAMERA_CLEARANCE = Object.freeze({
+  minimumDistance: 1.8,
+  radius: 0.28,
+  // Start finding alternate sightlines before the camera becomes a face close-up.
+  comfortMargin: 1.3,
+  sideOffsets: [1.5, 3.5],
+  verticalOffsets: [0, 2.6, 5.2],
+});
 
 /**
- * Collision-verified chase-eye selection. Every returned point is a surface
- * probe result: never extrapolate a shortened ray through an obstacle.
- * cache.minimumDistance can request extra character clearance (e.g. wallrides).
+ * Choose an obstacle-aware third-person eye. Every candidate (including cached
+ * positions) must pass through the world's camera-volume sweep. Never lengthen
+ * or interpolate an occluded ray without rechecking it against the world.
+ *
+ * 'fixedAxis' locks the yaw of the gameplay rig, not the collision safety
+ * offset. Follow and Fixed may slide sideways / rise past walls and stair rails
+ * without switching camera modes or suddenly orbiting across the character.
  */
 export function resolveCameraClearance(surface, anchor, desired, previousEye = null, cache = null) {
   const minimum = Math.max(CAMERA_CLEARANCE.minimumDistance, Number(cache?.minimumDistance) || 0);
   const probe = eye => surface?.camera
     ? surface.camera(anchor, eye, CAMERA_CLEARANCE.radius) : eye.clone();
-  const direct = probe(desired);
-  if (direct.distanceTo(anchor) >= minimum) return direct;
-
   const arm = desired.clone().sub(anchor);
   if (arm.lengthSq() < 1e-8) arm.set(0, 2, minimum + 1);
-  let bestBlocked = direct;
-  let bestBlockedDistance = direct.distanceTo(anchor);
+  const armDistance = arm.length();
+  const comfort = Math.max(minimum + CAMERA_CLEARANCE.comfortMargin, armDistance * 0.48);
+  const direct = probe(desired);
+  const directDistance = direct.distanceTo(anchor);
+  if (directDistance >= comfort) {
+    if (cache) {
+      cache.arm = direct.clone().sub(anchor);
+      cache.side = 0;
+    }
+    return direct;
+  }
+
+  const side = new THREE.Vector3(arm.z, 0, -arm.x);
+  if (side.lengthSq() < 1e-8) side.set(1, 0, 0);
+  side.normalize();
+
   let bestSafe = null;
-  let bestPenalty = Infinity;
-  const consider = (eye, penalty) => {
+  let bestScore = Infinity;
+  let bestBlocked = direct;
+  let furthestBlocked = directDistance;
+  const priorArm = cache?.arm?.clone?.() || null;
+  const priorSide = Number(cache?.side) || 0;
+  const consider = (eye, baseCost = 0, sideSign = 0) => {
     const resolved = probe(eye);
     const distance = resolved.distanceTo(anchor);
-    if (distance > bestBlockedDistance) {
+    if (distance > furthestBlocked) {
+      furthestBlocked = distance;
       bestBlocked = resolved;
-      bestBlockedDistance = distance;
     }
-    if (distance < minimum) return;
-    // Prefer the axis and a modest rise, not a 180-degree camera flip.
-    // Penalize large clearance-induced zoom changes as well.
-    const cost = penalty + Math.max(0, desired.distanceTo(resolved) - 1) * 0.015;
-    if (cost < bestPenalty) {
-      bestSafe = resolved;
-      bestPenalty = cost;
+    if (distance + 1e-7 < minimum) return;
+
+    // Keep the rider in frame, prefer a comfortable view, and add hysteresis:
+    // a previous safe side should not swap every frame at a symmetric doorway.
+    const displacement = resolved.distanceTo(desired);
+    const shortfall = Math.max(0, comfort - distance);
+    const switchCost = priorSide && sideSign && sideSign !== priorSide ? 0.7 : 0;
+    const continuity = priorArm ? Math.min(0.8,
+      resolved.clone().sub(anchor).distanceTo(priorArm) * 0.065) : 0;
+    const score = baseCost + displacement * 0.145 + shortfall * 1.0
+      + switchCost + continuity;
+    if (score < bestScore - 1e-6) {
+      bestSafe = { point: resolved, sign: sideSign };
+      bestScore = score;
     }
   };
+  consider(direct, 0.2, 0);
 
-  // A wallride can place the regular rear camera arm inside the wall.
-  // Keep the same chase rig and sightline, but offer eyes displaced along
-  // the wall's outward normal. Every option is collision-probed before use.
-  // This is intentionally independent of fixedAxis: Follow mode should not
-  // switch to a first-person view or rotate 180 degrees to escape a wall.
-  const wallNormal = cache?.wallNormal?.clone?.();
-  if (wallNormal) {
-    wallNormal.y = 0;
-    if (wallNormal.lengthSq() > 1e-8) {
-      wallNormal.normalize();
-      for (const offset of [1.5, 3.5, 5.5]) {
-        for (const lift of [0, 2, 4]) {
-          consider(desired.clone().addScaledVector(wallNormal, offset)
-            .addScaledVector(UP, lift), 0.25 + offset * 0.06 + lift * 0.08);
+  // Returning to a known clear camera arm has priority over trying the
+  // opposite side. All cached arms are re-probed from the CURRENT rider anchor.
+  if (priorArm && priorArm.distanceTo(arm) < Math.max(8, armDistance * 1.25)) {
+    consider(anchor.clone().add(priorArm), 0.12, priorSide);
+  }
+  if (previousEye && !cache?.fixedAxis && previousEye.distanceTo(anchor) < armDistance + 6) {
+    consider(previousEye.clone(), 0.35, priorSide);
+  }
+
+  const normal = cache?.wallNormal?.clone?.();
+  if (normal) {
+    normal.y = 0;
+    if (normal.lengthSq() > 1e-8) {
+      normal.normalize();
+      const normalSide = Math.sign(normal.dot(side)) || 0;
+      for (const offset of [1.8, 4]) {
+        for (const lift of [0, 2.5, 5]) {
+          consider(desired.clone().addScaledVector(normal, offset)
+            .addScaledVector(UP, lift), 0.1 + offset * 0.055 + lift * 0.07,
+          normalSide);
+          if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
         }
+        if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
       }
     }
   }
 
-  if (cache?.arm && !cache.fixedAxis) consider(anchor.clone().add(cache.arm), 0.25);
-  if (previousEye && !cache?.fixedAxis) consider(previousEye.clone(), 0.35);
-
-  const angles = cache?.fixedAxis ? [0] : [0, 35, -35, 70, -70, 110, -110, 180];
-  for (const rise of [0, 1.8, 3.8, 5.8]) {
-    for (const degrees of angles) {
-      const eye = arm.clone().applyAxisAngle(UP, degrees * Math.PI / 180)
-        .addScaledVector(UP, rise).add(anchor);
-      consider(eye, Math.abs(degrees) / 90 + rise * 0.12);
+  // Short lateral shifts are safer than swinging 180 degrees across the
+  // rider in narrow indoor parks. Probe both sides and several heights.
+  const signs = priorSide ? [priorSide, -priorSide] : [1, -1];
+  for (const lift of CAMERA_CLEARANCE.verticalOffsets) {
+    consider(desired.clone().addScaledVector(UP, lift), lift * 0.11, 0);
+    for (const offset of CAMERA_CLEARANCE.sideOffsets) {
+      for (const sign of signs) {
+        consider(desired.clone().addScaledVector(side, offset * sign)
+          .addScaledVector(UP, lift), 0.16 + offset * 0.09 + lift * 0.1, sign);
+      }
     }
-    // A good rear-axis view is preferable to orbiting around the rider.
-    if (bestSafe && bestPenalty < 0.6) break;
+    if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
   }
-  // Fully enclosed: return the furthest verified clearance point, even when
-  // less than minimum. There is no safe way to fabricate space in geometry.
-  const result = bestSafe || bestBlocked;
-  if (cache && result.distanceTo(anchor) >= minimum) cache.arm = result.clone().sub(anchor);
+
+  // Classic is free to reframe slightly around obstructions, but large
+  // behind-to-front flips are forbidden (especially around bowl lips).
+  if (!cache?.fixedAxis && (!bestSafe || bestScore > 1)) {
+    for (const degrees of [30, -30, 60, -60]) {
+      for (const lift of [0, 3]) {
+        const eye = anchor.clone().add(arm.clone().applyAxisAngle(
+          UP, degrees * Math.PI / 180)).addScaledVector(UP, lift);
+        consider(eye, 0.6 + Math.abs(degrees) / 100 + lift * 0.1,
+          Math.sign(degrees));
+      }
+    }
+  }
+
+  // A sealed volume has no valid third-person eye. Return the furthest
+  // collision-verified result, never an invented point through solid geometry.
+  const result = bestSafe?.point || bestBlocked;
+  if (cache && bestSafe) {
+    cache.arm = result.clone().sub(anchor);
+    cache.side = bestSafe.sign;
+  }
   return result;
 }
