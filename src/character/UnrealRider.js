@@ -150,9 +150,13 @@ export class UnrealRider {
     // board clearance, measured from the lowest rest ankle.
     const restAnkles = SIDES.map(side => this.bones['foot_' + side])
       .filter(Boolean).map(foot => this.root.worldToLocal(foot.getWorldPosition(V())).y);
+    // Calibrate the ANKLE-to-sole contact, never the character or skateboard
+    // scale. The full-model AABB includes tails/clothing on some Chimpions;
+    // using it unbounded could create a fake 16cm shoe sole and a visible
+    // air gap between sneakers and the actual deck while idle or in the air.
     const soleClearance = restAnkles.length
-      ? C(Math.min(...restAnkles) - floorY - 0.012, 0.032, 0.16)
-      : 0.055;
+      ? C(Math.min(...restAnkles) - floorY - 0.018, 0.025, 0.11)
+      : 0.045;
     // The proportions of uploaded Chimpions/animal rigs differ dramatically.
     // Scale crouching and deck clearance by the rig's actual leg height.
     if (restAnkles.length && this.bones.pelvis) {
