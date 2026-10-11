@@ -42,6 +42,18 @@ New regression scenarios: fast straight/diagonal approach, opposite halfpipe wal
 
 `tools/agent02-vert-trajectories.mjs` emits deterministic 120 Hz JSON for quarter straight/diagonal, halfpipe opposing and 180-motion cases, bowl pocket, mini ramp, and a planned verified transfer. Report fields include incoming/launch speed, launch vertical speed, apex rise and time, first descending lip-plane crossing, lateral displacement and return error. **Lip-plane crossing is not a confirmed landing**; real GLB contact/collision must still be replayed.
 
+### Representative pure-model trajectory check
+
+A lightweight fixed-step cross-check evaluated the committed transition functions with equivalent Vector3 arithmetic (not the production Three.js runtime). At 120 Hz, after 0.8 seconds:
+
+| Scenario | Launch velocity X/Y/Z (m/s) | Position X/Y/Z (m) | Velocity X/Y/Z at 0.8 s (m/s) |
+| --- | --- | --- | --- |
+| Fast diagonal vert (normal Y 0.20) | +5.20 / +8.59 / -1.45 | +3.67 / +2.29 / -0.01 | +3.19 / -7.41 / +1.39 |
+| Straight quarter (normal Y 0.45) | 0 / +7.88 / 0 | 0 / +1.72 / +0.30 | 0 / -8.12 / +0.02 |
+| Reverse-diagonal pocket (normal Y 0.24) | -4.10 / +8.52 / -1.19 | -3.01 / +2.23 / +0.13 | -2.89 / -7.48 / +0.73 |
+
+The fast diagonal keeps its *positive* along-coping velocity rather than reversing toward the takeoff point. Authored-span support accepts a matching same-wall contact at X=3.5 m and rejects one beyond the coping endpoint at X=6.1 m. These are algorithm-level diagnostics, **not** measured real-map wheel landings, and the bundled trajectory runner remains the reproducible source of truth for actual Three.js output.
+
 ### Map-coverage notes
 
 The repository has authored transition rails in the Rooftop manifest and in the Foundry `createWarehousePark` geometry. The variant loader reuses the Foundry rail/physics contract and, for certain imported warehouses, may replace rideable collision and discovered rails. Therefore synthetic trajectory tests do **not** prove all ramp positions in the Rooftop, Foundry, TRON, Grand or Urban visuals. Integration QA must run the actual loaded map variants, including each revised GLB, and check quarter/halfpipe/bowl/spine/transfer support and clearance. Map meshes and GLBs were not changed here.
