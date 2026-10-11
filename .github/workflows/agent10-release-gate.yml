@@ -63,6 +63,7 @@ jobs:
           npm install --no-save --package-lock=false @playwright/test@1.56.1
           npx playwright install --with-deps chromium
       - name: Start production-only preview
+        id: preview
         run: |
           nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/agent10-gate-preview.log 2>&1 &
           for i in $(seq 1 90); do
@@ -77,7 +78,8 @@ jobs:
           AGENT10_ARTIFACT_DIR: artifacts/agent10
         run: node tools/agent10-browser-qa.mjs
       - name: Three-map runtime and simulated gamepad QA
-        if: success()
+        # Independent report even if the older browser test fails; do not mask either exit code.
+        if: ${{ always() && steps.preview.outcome == 'success' }}
         env:
           STREETSKATE_URL: http://127.0.0.1:4173
           AGENT10_ARTIFACT_DIR: artifacts/agent10
