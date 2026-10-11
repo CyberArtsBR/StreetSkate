@@ -10,8 +10,8 @@ import { createWarehousePark } from '../src/park/WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/park/ImportedWarehouseCollision.js';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
 
-const file = 'public/assets/warehouse/grand-warehouse.glb';
-const expectedHash = '906a8ab0a497b6b374a6e5ea343408c749a448469078ee5c0c437eb8e0c5a477';
+const file = 'public/assets/warehouse/granwarehouse.glb';
+const expectedHash = 'f0f47613e0aad90fd1ba7903ec218d46fea7bdc9433d437f3a1b26a72d41d886';
 
 test('Map 3 is distinct and preserves the exact Map 2 asset address and selection number', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
@@ -30,8 +30,9 @@ test('original map geometry is embedded in an immutable, separately versioned Ma
   assert.equal(bytes.readUInt32LE(8),bytes.length);
   const length=bytes.readUInt32LE(12);
   const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
-  assert.ok(json.meshes.length>=1426,'missing authored warehouse meshes');
-  assert.equal(json.nodes.filter(n=>/^07_GRAFFITI \/ VISUAL_ONLY/.test(n.name||'')).length,12);
+  assert.ok(json.meshes.length>=1414,'missing authored warehouse meshes');
+  assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\\.001)?|Plane_SkateLite_base_color\\.002_0)$/.test(n.name||'')).length,3,
+    'two low obstacles and the new SkateLite ramp must be present');
   assert.ok(json.nodes.some(n=>/Ground_Floor/.test(n.name||'')));
   assert.ok(json.nodes.some(n=>/Brick_North_South_Wall/.test(n.name||'')));
   assert.ok(json.nodes.some(n=>/^02_TIMBER_BOWL/.test(n.name||'')));
@@ -75,6 +76,11 @@ test('every named skateable ramp skin has physics, and wood/trim/roof art is not
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='rideable'));
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='solid'));
   assert.ok(imported.triangles > 500,'collision mesh is incomplete');
+  const fixtures = ['Cube__0','Cube__0.001','Plane_SkateLite_base_color.002_0'];
+  for (const fixture of fixtures) {
+    assert.ok(imported.surfaces.includes(fixture), `${fixture}: missing rideable top/transition geometry`);
+  }
+  assert.ok(imported.repairs.movedRamps.length===0,'Grand must retain artist positions');
 });
 
 test('Grand Warehouse extracts actual joined metal coping tubes, not their wooden support meshes', () => {

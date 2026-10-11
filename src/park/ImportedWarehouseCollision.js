@@ -69,9 +69,44 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     buckets.get(id).geometries.push(geometry);
     if (surface === 'rideable') surfaces.push(name);
   };
+  
+  // Additional Blender-imported SkateLite ramp and two long, low skate
+  // obstacles have generic names rather than Foundry collision labels. Split
+  // actual WORLD-SPACE triangles into the skateable upward skin versus solid
+  // sides/back. This is deliberately Grand-only; Map 2 remains untouched.
+  const addGrandFixture = (object, name) => {
+    const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
+    const source = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (source !== geometry) geometry.dispose();
+    const p = source.attributes.position;
+    const up = [], side = [];
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const edge1 = new THREE.Vector3(), edge2 = new THREE.Vector3();
+    for (let i = 0; i + 2 < p.count; i += 3) {
+      a.fromBufferAttribute(p, i);
+      b.fromBufferAttribute(p, i + 1);
+      c.fromBufferAttribute(p, i + 2);
+      const normal = edge1.subVectors(b, a).cross(edge2.subVectors(c, a));
+      if (normal.lengthSq() < 1e-12) continue;
+      const vertices = normal.y > 0.015 * normal.length() ? up : side;
+      vertices.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+    }
+    source.dispose();
+    for (const [vertices,surface] of [[up,'rideable'],[side,'solid']]) {
+      if (!vertices.length) continue;
+      const proxy = new THREE.BufferGeometry();
+      proxy.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      add(proxy, surface, name);
+    }
+  };
+
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
+    if (grandMode && /^(?:Cube__0(?:\\.001)?|Plane_SkateLite_base_color\\.002_0)$/.test(name)) {
+      addGrandFixture(object, name);
+      return;
+    }
     const materialName = object.material?.name || '';
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
       && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);

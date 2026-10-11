@@ -23,7 +23,7 @@ const VARIANTS = Object.freeze({
   },
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
-    url: '/assets/warehouse/grand-warehouse.glb?v=906a8ab0',
+    url: '/assets/warehouse/granwarehouse.glb?v=f0f47613',
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',
@@ -156,6 +156,10 @@ export async function createWarehouseVariant(id) {
   // paths are inherited from the verified original warehouse.
   releaseVisualRoot(world.park);
   world.park = batched.park;
+  if (id === 'grand-warehouse') {
+    const { createGrandWarehouseGraffiti } = await import('./GrandWarehouseGraffiti.js');
+    world.park.add(createGrandWarehouseGraffiti());
+  }
   if (imported) {
     releaseVisualRoot(world.collision);
     world.collision = imported.collision;
