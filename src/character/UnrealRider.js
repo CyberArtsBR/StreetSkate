@@ -492,12 +492,14 @@ export class UnrealRider {
       const world = boundedNeutralHandTarget(
         shoulderWorld, this.root.localToWorld(target.clone()), armLength,
       );
-      // Relaxed near-body wrists with a small INWARD elbow bend. The old
-      // 40-degree splay and outward elbow pole made neutral rigs look bow-armed.
-      // Blend this only over idle/coasting/regular pushing/braking: named grabs,
-      // flips, crouches and bails continue to use their own IK targets.
+      // True relaxed A-pose (the user-marked green silhouette), not elbows
+      // stuck to the torso. Normal ollies, AIR and vert returns retain this
+      // safe shoulder-to-wrist profile rather than ragdolling hands past head.
+      // Named grabs/flatland/bails still use their authored reach animations.
       const neutralArms = C(this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
-        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE),0,1)
+        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE)
+        + this.w(PRESENTATION_STATES.AIR) + this.w(PRESENTATION_STATES.VERT_AIR)
+        + this.w(PRESENTATION_STATES.OLLIE_POP), 0, 1)
         * (1-grab) * (1-flat) * (bail ? 0 : 1);
       const neutralPose = neutralArms > 0 ? neutralArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
@@ -513,8 +515,10 @@ export class UnrealRider {
       // Stop wrists traversing the body or the head during ground, vert,
       // landing, turn and grab blends. Cross-body deck grabs retain their
       // intent but never pass through the face.
+      const crossBody = (grab > .12 && !!reach) || !!flatland;
+      const nearNeutral = neutralArms > 0.7 && !bail;
       world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
-        armLength, { crossBody: (grab > .12 && !!reach) || !!flatland || bail }));
+        armLength, { crossBody, neutral: nearNeutral }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
       // swing across the body even when their wrist target is reachable.
       const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
@@ -541,10 +545,31 @@ export class UnrealRider {
         ? world.clone()
         : smoothHandDestination(this.smoothedHands[side], world, dt,
           grab > 0.01 ? 30 : 24);
-      this.smoothedHands[side] = smoothedWorld.clone();
-      // Maximum elbow flex ~120 degrees: disallow the previous IK fold-back
-      // during rapid stance swaps, high grabs or short-rig transitions.
-      limb(upper, lower, hand, smoothedWorld, elbowPole, 2.10);
+      // Critically, safety must be checked AFTER interpolation too: a prior
+      // frame's grab/air destination can otherwise cut straight through the
+      // head even when both animation endpoints are safe.
+      const safeWorld = safeArmGoal(shoulderWorld, smoothedWorld, outwardWorld,
+        headWorld, armLength, { crossBody, neutral: nearNeutral });
+      this.smoothedHands[side] = safeWorld.clone();
+      limb(upper, lower, hand, safeWorld, elbowPole, 2.10);
+      if (headWorld) {
+        // A hand target can be clear while the two-bone IK arc still crosses
+        // the skull. Check actual solved joints and retreat to a safe open
+        // A-pose on those frames, with finite travel and no bone resizing.
+        const clearance = Math.max(.105, armLength * .37);
+        const headClipping = () => lower.getWorldPosition(V()).distanceTo(headWorld) < clearance
+          || hand.getWorldPosition(V()).distanceTo(headWorld) < clearance;
+        if (headClipping()) {
+          const rest = neutralArmIKTargets(shoulderWorld, outwardWorld,
+            this.kneeForward.clone().applyQuaternion(rootQ), armLength);
+          if (rest) {
+            const safeRest = safeArmGoal(shoulderWorld, rest.wrist, outwardWorld,
+              headWorld, armLength, { neutral: true });
+            limb(upper, lower, hand, safeRest, rest.elbow, 2.10);
+            this.smoothedHands[side].copy(safeRest);
+          }
+        }
+      }
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
         // Neutral wrists follow their forearms in local space. Holding the
