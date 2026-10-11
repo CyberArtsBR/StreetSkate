@@ -12,7 +12,11 @@ export function flipMotion(progress = 0) {
   const clearance = lift * (1 - catchWeight);
   const flick = MathUtils.smoothstep(p, FLIP_TIMING.pop, FLIP_TIMING.flick)
     * (1 - MathUtils.smoothstep(p, 0.56, FLIP_TIMING.rotationEnd));
-  return { rotation, clearance, footLift: clearance * 0.22, flick, catchWeight };
+  // Tail foot snaps up first; front foot drags then flicks. Both tuck clear of
+  // the spinning deck and return only after its rotation is complete.
+  const rearLift = MathUtils.smoothstep(p, .04, .25) * (1 - catchWeight) * .23;
+  const frontLift = lift * (1 - catchWeight) * .27;
+  return { rotation, clearance, footLift: clearance * 0.22, frontLift, rearLift, flick, catchWeight };
 }
 
 export function flipTurns(flipState) {

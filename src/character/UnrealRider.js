@@ -1,10 +1,10 @@
-import { halfPipePose } from './HalfPipePose.js';
+import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
-import { riderCrouchOffset, ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
+import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -94,7 +94,11 @@ export class UnrealRider {
   }
 
   async load() {
-    this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
+    return this.configureModel((await new GLTFLoader().loadAsync(this.url)).scene);
+  }
+
+  configureModel(model) {
+    this.model = model;
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
@@ -188,10 +192,13 @@ export class UnrealRider {
         .sub(this.root.worldToLocal(shoulderR.getWorldPosition(V()))).setY(0).normalize();
       this.armOutward.l = lateral; this.armOutward.r = lateral.clone().negate();
     }
-    this.kneeForward = V();
-    for (const pole of Object.values(this.kneePoles)) this.kneeForward.add(pole.clone().setY(0));
-    if (this.kneeForward.lengthSq() < 1e-6) this.kneeForward.set(1, 0, 0);
-    this.kneeForward.normalize();
+    const restKneeDirection = V();
+    for (const pole of Object.values(this.kneePoles)) restKneeDirection.add(pole.clone().setY(0));
+    // Nearly straight imported knees contain rounding noise, not a reliable
+    // facing direction (notably Tux). Shoulders define a stable sagittal plane.
+    this.kneeForward = (this.armOutward.l || V(0, 0, -1)).clone().cross(V(0, 1, 0)).normalize();
+    if (restKneeDirection.length() > .02 && restKneeDirection.dot(this.kneeForward) < 0)
+      this.kneeForward.negate();
     this.root.userData.rigAudit = this.rigAudit;
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
     return this;
@@ -278,12 +285,15 @@ export class UnrealRider {
     // Half Pipe's compact air silhouette: knees stay tucked through the flight,
     // instead of standing at takeoff and only bending near the apex.
     const halfPipe = halfPipePose({ charge: crouch, air, vert, verticalVelocity,
-      landing: landingSeverity, speed: speedRatio, grab });
+      landing: landingSeverity, speed: speedRatio, grab,
+      popProgress: presentation?.popProgress ?? 1 });
     const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
-    // Keep hip compression anatomical; IK keeps shoe soles planted on the deck.
-    this.model.position.y -= riderCrouchOffset(compression, grab) * this.poseCalibration.crouchScale;
+    // Sit the hips back while the chest leans forward. The actual vertical
+    // crouch is solved from each leg's lengths after foot targets are known.
+    const hipSetback = compression * .09 * this.poseCalibration.crouchScale;
+    this.model.position.addScaledVector(this.kneeForward, -hipSetback);
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -300,10 +310,9 @@ export class UnrealRider {
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), 0.045, rootQ);
-      // Pitch at the hips/spine during crouches and grabs, not just sideways
-      // roll. This brings the shoulders toward the deck before arm IK reaches.
-      this.rotate(name, V(0, 0, 1), (-0.055 - compression * 0.12 - balance * 0.025 + brake * 0.04 - wall * 0.05) / 3, rootQ);
-      this.rotate(name, V(1, 0, 0), (-compression * 0.24 - grab * 0.32 + apex * 0.03 - pump * 0.025) / 3, rootQ);
+      const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
+      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025) / 3, rootQ);
+      this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
     this.rotate('neck_01', V(0, 1, 0), 0.11, rootQ);
@@ -322,18 +331,13 @@ export class UnrealRider {
     // Grabs use constrained upper-arm reach; never compress the entire rig to
     // place a hand on a target the skeleton cannot reach.
     this.root.updateWorldMatrix(true,true);
-    // Idle is already deck-aligned: applying a clearance lift then could
-    // reintroduce floating shoes on short-legged GLB characters.
-    if (compression>0.08 || grab>0.05)
-      ensurePelvisDeckClearance(this.model,this.bones.pelvis,board,this.poseCalibration.pelvisClearance);
-    this.root.updateWorldMatrix(true,true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
     const deckLocked = Boolean(board && !flipState && !bail && !flatland);
     for (const side of SIDES) {
       if (!this.feet[side]) continue;
       this.ft[side].copy(this.feet[side].point);
-      if (deckLocked) {
+      if (board && !bail && !flatland) {
         const contact=board.contactRig||{};
         const deckTop=(contact.deckTopY||board.deckHeight)-(board.deckHeight||0);
         const width=Math.max(0.15,(contact.deckWidth||0.42)*0.43);
@@ -343,18 +347,25 @@ export class UnrealRider {
         const y=deckTop+this.soleOffsets[side];
         // A completed 180 shove-it changes the deck's cosmetic yaw, not
         // which foot is in front. Never cross the rider's leg targets.
-        this.ft[side].copy(this.root.worldToLocal(plantedFootWorldPoint(board,x,y,z)));
+        // Released flip feet stay in the skater's frame while the board spins.
+        // Blend onto the final deck tilt only during the catch.
+        const catchYaw = (board._yawHold || 0) + (flipState?.yaw || 0) * Math.PI * 2;
+        const planted = this.root.worldToLocal(plantedFootWorldPoint(board,x,y,z,V(),catchYaw));
+        if (deckLocked) this.ft[side].copy(planted);
+        else this.ft[side].set(x, y, z).lerp(planted, motion?.catchWeight || 0);
       }
     }
     // Ollie/vert tuck lowers the pelvis with the feet on the deck. Only a flip
     // or a named one-foot trick releases them; a generic air pose must not float.
     if (motion) {
-      this.ft.l.y += motion.footLift;
-      this.ft.r.y += motion.footLift;
+      this.ft[front].y += motion.frontLift;
+      this.ft[rear].y += motion.rearLift;
       const heel = /Heel/i.test(flipState.name), kick = /Kick|Hard|Varial/i.test(flipState.name);
-      this.ft[front].x += (front === 'l' ? -1 : 1) * (heel ? -0.16 : kick ? 0.18 : 0.08) * motion.flick;
-      this.ft[front].z -= 0.12 * motion.flick;
-      if (/Impossible|Shove/.test(flipState.name)) this.ft[rear].z += 0.16 * motion.clearance;
+      this.ft[front].x += (heel ? -.19 : kick ? .22 : .06) * motion.flick;
+      const noseSign = Math.sign(this.feet[front].point.z) || -1;
+      this.ft[front].z += noseSign * .16 * motion.flick;
+      this.ft[rear].z -= noseSign * .06 * motion.clearance;
+      if (/Impossible|Shove/.test(flipState.name)) this.ft[rear].z -= noseSign * .10 * motion.flick;
     }
     if (flatland) {
       const wave = Math.sin(time * 7);
@@ -390,23 +401,26 @@ export class UnrealRider {
       this.ft.l.x -= 0.2 + bailProgress * 0.2; this.ft.r.x += 0.2 + bailProgress * 0.2;
       this.ft.l.y += 0.16; this.ft.r.y += 0.1;
     }
-    // Half Pipe's previous law-of-cosines lift could undo the crouch by
-    // raising the pelvis up to 12 cm every frame. IK already bends the knees;
-    // correct only true overextension when a rider's foot cannot reach.
-    if (deckLocked && !bail) {
-      let overextension = 0;
+    // Solve a visible knee bend against the final ankle anchors. This replaces
+    // a fixed centimetre drop that barely moved the head on short-legged rigs.
+    // The target is absolute from rest each frame, so it cannot accumulate.
+    if (!bail && !flatland) {
+      let hipCorrection = Infinity;
       for (const side of SIDES) {
         const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side],
           foot = this.bones['foot_' + side];
         if (!thigh || !calf || !foot || !this.feet[side]) continue;
         const hip = thigh.getWorldPosition(V()), knee = calf.getWorldPosition(V());
         const ankle = foot.getWorldPosition(V());
-        overextension = Math.max(overextension, legOverextension(hip,
-          this.root.localToWorld(this.ft[side].clone()),
-          hip.distanceTo(knee), knee.distanceTo(ankle)));
+        const upperLength = hip.distanceTo(knee), lowerLength = knee.distanceTo(ankle);
+        const hipLocal = this.root.worldToLocal(hip.clone()), target = this.ft[side];
+        const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
+        const flex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        const wantedHeight = kneeHeight(upperLength, lowerLength, flex, horizontalSquared);
+        hipCorrection = Math.min(hipCorrection, target.y + wantedHeight - hipLocal.y);
       }
-      if (overextension > 0.001) {
-        this.model.position.y -= overextension;
+      if (Number.isFinite(hipCorrection)) {
+        this.model.position.y += hipCorrection;
         this.root.updateWorldMatrix(true, true);
         ensurePelvisDeckClearance(this.model, this.bones.pelvis, board,
           this.poseCalibration.pelvisClearance);
@@ -426,7 +440,7 @@ export class UnrealRider {
       // The board may have spun 180 degrees while the skater stayed facing
       // forward. Preserve the skater's ankle yaw and only align deck tilt.
       setWorldQ(foot, footWorldOrientation(
-        this.root, board, this.feet[side].q, deckLocked && !releasedFoot,
+        this.root, board, this.feet[side].q, (deckLocked || motion?.catchWeight > .99) && !releasedFoot,
       ));
     }
 
@@ -438,9 +452,9 @@ export class UnrealRider {
       const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
       const lateral = this.armOutward[side] || V(this.outward[side], 0, 0);
       const target=this.at[side].copy(shoulder)
-        .addScaledVector(lateral, .12 + compression * .025)
-        .addScaledVector(this.kneeForward, .045 + balance * .04);
-      target.y += -.36 - compression * .035 + air * .045;
+        .addScaledVector(lateral, .12 + compression * .07 + air * .16)
+        .addScaledVector(this.kneeForward, .045 + compression * .10 + balance * .04);
+      target.y += -.36 + compression * .10 + air * .15;
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);

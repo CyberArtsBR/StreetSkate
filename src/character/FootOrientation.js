@@ -16,8 +16,8 @@ const UP = new THREE.Vector3(0, 1, 0);
  * must plant on the deck in their original stance frame. Undo ONLY the held
  * trick yaw for the foot contact points; the deck's bank/pitch still applies.
  */
-export function plantedFootWorldPoint(board, x, y, z, output = new THREE.Vector3()) {
-  const heldYaw = Number.isFinite(board?._yawHold) ? board._yawHold : 0;
+export function plantedFootWorldPoint(board, x, y, z, output = new THREE.Vector3(), presentationYaw = board?._yawHold) {
+  const heldYaw = Number.isFinite(presentationYaw) ? presentationYaw : 0;
   const cos = Math.cos(heldYaw), sin = Math.sin(heldYaw);
   return board.pointWorld(cos * x - sin * z, y, sin * x + cos * z, output);
 }

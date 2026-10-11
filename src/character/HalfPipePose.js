@@ -10,17 +10,19 @@ export function kneeHeight(upper, lower, flex, lateralSquared) {
 }
 
 export function halfPipePose({ charge = 0, air = 0, vert = false, verticalVelocity = 0,
-  landing = 0, speed = 0, grab = 0 } = {}) {
+  landing = 0, speed = 0, grab = 0, popProgress = 1 } = {}) {
   const airborne = clamp(air);
   const anticipation = smooth(-verticalVelocity / 12) * airborne;
-  const preload = 0.24 + 0.08 * clamp(speed);
+  const preload = 0.14 + 0.10 * clamp(speed);
   const aerialCrouch = vert ? 0.94 - anticipation * 0.16 : 0.70 - anticipation * 0.12;
-  const flightCompression = 0.62 + aerialCrouch * 0.36;
+  const tuckedCompression = 0.62 + aerialCrouch * 0.36;
+  // Extend out of the charged crouch at takeoff, then gather the knees again.
+  const flightCompression = .34 + smooth(popProgress) * (tuckedCompression - .34);
   const compression = clamp(Math.max(
     preload + smooth(charge) * (1 - preload),
     flightCompression * airborne,
     clamp(grab) * 0.86,
   ) + clamp(landing) * 0.38);
-  return { compression, torsoLean: 0.10 + compression * 0.22 + airborne * 0.08,
+  return { compression, torsoLean: 0.10 + compression * 0.46 + airborne * 0.04,
     response: charge > 0 || airborne > 0.1 ? 22 : 14 };
 }
