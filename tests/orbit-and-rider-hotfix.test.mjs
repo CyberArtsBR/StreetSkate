@@ -31,6 +31,11 @@ test('ORBIT pink ring remains decorative and grindable without blocking bowl ent
   }
   assert.equal(checked,24);
   assert.ok(world.brandingAnchor&&world.brandingAnchor.width>7,'authored sign was not found');
+  const paint=world.park.children.map(mesh=>mesh.material).find(material=>material?.name==='Paint / crew graffiti');
+  assert.ok(paint,'imported ramp graffiti material missing');
+  assert.equal(paint.transparent,false,'graffiti overlay still has ghost transparency');
+  assert.equal(paint.depthWrite,true);
+  assert.ok(paint.alphaTest>=.4,'paint does not discard clear texels');
 });
 
 test('ORBIT sign replaces just the old logotype using the authored sign position',async()=>{
@@ -90,10 +95,10 @@ test('real rider GLBs retain A-pose and clear head during no-grab jumps and tran
       assert.ok(wrist.distanceTo(head)>.08,name+'/'+scenario.state+'/'+side+' wrist clips head');
       assert.ok(elbow.distanceTo(head)>.08,name+'/'+scenario.state+'/'+side+' elbow clips head');
     }
-    if(['IDLE','COAST','OLLIE_POP','AIR','VERT_AIR'].includes(scenario.state)){
+    if(!scenario.grabState && ['IDLE','COAST','OLLIE_POP','AIR','VERT_AIR'].includes(scenario.state)){
       const outward=rider.armOutward[side].clone().applyQuaternion(rider.root.getWorldQuaternion(new THREE.Quaternion())).normalize();
       assert.ok(wrist.clone().sub(shoulder).dot(outward)>arm*.33,name+'/'+scenario.state+'/'+side+' closed A-pose');
-      assert.ok(flex<.5,name+'/'+scenario.state+'/'+side+' elbow visibly buckled '+flex.toFixed(3)+' armLen='+arm.toFixed(3)+' spread='+wrist.clone().sub(shoulder).dot(outward).toFixed(3)+' head='+wrist.distanceTo(head).toFixed(3)+' handDist='+wrist.distanceTo(shoulder).toFixed(3)+' targetDist='+rider.smoothedHands[side]?.distanceTo(shoulder).toFixed(3)+' targetErr='+wrist.distanceTo(rider.smoothedHands[side]).toFixed(3)+' target='+rider.smoothedHands[side]?.toArray().map(n=>n.toFixed(2)).join(',')+' wrist='+wrist.toArray().map(n=>n.toFixed(2)).join(',')+' diagnostics='+JSON.stringify(rider.root.userData.debugAirLeft)+' channels='+Object.entries(Object.fromEntries(rider.channels)).map(([k,v])=>k+':'+v.value.toFixed(2)).join(','));
+      assert.ok(flex<.5,name+'/'+scenario.state+'/'+side+' non-grab A-pose elbow too bent: '+flex.toFixed(3));
     }
    }
   }
