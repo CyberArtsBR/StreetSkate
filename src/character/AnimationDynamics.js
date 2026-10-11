@@ -63,13 +63,12 @@ export function preserveFootOrder(targets, anchors, influence = 1) {
 }
 
 /**
- * Relaxed skating A-pose. Previous neutral hands splayed 40 degrees sideways
- * and the elbow's IK pole bowed out, producing a "( )" silhouette. Keep wrists
- * near the torso and bend each elbow modestly INWARD relative to the shoulder-
- * to-wrist line, regardless of the imported character's shoulder width.
+ * A neutral A-pose with visible daylight between both arms and the ribcage.
+ * Keep both wrists ~33 degrees outward from the vertical, near full extension
+ * and with only a subtle INWARD elbow pole. This avoids both glued arms and
+ * the reversed/hyperextended-looking elbows seen in the previous hotfix.
  *
- * Inputs are WORLD-space rig axes, so left/right stay anatomical even on a
- * sideways skater or on imported custom GLBs. No bone scales are changed.
+ * World-space anatomical axes come from the loaded rig, never mesh sizing.
  */
 export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   if (!shoulder?.isVector3 || !outward?.isVector3 ||
@@ -82,7 +81,7 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   // Do not let this cancel the inward elbow pole or bias left/right unequally.
   face.addScaledVector(lateral, -face.dot(lateral));
   if (face.lengthSq() > 1e-8) face.normalize();
-  const spread = THREE.MathUtils.degToRad(12);
+  const spread = THREE.MathUtils.degToRad(33);
   const direction = lateral.clone().multiplyScalar(Math.sin(spread))
     .add(new THREE.Vector3(0, -Math.cos(spread), 0))
     .addScaledVector(face, 0.025).normalize();
@@ -90,9 +89,47 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   // inward pole, not excess elbow flex, controls the resting silhouette.
   const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.985);
   const elbow = shoulder.clone().lerp(wrist, 0.5)
-    .addScaledVector(lateral, -armLength * 0.14)
-    .addScaledVector(face, armLength * 0.10);
+    .addScaledVector(lateral, -armLength * 0.035)
+    .addScaledVector(face, armLength * 0.07);
   return { wrist, elbow };
+}
+
+/**
+ * Keep procedural arm goals out of the torso and face. Ordinary movement is
+ * bounded to the anatomical side of the shoulder; a named grab may cross the
+ * midline to reach the deck but can never clip the face. The neutral A-pose is
+ * handled separately and is not shortened by this guard.
+ */
+export function safeArmGoal(shoulder, requested, outward, head, armLength,
+  { crossBody = false } = {}) {
+  if (!shoulder?.isVector3 || !requested?.isVector3 ||
+      !outward?.isVector3 || !Number.isFinite(armLength) || armLength <= 0)
+    return requested?.clone?.() || null;
+  const side = outward.clone().setY(0);
+  if (side.lengthSq() < 1e-8) return requested.clone();
+  side.normalize();
+  const goal = requested.clone();
+  const relative = goal.clone().sub(shoulder);
+  // Keep normal movement hands beside the torso, not across the chest.
+  const minimumOut = armLength * (crossBody ? -0.06 : 0.24);
+  const currentOut = relative.dot(side);
+  if (currentOut < minimumOut) goal.addScaledVector(side, minimumOut - currentOut);
+  if (head?.isVector3) {
+    const exclusion = Math.max(0.085, armLength * 0.38);
+    const fromHead = goal.clone().sub(head);
+    if (fromHead.lengthSq() < exclusion * exclusion) {
+      // A stable sideways/downward escape is safer than normalizing an
+      // almost-zero vector and accidentally pushing through the skull.
+      const escape = side.clone().multiplyScalar(0.85).add(new THREE.Vector3(0, -0.6, 0)).normalize();
+      goal.copy(head).addScaledVector(escape, exclusion);
+    }
+  }
+  // Protect the shoulder joint from unreachable hand goals, without resizing
+  // its bone chain. The IK solver has its own minimum bend radius.
+  const arm = goal.clone().sub(shoulder);
+  const maximum = armLength * 0.985;
+  if (arm.lengthSq() > maximum * maximum) goal.copy(shoulder).addScaledVector(arm.normalize(), maximum);
+  return goal;
 }
 
 /** Smooth wrist destinations, not the solved ankles. This avoids grab target
