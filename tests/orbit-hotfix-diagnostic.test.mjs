@@ -9,6 +9,8 @@ test('diagnostic: ORBIT bowl, sign and ramp classifications',async()=>{
  const json=JSON.parse(bytes.subarray(20,20+size).toString('utf8'));
  const names=json.nodes.filter(n=>/bowl|ring|lip|apron|circle|ORBIT|SIGN|brand|logo|letter|arch|ramp|quarter|ride|back|core|shell/i.test(n.name||'')).map(n=>n.name||'');
  console.log('ORBIT_DIAG_NAMES '+JSON.stringify(names.slice(0,150)));
+ console.log('ORBIT_DIAG_SIGN_NAMES '+JSON.stringify(json.nodes.map(n=>n.name||'').filter(x=>/gate|billboard|letter|type|text|brand|sign|logo|header|banner|portal|title|entrance|score|font/i.test(x)).slice(0,110)));
+ console.log('ORBIT_DIAG_ALL_MATERIALS '+JSON.stringify(json.materials.map(m=>({name:m.name,alphaMode:m.alphaMode,doubleSided:m.doubleSided,alpha:m.pbrMetallicRoughness?.baseColorFactor?.[3]})).slice(0,100)));
  console.log('ORBIT_DIAG_MATERIALS '+JSON.stringify(json.materials.map(m=>({name:m.name,alphaMode:m.alphaMode,transmission:m.extensions?.KHR_materials_transmission?.transmissionFactor,alpha:m.pbrMetallicRoughness?.baseColorFactor?.[3],doubleSided:m.doubleSided})).filter(m=>/ramp|side|shell|bowl|silver|concrete|neon|graffiti|LED|sign|logo|roof|purple|orbital/i.test(m.name||'')).slice(0,70)));
  const root=await loadGeometry(new URL('../public/assets/spacepark/orbit.glb',import.meta.url));
  root.updateMatrixWorld(true);
@@ -21,6 +23,7 @@ test('diagnostic: ORBIT bowl, sign and ramp classifications',async()=>{
   const materials=(Array.isArray(mesh.material)?mesh.material:[mesh.material]).map(m=>({name:m?.name,transparent:m?.transparent,opacity:m?.opacity,depthWrite:m?.depthWrite,side:m?.side}));
   objects.push({name,box:[...bounds.min.toArray().map(n=>+n.toFixed(2)),...bounds.max.toArray().map(n=>+n.toFixed(2))],materials});
  });
+ console.log('ORBIT_DIAG_SIGN_OBJECTS '+JSON.stringify(objects.filter(o=>/gate|billboard|letter|type|text|brand|sign|logo|header|banner|portal|title|entrance|score|font/i.test(o.name)).slice(0,60)));
  console.log('ORBIT_DIAG_OBJECTS '+JSON.stringify(objects.slice(0,110)));
  const split=splitOrbitScene(root,[]);
  const coll=split.collision.children.filter(m=>/bowl|ring|lip|apron|circle|sign|logo|arch/i.test(m.name));
