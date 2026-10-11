@@ -130,7 +130,8 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
-  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial() : null;
+  const rubberMaterial = ['urban-warehouse', 'grand-warehouse'].includes(id)
+    ? createUrbanRubberFloorMaterial() : null;
   try {
     if (id === 'urban-warehouse' || id === 'grand-warehouse') {
       imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
@@ -139,7 +140,7 @@ export async function createWarehouseVariant(id) {
     }
     batched = batchWarehouseVisuals(gltf.scene, variant.name, { rubberMaterial });
     if (rubberMaterial && !batched.rubberFloorMeshes) {
-      throw new Error('Urban warehouse has no recognized rubber floor objects; check the GLB ground mesh names.');
+      throw new Error(`${variant.name} has no recognized rubber floor objects; check the GLB ground mesh names.`);
     }
   } catch (error) {
     if (rubberMaterial) {
