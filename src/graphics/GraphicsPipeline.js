@@ -41,7 +41,7 @@ const CAS_SHADER = {
 };
 
 
-// Add ONLY the actor/board bloom buffer over the normally lit environment.
+// Add the selective glow buffer over the normally lit environment.
 // The environment never contributes to this texture.
 const SELECTIVE_BLOOM_COMPOSITE = {
   uniforms: {
@@ -88,9 +88,8 @@ export class GraphicsPipeline {
     this.composer.addPass(new RenderPass(scene, camera));
     this.ssr = null; // Heavy pass is allocated only on an SSR-enabled preset.
 
-    // A separate HDR composer renders only skater+skateboard light contribution.
-    // Non-target geometry is temporarily black (depth-occluding, not glowing);
-    // no warehouse floor, ramp, sky, light fixture or environment gets bloom.
+    // A separate HDR composer isolates actor glow and ORBIT's emissive fixtures.
+    // Other geometry stays black in this pass while preserving occlusion.
     const bloomTarget = new THREE.WebGLRenderTarget(1, 1, {
       type: THREE.HalfFloatType, depthBuffer: true, stencilBuffer: false,
     });
@@ -143,6 +142,7 @@ export class GraphicsPipeline {
 
   setWorld(world) {
     this.world = world;
+    this.configureBloom();
     this.refreshSSRTargets();
     this.updateMaterials();
   }
@@ -160,6 +160,13 @@ export class GraphicsPipeline {
     this.glowRoot.traverse(object => {
       if (object.isMesh) allowed.add(object);
     });
+    if (this.world?.userData.environmentBloom) {
+      this.world.traverse(object => {
+        if (!object.isMesh) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        if (materials.some(material => /^(LED|Grind) \/ /.test(material?.name || '') && material.emissive?.getHex() > 0)) allowed.add(object);
+      });
+    }
     if (!allowed.size) return false;
     const replaced = [];
     const originalBackground = this.scene.background;
@@ -241,17 +248,21 @@ export class GraphicsPipeline {
       console.warn('SSR unavailable on this GPU; falling back to environment reflections.', error);
       if (this.ssr) this.ssr.enabled = false;
     }
-    this.bloomComposite.enabled = settings.bloomStrength > 0;
-    this.bloom.strength = settings.bloomStrength * settings.vfxScale;
-    this.bloom.radius = .24;
-    this.bloom.threshold = .88;
-    // The isolated buffer also contains the lit actor silhouette. Keep the
-    // additive contribution conservative to avoid bleaching character colors.
-    this.bloomComposite.uniforms.bloomMix.value = .32;
+    this.configureBloom();
     this.cas.uniforms.strength.value = settings.sharpen;
     this.updateMaterials();
     this.resize(this.width, this.height);
     return settings;
+  }
+
+  configureBloom() {
+    if (!this.settings) return;
+    const orbit = Boolean(this.world?.userData.environmentBloom);
+    this.bloomComposite.enabled = orbit || this.settings.bloomStrength > 0;
+    this.bloom.strength = orbit ? .62 : this.settings.bloomStrength * this.settings.vfxScale;
+    this.bloom.radius = orbit ? .38 : .24;
+    this.bloom.threshold = orbit ? 1.25 : .88;
+    this.bloomComposite.uniforms.bloomMix.value = orbit ? 1 : .32;
   }
 
   resize(width, height) {
@@ -282,7 +293,7 @@ export class GraphicsPipeline {
       }
       this.composer.render();
       // Re-enable on the next frame after a transient/no-rider loading state.
-      this.bloomComposite.enabled = this.settings.bloomStrength > 0;
+      this.bloomComposite.enabled = Boolean(this.world?.userData.environmentBloom) || this.settings.bloomStrength > 0;
     } catch (error) {
       console.warn('Post-processing failed; disabling it for stable skating.', error);
       this.faulted = true;
