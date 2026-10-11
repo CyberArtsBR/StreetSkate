@@ -21,28 +21,28 @@ test('only Map 4 authored floor names match the material swap', () => {
   ]) assert.equal(isUrbanRubberFloorName(name), false, name);
 });
 
-test('the actual Map 4 GLB contains at least one named floor for the rubber swap', () => {
-  const bytes = readFileSync(new URL('../public/assets/warehouse/urban-warehouse.glb', import.meta.url));
-  assert.equal(bytes.toString('ascii', 0, 4), 'glTF');
-  const length = bytes.readUInt32LE(12);
-  const json = JSON.parse(bytes.subarray(20, 20 + length).toString('utf8'));
-  const matchingNodes = json.nodes.filter(node => isUrbanRubberFloorName(node.name));
-  assert.ok(matchingNodes.some(node => /Premium_White_Marble_Floor/i.test(node.name)),
-    'Expected exported premium marble floor to be overridden');
-  assert.ok(matchingNodes.length > 0);
+test('shipped Grand Warehouse GLB contains named ground suitable for floor-finish classification',()=>{
+  const bytes=readFileSync(new URL('../public/assets/warehouse/granwarehouse.glb',import.meta.url));
+  assert.equal(bytes.toString('ascii',0,4),'glTF');
+  assert.equal(bytes.readUInt32LE(8),bytes.length,'complete GLB asset');
+  const length=bytes.readUInt32LE(12);
+  const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
+  const matchingNodes=json.nodes.filter(node=>isUrbanRubberFloorName(node.name||''));
+  assert.ok(matchingNodes.length>0,'shipped asset has no classifiable Ground_Floor node');
+  assert.ok(matchingNodes.some(node=>/Ground_Floor/.test(node.name)),
+    'the Grand ground was lost from the exported scene');
 });
 
-test('real Map 4 visual scene batches the exported marble objects into rubber meshes', async () => {
-  const world = await loadGeometry('public/assets/warehouse/urban-warehouse.glb');
-  const rubber = new THREE.MeshStandardMaterial({ color: '#343b40' });
-  const batched = batchWarehouseVisuals(world, 'Urban QA rubber test', { rubberMaterial:rubber });
-  assert.ok(batched.rubberFloorMeshes >= 1,
-    'Runtime scene mesh names must route to rubber, not just JSON node labels');
-  assert.ok(batched.park.children.some(mesh => mesh.material === rubber),
-    'At least one visual batch must use the rubber material');
-  assert.ok(batched.park.children.some(mesh => mesh.material !== rubber),
-    'Ramps and architectural materials must remain separate');
-  assert.ok(batched.visualTriangles > 1000,'Original mesh topology should be retained');
+test('Grand Warehouse visual batching can override named floors without changing ramps',async()=>{
+  const world=await loadGeometry('public/assets/warehouse/granwarehouse.glb');
+  const rubber=new THREE.MeshStandardMaterial({color:'#343b40'});
+  const batched=batchWarehouseVisuals(world,'Grand floor test fixture',{rubberMaterial:rubber});
+  assert.ok(batched.rubberFloorMeshes>=1,'exported ground must be identifiable by actual meshes');
+  assert.ok(batched.park.children.some(mesh=>mesh.material===rubber),
+    'floor override is not assigned to any resulting batch');
+  assert.ok(batched.park.children.some(mesh=>mesh.material!==rubber),
+    'non-floor ramp materials must remain independently batched');
+  assert.ok(batched.visualTriangles>1000,'authored mesh topology was lost');
 });
 
 test('world-space tiled rubber floor UVs never change the actual floor geometry', () => {
