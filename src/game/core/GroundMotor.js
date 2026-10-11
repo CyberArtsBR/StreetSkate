@@ -6,18 +6,21 @@ const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
 
 export const GROUND_MOTOR = Object.freeze({
   autoPushTarget: 17,
-  autoPushSurfaceY: 0.965,
+  autoPushSurfaceY: 0.992,
   autoPushMinAccel: 3.6,
   autoPushMaxAccel: 13.5,
-  crouchedPushTarget: 19,
-  crouchedPushAccelScale: 1.12,
-  crouchedDragScale: 0.62,
+  // Crouching is aerodynamic, not an invisible extra throttle.
+  crouchedPushTarget: 17,
+  crouchedPushAccelScale: 0.78,
+  crouchedDragScale: 0.55,
   softSpeedLimit: 21,
-  overspeedDrag: 1.25,
+  // Progressive wind/overspeed drag, rather than the old speed-killing wall.
+  overspeedDrag: 0.008,
+  manualOverspeedDragScale: 0.70,
   rollingBase: 0.025,
   rollingQuadratic: 0.00115,
   transitionSurfaceY: 0.992,
-  uphillGravityScale: 0.38,
+  uphillGravityScale: 0.92,
   downhillGravityScale: 1.0,
   steerRateLowSpeed: 2.7,
   steerRateHighSpeed: 1.65,
@@ -37,7 +40,14 @@ export const GROUND_MOTOR = Object.freeze({
   sharpTurnRateScale: 1.38,
   steepBrakeReleaseNormalY: 0.65,
   steepBrakeReleaseSpeed: 1.5,
-  absoluteSpeedCap: 23,
+  // At speeds beyond the validated park handling range, ease yaw to avoid
+  // high-speed instant pivots without imposing a linear speed ceiling.
+  highSpeedSteerReference: 17,
+  highSpeedYawExponent: 1.3,
+  groundSteerResponseLow: 0.045,
+  groundSteerResponseHigh: 0.085,
+  // Compatibility-only value for old QA/introspection, NOT applied as a cap.
+  absoluteSpeedCap: 128,
 });
 
 /** Signed speed follows the canonical deck-relative travel sign, not raw magnitude. */
@@ -46,8 +56,12 @@ export function signedGroundSpeed({
   forward,
   rollingSign = 1,
 } = {}) {
-  const measuredSigned = velocity?.dot?.(forward) || 0;
-  const magnitude = Math.max(Math.abs(measuredSigned), velocity?.length?.() || 0);
+  const rawProjection = velocity?.dot?.(forward);
+  const measuredSigned = Number.isFinite(rawProjection) ? rawProjection : 0;
+  // Lateral collision slide is not usable forward speed. The former world-vector
+  // magnitude projected *all* side slip onto the deck, creating phantom energy.
+  // Forward is the unit tangent supplied by GroundMotor, including steep walls.
+  const magnitude = Math.abs(measuredSigned);
   const travelSign = Number(rollingSign) < 0 ? -1 : 1;
   return {
     measuredSigned,
@@ -100,8 +114,35 @@ export function groundSteeringDelta({
     config.steerRateHighSpeed,
     Math.abs(Number(speed) || 0) / config.steerFullSpeed,
   );
-  return -physicalSteer * rate * (sharpTurn ? config.sharpTurnRateScale : 1)
-    * Math.max(0, Number(dt) || 0);
+  const magnitude = Math.abs(Number(speed) || 0);
+  const safeReference = Math.max(0.01, config.highSpeedSteerReference || 17);
+  const highSpeedScale = magnitude > safeReference
+    ? (safeReference / magnitude) ** (config.highSpeedYawExponent || 1)
+    : 1;
+  return -physicalSteer * rate * highSpeedScale
+    * (sharpTurn ? config.sharpTurnRateScale : 1)
+    * Math.max(0, Number.isFinite(dt) ? dt : 0);
+}
+
+/** Deterministic exponential steering response (independent of fixed tick rate). */
+export function smoothGroundSteer({
+  previous = 0,
+  target = 0,
+  speed = 0,
+  dt = 0,
+  config = GROUND_MOTOR,
+} = {}) {
+  const magnitude = Math.abs(Number(speed) || 0);
+  const response = lerp(
+    config.groundSteerResponseLow,
+    config.groundSteerResponseHigh,
+    magnitude / Math.max(1, config.highSpeedSteerReference),
+  );
+  const alpha = 1 - Math.exp(-Math.max(0, Number.isFinite(dt) ? dt : 0)
+    / Math.max(0.001, response));
+  const current = clamp(Number.isFinite(previous) ? previous : 0, -1, 1);
+  const desired = clamp(Number.isFinite(target) ? target : 0, -1, 1);
+  return lerp(current, desired, alpha);
 }
 
 /** Skate wheels should coast; neutral input must preserve useful park speed. */
@@ -109,8 +150,8 @@ export function passiveRollingResistance(speed, config = GROUND_MOTOR, crouched 
   const magnitude = Math.abs(Number(speed) || 0);
   const dragScale = crouched ? config.crouchedDragScale : 1;
   const excess = Math.max(0, magnitude - config.softSpeedLimit);
-  return config.rollingBase + config.rollingQuadratic * magnitude * magnitude * dragScale
-    + config.overspeedDrag * excess * excess;
+  return (config.rollingBase + config.rollingQuadratic * magnitude * magnitude)
+    * dragScale + config.overspeedDrag * excess * excess;
 }
 
 /** Neutral auto-push is only a flat-ground speed source. */
@@ -127,8 +168,9 @@ export function automaticPushAcceleration({
   const target = crouched ? config.crouchedPushTarget : config.autoPushTarget;
   if (magnitude >= target) return 0;
   const deficit = clamp((target - magnitude) / target, 0, 1);
-  return (config.autoPushMinAccel
-    + (config.autoPushMaxAccel - config.autoPushMinAccel) * deficit)
+  // Smoothly taper traction to zero; a fixed minimum acceleration caused an
+  // abrupt acceleration spike/cut at cruise speed.
+  return config.autoPushMaxAccel * Math.pow(deficit, 0.75)
     * (crouched ? config.crouchedPushAccelScale : 1);
 }
 
@@ -189,9 +231,9 @@ export function resolveGroundPropulsion({
   brakeDecel = 13,
   config = GROUND_MOTOR,
 } = {}) {
-  const step = Math.max(0, Number(dt) || 0);
+  const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
   const directionSign = Number(travelSign) < 0 ? -1 : 1;
-  let nextSpeed = Number(speed) || 0;
+  let nextSpeed = Number.isFinite(speed) ? speed : 0;
 
   const gravityScale = transitionGravityScale({
     signedSpeed: nextSpeed,
@@ -222,15 +264,19 @@ export function resolveGroundPropulsion({
 
   // Balance input must not act as a throttle, and a held manual must retain
   // its momentum. Slopes and the explicit brake still change speed.
+  // Balance must retain ordinary-speed momentum; above cruising range only a
+  // gentle progressive air/overspeed load applies. Brakes remain authoritative.
   const resistance = (manual
-    ? config.overspeedDrag * Math.max(0, Math.abs(nextSpeed) - config.softSpeedLimit) ** 2
+    ? config.manualOverspeedDragScale * config.overspeedDrag
+      * Math.max(0, Math.abs(nextSpeed) - config.softSpeedLimit) ** 2
     : passiveRollingResistance(nextSpeed, config, crouched))
     + (braking ? brakeDecel : 0);
   const remainingMagnitude = Math.max(0, Math.abs(nextSpeed) - resistance * step);
   // Canonical stopped state is +0 in regular and fakie. Multiplying a zero
   // magnitude by Math.sign(-speed) otherwise leaves observable negative zero.
   nextSpeed = remainingMagnitude > 0 ? Math.sign(nextSpeed) * remainingMagnitude : 0;
-  nextSpeed = clamp(nextSpeed, -config.absoluteSpeedCap, config.absoluteSpeedCap);
+  // No hard speed clamp: ramp transfers, gravity and skilled skating can exceed
+  // cruise speed. Continuous resistance bleeds excess energy without a snap.
 
   return {
     nextSpeed,
