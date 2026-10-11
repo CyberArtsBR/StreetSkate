@@ -103,8 +103,12 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
-    if (grandMode && /^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(name)) {
-      addGrandFixture(object, name);
+    // GLTFLoader sanitizes "." into "_" in imported Blender node names.
+    // Normalize fixture IDs so collision QA and diagnostics remain stable.
+    if (grandMode && /^(?:Cube__0(?:[._]001)?|Plane_SkateLite_base_color[._]002_0)$/.test(name)) {
+      const canonical = name.replace(/^Cube__0_001$/, 'Cube__0.001')
+        .replace(/^Plane_SkateLite_base_color_002_0$/, 'Plane_SkateLite_base_color.002_0');
+      addGrandFixture(object, canonical);
       return;
     }
     const materialName = object.material?.name || '';
