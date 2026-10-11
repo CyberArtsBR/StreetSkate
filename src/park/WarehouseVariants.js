@@ -158,7 +158,8 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
-  const featureMetadata = annotateWarehouseFeatures(gltf.scene, id);
+  const featureMetadata = typeof annotateWarehouseFeatures === 'function'
+    ? annotateWarehouseFeatures(gltf.scene, id) : { annotated: 0, explicitAliases: 0 };
   let excludedStairMeshes = 0; // Must survive the try block for manifest statistics.
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
     : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
@@ -247,7 +248,8 @@ export async function createWarehouseVariant(id) {
   manifest.visualTriangles = batched.visualTriangles;
   manifest.source = { asset: variant.url.split('?')[0], classification: 'authored-glb' };
   manifest.collisionSource = imported ? 'Visible imported GLB geometry / glTF metadata with legacy-name fallback' : 'Procedural Foundry proxies';
-  manifest.routes = buildParkRouteMetadata(manifest, id);
+  manifest.routes = typeof buildParkRouteMetadata === 'function'
+    ? buildParkRouteMetadata(manifest, id) : [];
   if (imported) manifest.lines = manifest.routes.map(route => ({
     name: route.name, category: route.category, route: route.waypoints.map(point => point.label),
   }));
