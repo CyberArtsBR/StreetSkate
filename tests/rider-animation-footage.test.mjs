@@ -39,6 +39,16 @@ for (const name of avatars) {
     const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
     const board = boardFixture();
     const idle = settle(rider, board, { presentation: { state: 'IDLE' } });
+    for (const side of ['l','r']) {
+      const shoulder=rider.bones['upperarm_'+side].getWorldPosition(v());
+      const elbow=rider.bones['lowerarm_'+side].getWorldPosition(v());
+      const wrist=rider.bones['hand_'+side].getWorldPosition(v());
+      const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
+      const direction=wrist.clone().sub(shoulder).normalize();
+      assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${side}: resting elbow folds outward`);
+      assert.ok(direction.dot(rider.armOutward[side])>.58,`${name}/${side}: A-pose must clear the torso`);
+      assert.ok(direction.y<-.7,`${name}/${side}: resting arms should angle downward`);
+    }
     const idleFlex = ['l', 'r'].map(s => flex(rider, s));
     const crouch = settle(rider, board, { presentation: { state: 'CROUCH' }, crouch: 1 });
     assert.ok(idle - crouch > .13, `${name}: hip drop ${idle - crouch}`);

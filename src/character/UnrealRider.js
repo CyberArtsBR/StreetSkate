@@ -471,10 +471,23 @@ export class UnrealRider {
       const wristWorld = hand.getWorldPosition(V());
       const armLength = shoulderWorld.distanceTo(elbowWorld) + elbowWorld.distanceTo(wristWorld);
       // Avoid forcing adult-sized hand offsets onto compact avatars.
-      // In neutral stances keep 16% arm-chain slack for a natural elbow bend.
+      // Active skating poses keep elbow slack for balance and board reaches.
       const world = boundedNeutralHandTarget(
         shoulderWorld, this.root.localToWorld(target.clone()), armLength,
       );
+      // At rest use an anatomical A-pose instead of folding the elbows out
+      // while pinning both wrists against the hips. Scale to each avatar's
+      // actual arm length; almost straight elbows avoid the broken-shoulder
+      // silhouette on the short Chimpions rigs. State blending preserves the
+      // authored crouch, flick, balance and grab targets.
+      const idleArms = this.w(PRESENTATION_STATES.IDLE) * (1-grab) * (1-flat) * (bail ? 0 : 1);
+      if (idleArms > 0) {
+        const angle = THREE.MathUtils.degToRad(40);
+        const direction = lateral.clone().multiplyScalar(Math.sin(angle))
+          .add(V(0,-Math.cos(angle),0)).addScaledVector(this.kneeForward,.025).normalize();
+        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.99);
+        world.lerp(restingHand,idleArms);
+      }
       const reachWeight = handstand ? flat : grab;
       if (reach) {
         world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
@@ -486,6 +499,11 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
+      if (idleArms > 0) {
+        const restingPole = shoulderWorld.clone().lerp(world,.5)
+          .addScaledVector(this.kneeForward.clone().applyQuaternion(rootQ),armLength*.18);
+        elbowPole.lerp(restingPole,idleArms);
+      }
       limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);

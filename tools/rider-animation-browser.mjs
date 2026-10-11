@@ -45,12 +45,18 @@ try {
           return { side, flex: (Math.PI - h.clone().sub(k).angleTo(f.clone().sub(k))) * 180 / Math.PI, ankle: f.toArray() };
         });
         const finite = [...r.rest.keys()].every(bone => bone.quaternion.toArray().every(Number.isFinite));
+        const arms=['l','r'].map(side=>{
+          const shoulder=point(r.bones['upperarm_'+side]),elbow=point(r.bones['lowerarm_'+side]),wrist=point(r.bones['hand_'+side]);
+          const direction=wrist.clone().sub(shoulder).normalize();
+          return {side,flex:(Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow)))*180/Math.PI,
+            outward:direction.dot(r.armOutward[side]),down:direction.y};
+        });
         const p = s.position;
         // Camera looks along the deck, making hip pitch and knee bend readable.
         g.camera.position.set(p.x + 1.6, p.y + .85, p.z - 2.3);
         g.camera.lookAt(p.x, p.y + .8, p.z);
         g.renderer.render(g.scene, g.camera);
-        return { pose, hip: hip.toArray(), head: head.toArray(), legs, finite, png: g.renderer.domElement.toDataURL() };
+        return { pose, hip: hip.toArray(), head: head.toArray(), legs, arms, finite, png: g.renderer.domElement.toDataURL() };
       }, pose);
       const { png, ...check } = result;
       checks.push({ name, ...check });
@@ -85,6 +91,7 @@ try {
       throw new Error(`${name}: crouch did not visibly lower hips and head`);
   }
   if (checks.some(c => !c.finite) || gameplay.some(c => !c.finite)) throw new Error('Nonfinite animation');
+  if(checks.filter(c=>c.pose==='idle').some(c=>c.arms.some(a=>a.flex>22||a.outward<.58||a.down>-.7))) throw new Error('Idle A-pose folds arms or shoulders inward');
   if (!gameplay.some(c => c.state === 'CROUCH' && c.charge > .9) || !gameplay.some(c => c.flip !== null)
     || !gameplay.some(c => c.state === 'LAND')) throw new Error('Input sequence did not charge, flip and land');
   console.log(JSON.stringify({ avatars: 5, poses: checks.length, gameplayFrames: gameplay.length,
