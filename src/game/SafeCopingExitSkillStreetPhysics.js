@@ -223,6 +223,9 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
   }
 
   tryContinuousTransitionReentry(activeAir, before) {
+    // Once a real deck is verified, its own support solver owns touchdown.
+    // The original-wall fallback must never steal a deliberate deck transfer.
+    if (activeAir?.transferring && !activeAir.exitControl?.abortToReturn) return false;
     const contact = this.ensureBoardContact();
     const context = {
       activeAir,

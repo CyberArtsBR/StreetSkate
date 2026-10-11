@@ -187,6 +187,9 @@ export class TransitionController {
         0,
         1,
       );
+      // A nearby crossing rail may be geometrically close but belong to a
+      // perpendicular ramp. Its lip cannot launch this surface normal.
+      if (Math.abs(edgeInfo.tangent.dot(rampInward)) > 0.63) continue;
       const lipPoint = edgeInfo.a.clone().lerp(edgeInfo.b, t);
       const gap = horizontal(position.clone().sub(lipPoint)).length();
       const lipSurfaceY = lipPoint.y - 0.025;
@@ -238,9 +241,11 @@ export class TransitionController {
 
   begin(position, velocity, edge, { boardForward = null, launchBoost = 0 } = {}) {
     const incomingVelocity = velocity.clone();
-    const incomingSpeed = clamp(incomingVelocity.length(), 0, 24);
+    const incomingSpeed = incomingVelocity.length();
     const tangentVelocity = incomingVelocity.dot(edge.copingTangent);
-    const tangentSpeed = Math.min(Math.abs(tangentVelocity), 2.8);
+    // A diagonal run has a genuine along-coping velocity. Do not count it
+    // as climb energy and then delete it when leaving the lip.
+    const tangentSpeed = Math.abs(tangentVelocity);
     const normalY = clamp(Math.abs(edge.surfaceNormal.y), 0, 1);
     const nonLateralSpeed = Math.sqrt(Math.max(0,
       incomingSpeed * incomingSpeed - tangentSpeed * tangentSpeed));
@@ -258,18 +263,36 @@ export class TransitionController {
     // This is a physical speed bound, not a scripted trajectory. It limits
     // launch energy once at departure, then leaves gravity/steering unchanged.
     launchVertical = Math.min(launchVertical, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
-    const lateralVelocity = clamp(tangentVelocity, -2.6, 2.6);
-    const exitRequested = Boolean(edge.exitRequested);
+    const lateralVelocity = tangentVelocity;
+    const exitRequested = Boolean(edge.exitRequested && edge.supportsTransfer !== false
+      && incomingSpeed >= 4.8 && incomingVelocity.y > 0.12);
 
     let launchHorizontal;
     if (exitRequested) {
-      const exitSpeed = clamp(incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
+      // First-stage direction only: real collision-deck transfer planning will
+      // replace this vector. Avoid spending all rise energy on a phantom 12 m/s
+      // outward kick before that geometry has been checked.
+      const exitSpeed = Math.min(8.4, incomingSpeed * 0.64);
       const retainedLateral = edge.copingTangent.clone().multiplyScalar(lateralVelocity * 0.45);
       launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      launchVertical = clamp(launchVertical * 0.80, 3.2, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
+      launchVertical = clamp(launchVertical * 0.84, 0, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     } else {
-      launchHorizontal = edge.copingTangent.clone().multiplyScalar(clamp(lateralVelocity, -1.1, 1.1));
+      // Near-vertical coping retains a small physically directional outward
+      // component rather than annihilating radial velocity in one frame.
+      // Rounded/shallow lip samples do NOT create a deck-crossing catapult.
+      const outwardSpeed = Math.max(0, incomingVelocity.dot(edge.deckOutward));
+      const vertAmount = clamp((0.42 - normalY) / 0.24, 0, 1);
+      const radialRetention = Math.min(1.65, outwardSpeed * 0.22 * vertAmount);
+      launchHorizontal = edge.copingTangent.clone()
+        .multiplyScalar(lateralVelocity)
+        .addScaledVector(edge.deckOutward, radialRetention);
     }
+    // All retained XZ energy is paid for from the *same* launch budget.
+    // Even a fast diagonal approach cannot receive duplicate lift + sideways
+    // kinetic energy through the coping projection.
+    const remainingVertical = Math.sqrt(Math.max(0,
+      energyBudget * energyBudget - launchHorizontal.lengthSq()));
+    launchVertical = Math.min(launchVertical, remainingVertical);
     velocity.copy(launchHorizontal).addScaledVector(UP, launchVertical);
 
     const returnTarget = edge.lipPoint.clone().addScaledVector(edge.rampInward, 0.30);
@@ -308,6 +331,9 @@ export class TransitionController {
       air.supportsPump = transition.supportsPump;
       air.frame.transitionId = transition.id;
       air.frame.transitionType = transition.type;
+      // Re-entry may occur several metres sideways from takeoff, especially
+      // after a deliberate diagonal carve. Match the whole authored coping.
+      air.frame.lipPath = transition.lipPath.map(point => point.clone());
     }
     return air;
   }
