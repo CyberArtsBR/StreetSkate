@@ -12,7 +12,7 @@ import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysi
 import { ensureGrandWarehouseSpawns } from '../src/park/GrandWarehouseSpawns.js';
 
 const file = 'public/assets/warehouse/granwarehouse.glb';
-const expectedHash = 'f0f47613e0aad90fd1ba7903ec218d46fea7bdc9433d437f3a1b26a72d41d886';
+const expectedHash = 'a28205a7aea6cab744f6e374e6239cac1f604f8040ab5bb41a19f78b3da50a24';
 
 test('Map 3 is distinct and preserves the exact Map 2 asset address and selection number', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
@@ -31,9 +31,21 @@ test('original map geometry is embedded in an immutable, separately versioned Ma
   assert.equal(bytes.readUInt32LE(8),bytes.length);
   const length=bytes.readUInt32LE(12);
   const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
-  assert.ok(json.meshes.length>=1414,'missing authored warehouse meshes');
-  assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(n.name||'')).length,3,
-    'two low obstacles and the new SkateLite ramp must be present');
+  assert.equal(json.meshes.length,1412,'unexpected changed or missing revised Grand Warehouse meshes');
+  assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(n.name||'')).length,0,
+    'the artist removed the two low obstacles and SkateLite ramp in this revision');
+  assert.equal(json.nodes.filter(n=>(n.name||'').includes('___tube')).length,17,
+    'all 17 original authored metal rail tubes must remain');
+  const movedBands = [
+    ['04_FLOW_LAB / Flow launch ramp / Side_Edge_Band 001', 33.72187042236328],
+    ['04_FLOW_LAB / Flow launch ramp / Side_Edge_Band 001.001', 33.64250183105469],
+  ];
+  for (const [name,z] of movedBands) {
+    const node=json.nodes.find(n=>n.name===name);
+    assert.ok(node,'edited decorative edge band missing: '+name);
+    assert.ok(Math.abs(node.translation[2]-z)<0.00002,
+      'the updated artist edge-band placement was not preserved: '+name);
+  }
   assert.ok(json.nodes.some(n=>/Ground_Floor/.test(n.name||'')));
   assert.ok(json.nodes.some(n=>/Brick_North_South_Wall/.test(n.name||'')));
   assert.ok(json.nodes.some(n=>/^02_TIMBER_BOWL/.test(n.name||'')));
@@ -78,17 +90,8 @@ test('every named skateable ramp skin has physics, and wood/trim/roof art is not
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='rideable'));
   assert.ok(imported.collision.children.some(m=>m.userData.surface==='solid'));
   assert.ok(imported.triangles > 500,'collision mesh is incomplete');
-  const fixtures = ['Cube__0','Cube__0.001','Plane_SkateLite_base_color.002_0'];
-  for (const fixture of fixtures) {
-    const observed=[];
-    root.traverse(node=>{
-      if(node.isMesh && /Cube|SkateLite/i.test(node.name+node.userData?.name)) {
-        observed.push({mesh:node.name,source:node.userData?.name,label:warehouseObjectName(node)});
-      }
-    });
-    assert.ok(imported.surfaces.includes(fixture),
-      `${fixture}: missing rideable top/transition geometry; observed=${JSON.stringify(observed)}; indexed=${JSON.stringify(imported.surfaces.filter(s=>/Cube|SkateLite/i.test(s)))}`);
-  }
+  assert.ok(!imported.surfaces.some(s=>/^Cube__0|SkateLite/.test(s)),
+    'deleted Blender obstacles must not leave invisible wheel-collision geometry');
   assert.ok(imported.repairs.movedRamps.length===0,'Grand must retain artist positions');
 });
 
