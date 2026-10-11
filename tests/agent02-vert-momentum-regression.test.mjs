@@ -5,6 +5,7 @@ import { TransitionController } from '../src/game/transitions/TransitionControll
 import { evaluatePumpEligibility } from '../src/game/PumpSystem.js';
 import { VERT_RETURN, resolveVertReturnVelocity } from '../src/game/transitions/VertReturnFlight.js';
 import { resolveTransferFlightStep } from '../src/game/core/TransferFlightResult.js';
+import { supportMatchesOriginalTransition } from '../src/game/core/TransitionReentryResult.js';
 import { resolveTransferLaunchResult } from '../src/game/core/TransferLaunchResult.js';
 import { RAMP_WALL_SAFETY } from '../src/game/RampWallSafetySkillStreetPhysics.js';
 import { DECK_AWARE_EXIT } from '../src/game/DeckAwareRampExitSkillStreetPhysics.js';
@@ -173,4 +174,18 @@ test('nearby perpendicular rails cannot hijack a genuine quarter coping', () => 
   const edge = controller.launchAt(new THREE.Vector3(0, 1.9, .15),
     normal, new THREE.Vector3(0, 4, -7));
   assert.equal(edge?.transitionId, 'quarter');
+});
+
+test('diagonal bowl/halfpipe return can reconnect along real coping, not only at takeoff', () => {
+  const s = scene({ side: 5.2, normalY: .2 });
+  const normal = new THREE.Vector3(0, .7, Math.sqrt(1 - .7 ** 2));
+  const support = { position: new THREE.Vector3(3.5, 1.3, .55),
+    normal, supported: true, count: 4 };
+  assert.ok(s.air.frame.lipPath?.length >= 2);
+  assert.equal(supportMatchesOriginalTransition(support, s.air,
+    SAFE_COPING_EXIT), true, 'skater 3.5 m along real coping should be eligible');
+  assert.equal(supportMatchesOriginalTransition({
+    ...support, position: new THREE.Vector3(6.1, 1.3, .55),
+  }, s.air, SAFE_COPING_EXIT), false,
+  'support far past authored rail endpoint must not hijack landing');
 });
