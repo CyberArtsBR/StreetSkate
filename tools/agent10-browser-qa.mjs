@@ -39,6 +39,7 @@ async function gotoTitle(){
 async function chooseLoadout(){
  await page.locator('.loadout-character').first().click();
  await page.locator('.loadout-deck').nth(2).click();
+ await page.locator('.loadout-location[data-location="rooftop"]').click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
  await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
  if(page.viewportSize()?.width<=800) await page.screenshot({path:join(out,'selection-five-800.png'),fullPage:true});
@@ -141,7 +142,7 @@ try{
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),0);
-  for (const id of ['rooftop', 'urban-warehouse', 'grand-warehouse']) {
+  for (const id of ['rooftop', 'orbit', 'grand-warehouse']) {
     assert.equal(await page.locator(`.loadout-location[data-location="${id}"]`).isEnabled(),true,
       `${id} must remain available and selectable`);
   }
@@ -149,8 +150,41 @@ try{
   await page.locator('.loadout-character').first().focus();
   await page.keyboard.press('ArrowRight');
   assert.equal(await page.locator(':focus').getAttribute('data-index'),'1');
+  // Spatial navigation stays inside the rider grid when a second rider row is
+  // below the current card. The old assertion demanded a different card TYPE,
+  // incorrectly treating a valid downward rider-to-rider move as a defect.
+  const beforeDown=await page.locator(':focus').evaluate(el=>({
+    action:el.dataset.action,index:el.dataset.index,
+    y:el.getBoundingClientRect().top+el.getBoundingClientRect().height/2,
+  }));
   await page.keyboard.press('ArrowDown');
-  assert.notEqual(await page.locator(':focus').getAttribute('data-action'),'hero');
+  const afterDown=await page.locator(':focus').evaluate(el=>({
+    action:el.dataset.action,index:el.dataset.index,
+    y:el.getBoundingClientRect().top+el.getBoundingClientRect().height/2,
+  }));
+  assert.notDeepEqual([afterDown.action,afterDown.index],
+    [beforeDown.action,beforeDown.index],'ArrowDown did not change the focused card');
+  assert.ok(afterDown.y>beforeDown.y+4,
+    'ArrowDown did not move to a card lower on screen');
+  // Reach the adjacent deck and location groups with the keyboard, not mouse.
+  // This remains a hard failure if spatial navigation traps a keyboard user.
+  await page.locator('.loadout-character').last().focus();
+  let reachedDeck=false;
+  for(let n=0;n<12;n++){
+    await page.keyboard.press('ArrowRight');
+    if(await page.locator(':focus').getAttribute('data-action')==='board'){
+      reachedDeck=true;break;
+    }
+  }
+  assert.ok(reachedDeck,'ArrowRight cannot navigate from rider to skateboard');
+  let reachedLocation=false;
+  for(let n=0;n<14;n++){
+    await page.keyboard.press('ArrowRight');
+    if(await page.locator(':focus').getAttribute('data-action')==='location'){
+      reachedLocation=true;break;
+    }
+  }
+  assert.ok(reachedLocation,'ArrowRight cannot navigate from skateboard to location');
  });
  await checked('invalid custom avatar is rejected without DOM injection',async()=>{
   const input=page.locator('input[type="file"][accept*=".glb"]');
