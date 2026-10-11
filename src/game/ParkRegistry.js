@@ -31,6 +31,15 @@ export const PARK_REGISTRY = Object.freeze({
       keyColor: '#ffe4cb', keyIntensity: 2.6, keyPosition: [25, 35, 10],
       shadowExtent: 82, environmentIntensity: .38, roofCutawayHeight: 18.5 },
   },
+  'grand-warehouse': {
+    name: 'Grand Warehouse',
+    create: async () => (await import('../park/WarehouseVariants.js')).createWarehouseVariant('grand-warehouse'),
+    presentation: { center: [0, 0, 0], sky: false, exposure: 1.06, background: '#30323a',
+      fogColor: '#30323a', fogNear: 100, fogFar: 225, ambientSky: '#d4ddf2',
+      ambientGround: '#41392e', ambientIntensity: 1.6,
+      keyColor: '#ffe4bc', keyIntensity: 2.6, keyPosition: [25, 35, 10],
+      shadowExtent: 82, environmentIntensity: .38, roofCutawayHeight: 18.5 },
+  },
   legacy: {
     name: 'Legacy park',
     create: async () => {

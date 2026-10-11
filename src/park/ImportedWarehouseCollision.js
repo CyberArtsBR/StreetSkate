@@ -51,8 +51,11 @@ export function warehouseTubePaths(geometry) {
   }
   return paths;
 }
-export function buildImportedWarehouseCollision(root, authoredRails = []) {
-  const repairs = repairImportedWarehouse(root);
+export function buildImportedWarehouseCollision(root, authoredRails = [], { grandMode = false } = {}) {
+  const repairs = repairImportedWarehouse(root, {
+    preserveArtistLayout: grandMode,
+    preserveFloorFinish: grandMode,
+  });
   root.updateMatrixWorld(true);
   const collision = new THREE.Group(); collision.name = 'Urban warehouse / imported collision';
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
@@ -66,13 +69,73 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     buckets.get(id).geometries.push(geometry);
     if (surface === 'rideable') surfaces.push(name);
   };
+  
+  // Additional Blender-imported SkateLite ramp and two long, low skate
+  // obstacles have generic names rather than Foundry collision labels. Split
+  // actual WORLD-SPACE triangles into the skateable upward skin versus solid
+  // sides/back. This is deliberately Grand-only; Map 2 remains untouched.
+  const addGrandFixture = (object, name) => {
+    const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
+    const source = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (source !== geometry) geometry.dispose();
+    const p = source.attributes.position;
+    const up = [], side = [];
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const edge1 = new THREE.Vector3(), edge2 = new THREE.Vector3();
+    for (let i = 0; i + 2 < p.count; i += 3) {
+      a.fromBufferAttribute(p, i);
+      b.fromBufferAttribute(p, i + 1);
+      c.fromBufferAttribute(p, i + 2);
+      const normal = edge1.subVectors(b, a).cross(edge2.subVectors(c, a));
+      if (normal.lengthSq() < 1e-12) continue;
+      const vertices = normal.y > 0.015 * normal.length() ? up : side;
+      vertices.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+    }
+    source.dispose();
+    for (const [vertices,surface] of [[up,'rideable'],[side,'solid']]) {
+      if (!vertices.length) continue;
+      const proxy = new THREE.BufferGeometry();
+      proxy.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      add(proxy, surface, name);
+    }
+  };
+
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
+    // GLTFLoader removes periods (Cube__0.001 -> Cube__0001) and splits
+    // the three SkateLite materials into numbered child Mesh instances.
+    // Prefer preserved glTF userData names when present; normalize each
+    // material primitive back to the same logical skate obstacle.
+    if (grandMode) {
+      const importedName = object.userData?.name || name;
+      const cube = /^Cube__0(?:\.001)?$/.test(importedName) || /^Cube__0001$/.test(name);
+      const skateLite = /^Plane_SkateLite_base_color(?:[._]?002)_0(?:_\d+)?$/.test(name)
+        || /^Plane_SkateLite_base_color\.002_0$/.test(importedName);
+      if (cube || skateLite) {
+        const canonical = skateLite ? 'Plane_SkateLite_base_color.002_0'
+          : (importedName.includes('.001') || name === 'Cube__0001' ? 'Cube__0.001' : 'Cube__0');
+        addGrandFixture(object, canonical);
+        return;
+      }
+    }
     const materialName = object.material?.name || '';
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
       && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
-    const joinedCoping = joinedRamp && /Stainless_Coping/.test(materialName);
+    const grandMetal = grandMode && /Foundry_(?:Stainless_Coping|Grind_Rail)/.test(materialName);
+    // Blender can join metal rails into mixed-material ramp, ledge and side
+    // meshes. GLTFLoader splits those materials into child primitives. Rebuild
+    // grind paths only from the metal pipe primitive, not its wooden support.
+    const grandEmbeddedCoping = grandMetal && !/___tube/.test(name)
+      && /Skateable_Surface|Side_Wood_Core|Back_Panel|Hubba_Solid|Curved_Quarter_Rear_Panel/.test(name);
+    const joinedCoping = (joinedRamp && /Stainless_Coping/.test(materialName))
+      || grandEmbeddedCoping;
+    const grandMixedTubePart = grandMode && /___tube/.test(name) && !grandMetal;
+    const grandMixedRampPart = grandMode && /Skateable_Surface/.test(name)
+      && !/Foundry_Plywood(?:\.\d+)?$/.test(materialName) && !grandMetal;
+    // Imported multilayer quarter meshes contain dark timber sides under the
+    // same Skateable_Surface object name. They are solids, not wheel support.
+    if (grandMixedRampPart && /Plywood_Edges/.test(materialName)) return;
     const joinedRiding = joinedRamp && /Foundry_Plywood(?:\.\d+)?$/.test(materialName);
     // Blender joins preserve material primitives, not the original object
     // labels. Edge trim must never become a second wall or wheel surface.
@@ -80,9 +143,12 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
       || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
     const stairLanding = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
-    const rideable = joinedRamp ? joinedRiding : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
-    const tube = joinedCoping || /___tube/.test(name);
-    const solid = joinedRamp || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
+    const rideable = joinedRamp ? joinedRiding
+      : (grandMixedTubePart || grandMixedRampPart)
+        ? /Foundry_Plywood(?:\.\d+)?$/.test(materialName)
+        : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
+    const tube = joinedCoping || (/___tube/.test(name) && (!grandMode || grandMetal));
+    const solid = joinedRamp || grandMixedTubePart || grandMixedRampPart || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {
@@ -90,7 +156,13 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
       const template = authoredRails.find(rail => rail.name === base)
         || (joinedCoping ? authoredRails.find(rail => rail.name.startsWith(base.replace(/ coping$/, '') + ' ') && rail.transition) : null);
       const paths = warehouseTubePaths(geometry);
-      if (!paths.length) throw new Error(`Cannot extract grind path from ${name}`);
+      if (!paths.length) {
+        if (!grandMode) throw new Error(`Cannot extract grind path from ${name}`);
+        // Some joined steel details are supports, not valid 10-sided pipes.
+        // Preserve them as physical blockers, never create a phantom grind.
+        add(geometry, 'solid', name);
+        return;
+      }
       const railId = `${base} / imported ${rails.length + 1}`;
       for (const [i, path] of paths.entries()) {
         const forward = path.points.map(p => p.map(v => Math.round(v * 10000)).join(',')).join(';');

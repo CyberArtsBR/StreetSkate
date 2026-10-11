@@ -15,21 +15,22 @@ const validManifest = () => ({
 });
 const root = () => ({ traverse() {} });
 
-test('only Rooftop and Urban Warehouse remain selectable with stable IDs', () => {
+test('Rooftop, Urban and independent Grand Warehouse remain selectable with stable IDs', () => {
   const registry = createDefaultParkRegistry({
     rooftopLoader: () => ({ id: 'roof' }),
     legacyLoader: () => ({ id: 'old' }),
   });
   assert.deepEqual(registry.list({ selectableOnly: true }).map(p => p.id),
-    ['rooftop', 'urban-warehouse']);
+    ['rooftop', 'urban-warehouse', 'grand-warehouse']);
   assert.deepEqual(PARK_DEFINITIONS.map(p => p.id),
-    ['rooftop', 'urban-warehouse', 'legacy']);
-  assert.deepEqual(PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.number),[1,2]);
+    ['rooftop', 'urban-warehouse', 'grand-warehouse', 'legacy']);
+  assert.deepEqual(PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.number),[1,2,3]);
   assert.equal(registry.get('legacy').available, true);
   assert.equal(registry.get('legacy').selectable, false);
   assert.throws(() => registry.requirePlayable('foundry'), /Unknown park ID/);
   assert.throws(() => registry.requirePlayable('tron-warehouse'), /Unknown park ID/);
   assert.equal(registry.requirePlayable('urban-warehouse').available, true);
+  assert.equal(registry.requirePlayable('grand-warehouse').available, true);
   assert.throws(() => registry.requirePlayable('not-real'), /Unknown park ID/);
   assert.equal(registry.requirePlayable('rooftop').id, 'rooftop');
   assert.equal(registry.requirePlayable('legacy').id, 'legacy');

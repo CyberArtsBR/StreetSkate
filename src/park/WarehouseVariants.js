@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createWarehousePark } from './WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
+import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -20,6 +21,17 @@ const VARIANTS = Object.freeze({
     background: '#111d30',
     floor: '#1b3444',
     theme: 'Electric cyan / futuristic indoor warehouse',
+  },
+  'grand-warehouse': {
+    name: 'GRAND WAREHOUSE',
+    url: '/assets/warehouse/granwarehouse.glb?v=f0f47613',
+    exposure: 1.06,
+    light: '#ffe4bc',
+    ambient: '#d4ddf2',
+    ground: '#41392e',
+    background: '#30323a',
+    floor: '#46454d',
+    theme: '90s graffiti / classic wood and steel / expanded indoor skate playground',
   },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
@@ -118,12 +130,17 @@ export async function createWarehouseVariant(id) {
   }
   const world = createWarehousePark({ textures: false });
   let batched, imported;
-  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial() : null;
+  const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
+    : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
-    if (id === 'urban-warehouse') imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails);
+    if (id === 'urban-warehouse' || id === 'grand-warehouse') {
+      imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
+        grandMode: id === 'grand-warehouse',
+      });
+    }
     batched = batchWarehouseVisuals(gltf.scene, variant.name, { rubberMaterial });
     if (rubberMaterial && !batched.rubberFloorMeshes) {
-      throw new Error('Urban warehouse has no recognized rubber floor objects; check the GLB ground mesh names.');
+      throw new Error(`${variant.name} has no recognized rubber floor objects; check the GLB ground mesh names.`);
     }
   } catch (error) {
     if (rubberMaterial) {
@@ -141,6 +158,10 @@ export async function createWarehouseVariant(id) {
   // paths are inherited from the verified original warehouse.
   releaseVisualRoot(world.park);
   world.park = batched.park;
+  if (id === 'grand-warehouse') {
+    const { createGrandWarehouseGraffiti } = await import('./GrandWarehouseGraffiti.js');
+    world.park.add(createGrandWarehouseGraffiti());
+  }
   if (imported) {
     releaseVisualRoot(world.collision);
     world.collision = imported.collision;
@@ -153,6 +174,7 @@ export async function createWarehouseVariant(id) {
     // Authored Foundry feature locations/lines are stale after Blender edits.
     world.manifest.features = [];
     world.manifest.lines = [];
+    if (id === 'grand-warehouse') ensureGrandWarehouseSpawns(world);
   }
 
   // Tiny underlay closes visual seams without capping the recessed bowl.

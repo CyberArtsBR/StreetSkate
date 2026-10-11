@@ -2,6 +2,7 @@
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
   Object.freeze({ id: 'urban-warehouse', number:2, name: 'URBAN WAREHOUSE', subtitle: 'Concrete, coping & after-hours sessions', available: true, selectable: true }),
+  Object.freeze({ id: 'grand-warehouse', number:3, name: 'GRAND WAREHOUSE', subtitle: '90s graffiti / massive indoor wooden ramps', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
@@ -160,8 +161,9 @@ export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyL
   const registry = new ParkRegistry();
   for (const definition of PARK_DEFINITIONS) {
     const load = definition.id === 'rooftop' ? rooftopLoader :
-      definition.id === 'legacy' ? legacyLoader : definition.id === 'urban-warehouse'
-        ? params => loadWarehouseVariant(params, definition.id) : undefined;
+      definition.id === 'legacy' ? legacyLoader
+        : ['urban-warehouse', 'grand-warehouse'].includes(definition.id)
+          ? params => loadWarehouseVariant(params, definition.id) : undefined;
     registry.register({ ...definition, ...(load ? { load } : {}) });
   }
   return registry;

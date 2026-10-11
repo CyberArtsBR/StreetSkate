@@ -399,7 +399,8 @@ function refreshLocationUi() {
   }
   spotNav.hidden = !manifest.spots?.length;
   const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / SKYLINE ROOFTOP',
-    'urban-warehouse': 'MAP 2 / URBAN WAREHOUSE' }[currentWorld.id] || manifest.name;
+    'urban-warehouse': 'MAP 2 / URBAN WAREHOUSE',
+    'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
   document.querySelector('.edition').textContent = locationTitle;
   gameShell.setLocation(currentWorld.id);
