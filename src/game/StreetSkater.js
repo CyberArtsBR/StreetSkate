@@ -97,11 +97,14 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     ]);
     this.visual.add(this.board.root, this.rider.root);
     this.flashMaterials = [];
-    this.visual.traverse(mesh => {
+    // Respawn ghosting belongs to the rider, NEVER the skateboard. Flashing
+    // all visual materials made the deck translucent while riding near ramps.
+    this.rider.root.traverse(mesh => {
       if (!mesh.isMesh) return;
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
-        if (!this.flashMaterials.some(item => item.material === material)) this.flashMaterials.push({ material,
-          opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
+        if (material && !this.flashMaterials.some(item => item.material === material))
+          this.flashMaterials.push({ material,
+            opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
     });
     this.rider.deckHeight = this.board.deckHeight;
     this.setBoardContactRig(this.board.contactRig);
