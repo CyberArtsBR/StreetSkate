@@ -83,7 +83,7 @@ jobs:
         run: node tools/agent10-browser-qa.mjs
       - name: Three-map runtime and simulated gamepad QA
         # Independent report even if the older browser test fails; do not mask either exit code.
-        if: ${{ always() && steps.preview.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.preview.outcome == 'success' }}
         env:
           STREETSKATE_URL: http://127.0.0.1:4173
           AGENT10_ARTIFACT_DIR: artifacts/agent10
