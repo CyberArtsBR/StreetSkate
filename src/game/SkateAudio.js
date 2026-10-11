@@ -54,7 +54,7 @@ export class SkateAudio {
     // Attack envelope avoids digital clicks; the high-frequency pop gives
     // takeoff snap, low-band impact gives board-and-wheel landing weight.
     gain.gain.setValueAtTime(0.001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001,power*(pop?.32:metal?.48:.62)),now+0.005);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.001,power*(pop ? 0.32 : metal ? 0.48 : 0.62)),now+0.005);
     gain.gain.exponentialRampToValueAtTime(0.001, now+length);
     source.connect(filter); filter.connect(gain); gain.connect(this.master);
     source.start(now); source.stop(now+length+0.01);
