@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { RailNetwork } from '../src/game/RailNetwork.js';
 import { SkillStreetPhysics } from '../src/game/SkillStreetPhysics.js';
-import { createBalanceState, grindProfile, contactLongitudinalOffsets, GRIND_CAPTURE } from '../src/game/SkateSystems.js';
+import { advanceGrindSpeed, createBalanceState, grindProfile, contactLongitudinalOffsets, GRIND_CAPTURE } from '../src/game/SkateSystems.js';
 import { applyGrindEntry, resolveGrindCapture } from '../src/game/core/GrindCaptureController.js';
 
 function straightRail() {
@@ -19,12 +19,12 @@ function approach(velocity) {
   };
 }
 
-test('agent03: low-speed capture never invents several metres/sec of grind velocity', () => {
+test('agent03: low-speed valid capture starts at the arcade grind speed floor', () => {
   const ctx = approach(new THREE.Vector3(0, -0.35, -0.21));
   const capture = resolveGrindCapture(ctx);
   assert.ok(capture, 'aligned and close low-speed approach should capture');
-  assert.ok(Math.abs(capture.speed - 0.21) < 1e-6);
-  assert.ok(GRIND_CAPTURE.antiStallSpeed < 0.3);
+  assert.ok(capture.speed === GRIND_CAPTURE.antiStallSpeed);
+  assert.ok(GRIND_CAPTURE.antiStallSpeed >= 3);
   let recorded = 0;
   const runtime = {
     position: ctx.position.clone(), velocity: ctx.velocity.clone(),
@@ -32,7 +32,7 @@ test('agent03: low-speed capture never invents several metres/sec of grind veloc
     recordTrick() { recorded++; },
   };
   assert.equal(applyGrindEntry(runtime, capture, ctx.trick), true);
-  assert.ok(Math.abs(runtime.grind.speed - 0.21) < 1e-6);
+  assert.ok(runtime.grind.speed === GRIND_CAPTURE.antiStallSpeed);
   assert.equal(recorded, 1);
 });
 
@@ -75,19 +75,9 @@ test('agent03: an open rail has no sample beyond its endpoint', () => {
   assert.equal(network.sample(rail, rail.length + 0.01), null);
 });
 
-test('agent03: friction releases a near-stalled grind instead of artificially accelerating it', () => {
-  const network = straightRail();
-  const simulation = Object.create(SkillStreetPhysics.prototype);
-  simulation.grind = {
-    rail: network.rails[0], s: 1, direction: 1,
-    speed: 0.101, contactClearance: grindProfile('50-50').clearance,
-  };
-  simulation.railNetwork = network;
-  simulation.updateGrindBalance = () => true;
-  let exited = false;
-  simulation.exitGrind = (pop) => { exited = !pop; simulation.grind = null; };
-  SkillStreetPhysics.prototype.stepGrind.call(simulation, 1 / 60, {});
-  assert.equal(exited, true);
+test('agent03: a near-stalled grind receives minimum speed and acceleration', () => {
+  const next = advanceGrindSpeed(.101, 0, 1 / 60);
+  assert.ok(next > GRIND_CAPTURE.antiStallSpeed);
 });
 
 test('agent03: grind-trick switching needs actual time and distance to prevent multiplier spam', () => {

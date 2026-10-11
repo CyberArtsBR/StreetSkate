@@ -20,7 +20,7 @@ export const GROUND_MOTOR = Object.freeze({
   uphillGravityScale: 0.38,
   downhillGravityScale: 1.0,
   steerRateLowSpeed: 2.7,
-  steerRateHighSpeed: 1.2,
+  steerRateHighSpeed: 1.65,
   // Match the original runtime's 12 m/s steering-rate saturation: park-speed
   // carving must use the high-speed rate, not an unintended 17 m/s ramp.
   steerFullSpeed: 12,
@@ -220,7 +220,11 @@ export function resolveGroundPropulsion({
     nextSpeed = directionSign * nextMagnitude;
   }
 
-  const resistance = passiveRollingResistance(nextSpeed, config, crouched)
+  // Balance input must not act as a throttle, and a held manual must retain
+  // its momentum. Slopes and the explicit brake still change speed.
+  const resistance = (manual
+    ? config.overspeedDrag * Math.max(0, Math.abs(nextSpeed) - config.softSpeedLimit) ** 2
+    : passiveRollingResistance(nextSpeed, config, crouched))
     + (braking ? brakeDecel : 0);
   const remainingMagnitude = Math.max(0, Math.abs(nextSpeed) - resistance * step);
   // Canonical stopped state is +0 in regular and fakie. Multiplying a zero

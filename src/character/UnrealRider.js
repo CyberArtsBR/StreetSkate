@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
-import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, boundedNeutralHandTarget, neutralHandOffset, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
+import { riderCrouchOffset, ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -86,6 +86,8 @@ export class UnrealRider {
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
     this.kneePoles={};
+    this.armOutward = {};
+    this.kneeForward = V(1, 0, 0);
     this.outward={l:-1,r:1};
     this.at = { l: V(), r: V() };
     this.poseCalibration = avatarPoseCalibration(0.72);
@@ -177,6 +179,19 @@ export class UnrealRider {
       const hand = this.bones['hand_' + side];
       if (hand) this.hands[side] = { q: hand.getWorldQuaternion(Q()) };
     }
+    // Skate stance is sideways to the deck. Infer the avatar's anatomical
+    // axes from its shoulders and knees instead of treating deck X as left/right.
+    const shoulderL = this.bones.upperarm_l, shoulderR = this.bones.upperarm_r;
+    this.armOutward = {};
+    if (shoulderL && shoulderR) {
+      const lateral = this.root.worldToLocal(shoulderL.getWorldPosition(V()))
+        .sub(this.root.worldToLocal(shoulderR.getWorldPosition(V()))).setY(0).normalize();
+      this.armOutward.l = lateral; this.armOutward.r = lateral.clone().negate();
+    }
+    this.kneeForward = V();
+    for (const pole of Object.values(this.kneePoles)) this.kneeForward.add(pole.clone().setY(0));
+    if (this.kneeForward.lengthSq() < 1e-6) this.kneeForward.set(1, 0, 0);
+    this.kneeForward.normalize();
     this.root.userData.rigAudit = this.rigAudit;
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
     return this;
@@ -400,7 +415,9 @@ export class UnrealRider {
     for (const side of SIDES) {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];
       if (!upper || !lower || !foot || !this.feet[side]) continue;
-      const poleDirection=outwardKneePole(this.kneePoles[side],this.outward[side],compression);
+      const lateral = this.armOutward[side] || V(this.outward[side], 0, 0);
+      const poleDirection = this.kneeForward.clone().multiplyScalar(.18 + compression * .06)
+        .addScaledVector(lateral, .025).setY(-.15);
       const kneePole=upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
       const releasedFoot = (grab > 0.01 && (
@@ -419,9 +436,11 @@ export class UnrealRider {
       const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
       if (!upper || !lower || !hand) continue;
       const shoulder = this.root.worldToLocal(upper.getWorldPosition(V()));
-      const isFront=side===(stance<0?'r':'l');
+      const lateral = this.armOutward[side] || V(this.outward[side], 0, 0);
       const target=this.at[side].copy(shoulder)
-        .add(neutralHandOffset(this.outward[side],isFront,compression,air,balance));
+        .addScaledVector(lateral, .12 + compression * .025)
+        .addScaledVector(this.kneeForward, .045 + balance * .04);
+      target.y += -.36 - compression * .035 + air * .045;
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
@@ -449,19 +468,23 @@ export class UnrealRider {
       // Pole offsets must also scale to the actual chain, or short-rig elbows
       // swing across the body even when their wrist target is reachable.
       const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
-      const elbowPole = this.root.localToWorld(shoulder.clone().add(
-        V(this.outward[side] * elbowPoleReach,
-          -elbowPoleReach * .58,
-          (isFront ? .45 : -.31) * elbowPoleReach),
-      ));
+      const elbowPole = this.root.localToWorld(shoulder.clone()
+        .addScaledVector(lateral, elbowPoleReach)
+        .addScaledVector(this.kneeForward, elbowPoleReach * .35)
+        .add(V(0, -elbowPoleReach * .58, 0)));
       limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {
-        const handQ = rootQ.clone().multiply(this.hands[side].q);
+        const restHand = this.rest.get(hand);
+        // Neutral wrists follow their forearms in local space. Holding the
+        // imported world wrist orientation while IK moves the elbow twists it.
+        hand.quaternion.copy(restHand);
         // Keep the wrist aligned to the deck surface without copying the
         // decorative 180-degree shove-it yaw into the rider's forearm.
-        if (reach && board) handQ.slerp(
-          footWorldOrientation(this.root, board, this.hands[side].q, true), reachWeight);
-        setWorldQ(hand, handQ);
+        if (reach && board) {
+          setWorldQ(hand, footWorldOrientation(this.root, board, this.hands[side].q, true));
+          const grabLocal = hand.quaternion.clone();
+          hand.quaternion.copy(restHand).rotateTowards(grabLocal, .45 * reachWeight);
+        }
       }
     }
     for (const [bone, quaternion] of this.rest) if (!finiteQ(bone.quaternion)) bone.quaternion.copy(quaternion);

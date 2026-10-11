@@ -20,10 +20,18 @@ export const GRIND_CAPTURE = Object.freeze({
   maxRiseVelocity: 0.45,
   maxAbove: 0.28,
   maxBelow: 0.07,
-  // A captured rail must preserve incoming momentum; this is only a tiny numerical guard.
-  antiStallSpeed: 0.12,
+  // Arcade grind assistance applies only after a valid capture.
+  antiStallSpeed: 3.2,
   cooldown: 0.28,
 });
+
+export const GRIND_MOTION = Object.freeze({ acceleration: .35, maximumSpeed: 23 });
+
+export function advanceGrindSpeed(speed, gravityAlong, dt) {
+  const current = clamp(Math.max(GRIND_CAPTURE.antiStallSpeed, Number(speed) || 0), 0, GRIND_MOTION.maximumSpeed);
+  return Math.min(GRIND_MOTION.maximumSpeed,
+    current + (GRIND_MOTION.acceleration + Math.max(0, Number(gravityAlong) || 0)) * Math.max(0, Number(dt) || 0));
+}
 
 const PROFILE = (name, contact, clearance, difficulty, durationRate, presentation, approach = {}) => Object.freeze({
   name, contact, clearance, difficulty, durationRate,
@@ -137,7 +145,8 @@ export function stepBalance(state, {
 }) {
   if (rail) {
     const ramp = clamp(duration / 2.5, 0, 1);
-    const pressure = difficulty * (0.8 + ramp * 0.7) + clamp(speed / 23, 0, 1) * 0.35;
+    const endurance = clamp((duration - 2.5) / 15, 0, 1);
+    const pressure = difficulty * (0.8 + ramp * 0.7 + endurance * .9) + clamp(speed / 23, 0, 1) * 0.55;
     // An unstable balance point: neutral input runs out in a few seconds, while
     // holding one direction continually overshoots and falls off the other side.
     const drift = state.bias * (0.52 + ramp * 0.24) + state.value * 1.15;

@@ -73,10 +73,10 @@ test('8. valid aligned approach captures', () => {
   assert.equal(validCapture().eligible, true);
 });
 
-test('9. low-speed capture does not create large fake speed', () => {
-  assert.equal(projectedGrindSpeed(0.21), 0.21);
+test('9. low-speed capture receives the requested minimum grind speed', () => {
+  assert.equal(projectedGrindSpeed(0.21), GRIND_CAPTURE.antiStallSpeed);
   assert.equal(projectedGrindSpeed(0.03), GRIND_CAPTURE.antiStallSpeed);
-  assert.ok(GRIND_CAPTURE.antiStallSpeed < 0.3);
+  assert.ok(GRIND_CAPTURE.antiStallSpeed >= 3);
 });
 
 test('10. rail-end exit is detected', () => {

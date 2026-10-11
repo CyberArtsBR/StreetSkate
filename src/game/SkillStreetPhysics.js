@@ -3,6 +3,7 @@ import { StreetPhysics, PHYSICS, MOVEMENT_STATE } from './StreetPhysics.js';
 import { constrainToPark } from './ParkBoundaries.js';
 import {
   GRIND_CAPTURE,
+  advanceGrindSpeed,
   createBalanceState,
   disturbBalance,
   grindProfile,
@@ -306,11 +307,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     if (!current) { this.exitGrind(false); return; }
     const currentTravel = current.tangent.clone().multiplyScalar(this.grind.direction);
     const gravityAlong = GRAVITY.dot(currentTravel);
-    const friction = 0.42 + 0.012 * this.grind.speed * this.grind.speed;
-    // Preserve projected entry speed: a rail never gives free propulsion.
-    // A nearly stopped rider leaves the rail instead of accelerating to a floor.
-    this.grind.speed = clamp(this.grind.speed + gravityAlong * dt - friction * dt, 0, 23);
-    if (this.grind.speed <= 0.10) { this.exitGrind(false); return; }
+    this.grind.speed = advanceGrindSpeed(this.grind.speed, gravityAlong, dt);
 
     this.grind.s += this.grind.direction * this.grind.speed * dt;
     this.grind.contactClearance += (this.grind.contactClearanceTarget - this.grind.contactClearance) * (1 - Math.exp(-18 * dt));

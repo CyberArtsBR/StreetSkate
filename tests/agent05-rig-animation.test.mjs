@@ -175,6 +175,13 @@ test('IK remains finite with planted feet during idle, fakie, manual, grind, air
       assert.ok(Math.abs(q.lengthSq() - 1) < 1e-5,
         scenario.state + ': nonunit ' + bone.name);
     }
+    if (['IDLE', 'COAST', 'CROUCH', 'MANUAL', 'NOSE_MANUAL'].includes(scenario.state)) {
+      for (const side of ['l', 'r']) {
+        const hand = rider.bones['hand_' + side];
+        assert.ok(hand.quaternion.angleTo(rider.rest.get(hand)) < 1e-6,
+          `${scenario.state}: neutral wrist must follow its forearm without added twist`);
+      }
+    }
     if (['IDLE', 'COAST', 'CROUCH', 'LAND', 'GRIND', 'MANUAL', 'NOSE_MANUAL'].includes(scenario.state)
       && !scenario.flipState && !scenario.bail) {
       for (const side of ['l', 'r']) {
