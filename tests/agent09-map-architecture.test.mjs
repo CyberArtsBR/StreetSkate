@@ -77,6 +77,20 @@ test('GLB extras allow stable warehouse names without changing artist transforms
   assert.deepEqual(mesh.position.toArray(), [19, 3, -7]);
 });
 
+test('GLB surface extras classify renamed warehouse meshes without legacy Blender names', () => {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, .2, 1), new THREE.MeshStandardMaterial());
+  mesh.name = 'Exported_Surface_023';
+  mesh.userData.skateFeatureId = 'grand/flow/quarter-a';
+  mesh.userData.skateCollisionSurface = 'rideable';
+  const root = new THREE.Group();
+  root.add(mesh);
+  const result = annotateWarehouseFeatures(root, 'grand-warehouse');
+  assert.equal(result.explicitSurfaceHints, 1);
+  assert.equal(mesh.name, 'Exported_Surface_023');
+  assert.equal(mesh.userData.name, 'SKATE_META / grand/flow/quarter-a / Skateable_Surface');
+  assert.equal(mesh.userData.skateClassification, 'glb-metadata');
+});
+
 test('ORBIT honors explicit surface metadata on an otherwise unnamed mesh', () => {
   const scene = new THREE.Group();
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, .2, 2), new THREE.MeshStandardMaterial());
