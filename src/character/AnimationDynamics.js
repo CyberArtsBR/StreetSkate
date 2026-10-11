@@ -25,7 +25,10 @@ export function anatomicalKneeDirection(forward, outward, restPole, compression 
     ? outward.clone().normalize() : new THREE.Vector3(1, 0, 0);
   // Orthogonalize to keep short, unusual custom rigs from creating inward poles.
   o.addScaledVector(f, -o.dot(f));
-  if (o.lengthSq() < 1e-6) o.set(f.z, 0, -f.x);
+  if (o.lengthSq() < 1e-6) {
+    const sideSign = outward?.isVector3 && outward.dot(f) < 0 ? -1 : 1;
+    o.set(f.z, 0, -f.x).multiplyScalar(sideSign);
+  }
   o.normalize();
   const bend = C(Number.isFinite(compression) ? compression : 0, 0, 1);
   const dir = f.multiplyScalar(0.23 + 0.11 * bend)
@@ -49,7 +52,9 @@ export function preserveFootOrder(targets, anchors, influence = 1) {
   const baseline = axis.length();
   if (baseline < 0.08) return;
   axis.divideScalar(baseline);
-  const minimum = Math.min(0.12, baseline * 0.32) * C(influence, 0, 1);
+  const weight = C(Number.isFinite(influence) ? influence : 0, 0, 1);
+  if (weight <= 0) return;
+  const minimum = Math.min(0.12, baseline * 0.32) * weight;
   const separation = left.clone().sub(right).dot(axis);
   if (separation >= minimum) return;
   const correction = Math.min(0.22, (minimum - separation) * 0.5);
