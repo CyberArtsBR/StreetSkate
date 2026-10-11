@@ -241,11 +241,21 @@ export function resolveGrindCapture(context = {}) {
 
 /** Apply one accepted canonical capture to runtime state. */
 export function applyGrindEntry(runtime, capture, trick = {}) {
-  if (!runtime || !capture?.rail || !runtime.railNetwork?.sample) return false;
+  if (!runtime || !capture?.rail || !runtime.railNetwork?.sample || !capture.profile) return false;
+  if (!Number.isFinite(capture.s) || !Number.isFinite(capture.speed) || capture.speed <= 0) return false;
+
+  // A held grind button must not repeatedly cash the same rail during the
+  // contact cooldown. Require a genuine move away from the previous exit
+  // before recapturing that exact rail, without blocking adjacent transfers.
+  const guard = runtime.grindReentryGuard;
+  if (guard?.rail === capture.rail && guard.position?.distanceTo
+    && runtime.position?.distanceTo && runtime.position.distanceTo(guard.position) < 0.9) {
+    return false;
+  }
   const sample = runtime.railNetwork.sample(capture.rail, capture.s, {
     clearance: capture.profile.clearance,
   });
-  if (!sample) return false;
+  if (!sample || !Number.isFinite(sample.point.x + sample.point.y + sample.point.z)) return false;
 
   const magneticEntry = capture.captureMode === 'magnetic' || capture.magneticEntry === true;
   const normalizedTrick = { ...trick, name: capture.profile.name };
@@ -258,6 +268,9 @@ export function applyGrindEntry(runtime, capture, trick = {}) {
     // Rail-trick changes require both elapsed time and distance travelled.
     lastSwitchTime: 0,
     lastSwitchS: capture.s,
+    lastSwitchTravel: 0,
+    travelDistance: 0,
+    trickSwitchCount: 0,
     balance: 0,
     balanceState: createBalanceState(1.18),
     instability: 0,
@@ -279,7 +292,7 @@ export function applyGrindEntry(runtime, capture, trick = {}) {
   runtime.transitionAir = null;
   runtime.wallRide = null;
   runtime.airHeading = runtime.heading;
-  runtime.recordTrick(
+  runtime.grind.scoreEntry = runtime.recordTrick(
     runtime.grind.trick.name,
     magneticEntry ? (runtime.grind.trick.points || 100) : runtime.grind.trick.points,
   );

@@ -58,29 +58,9 @@ export class RailNetwork {
   }
 
   nearest(position, maxDistance = 0.9) {
-    let best = null;
-    let bestDistance = maxDistance;
-    for (const rail of this.rails) {
-      for (let i = 1; i < rail.points.length; i++) {
-        const a = rail.points[i - 1], b = rail.points[i];
-        const edge = b.clone().sub(a);
-        const lengthSq = edge.lengthSq();
-        if (lengthSq < 1e-8) continue;
-        const t = clamp(position.clone().sub(a).dot(edge) / lengthSq, 0, 1);
-        const point = a.clone().addScaledVector(edge, t);
-        const delta = position.clone().sub(point);
-        const distance = delta.length();
-        if (distance >= bestDistance || Math.abs(delta.y) > 0.95) continue;
-        bestDistance = distance;
-        const segmentLength = Math.sqrt(lengthSq);
-        best = {
-          rail, railName: rail.name, segment: i - 1, segmentT: t,
-          s: rail.cumulative[i - 1] + segmentLength * t,
-          point, tangent: edge.multiplyScalar(1 / segmentLength), distance,
-        };
-      }
-    }
-    return best;
+    // Keep legacy single-hit queries consistent with multi-rail capture.
+    // Both paths now apply exactly the same height and distance criteria.
+    return this.nearby(position, maxDistance)[0] || null;
   }
 
   /**
