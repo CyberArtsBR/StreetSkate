@@ -103,13 +103,21 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
   root.traverse(object => {
     if (!object.isMesh) return;
     const name = warehouseObjectName(object);
-    // GLTFLoader sanitizes "." into "_" in imported Blender node names.
-    // Normalize fixture IDs so collision QA and diagnostics remain stable.
-    if (grandMode && /^(?:Cube__0(?:[._]001)?|Plane_SkateLite_base_color[._]002_0)$/.test(name)) {
-      const canonical = name.replace(/^Cube__0_001$/, 'Cube__0.001')
-        .replace(/^Plane_SkateLite_base_color_002_0$/, 'Plane_SkateLite_base_color.002_0');
-      addGrandFixture(object, canonical);
-      return;
+    // GLTFLoader removes periods (Cube__0.001 -> Cube__0001) and splits
+    // the three SkateLite materials into numbered child Mesh instances.
+    // Prefer preserved glTF userData names when present; normalize each
+    // material primitive back to the same logical skate obstacle.
+    if (grandMode) {
+      const importedName = object.userData?.name || name;
+      const cube = /^Cube__0(?:\.001)?$/.test(importedName) || /^Cube__0001$/.test(name);
+      const skateLite = /^Plane_SkateLite_base_color(?:[._]?002)_0(?:_\d+)?$/.test(name)
+        || /^Plane_SkateLite_base_color\.002_0$/.test(importedName);
+      if (cube || skateLite) {
+        const canonical = skateLite ? 'Plane_SkateLite_base_color.002_0'
+          : (importedName.includes('.001') || name === 'Cube__0001' ? 'Cube__0.001' : 'Cube__0');
+        addGrandFixture(object, canonical);
+        return;
+      }
     }
     const materialName = object.material?.name || '';
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
