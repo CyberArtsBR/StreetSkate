@@ -33,7 +33,7 @@ test('Grand Warehouse completes the loader and retains its stair exclusion count
       };
     },
     createUrbanRubberFloorMaterial: () => ({ dispose() {} }),
-    excludeGrandWarehouseNineStair: () => { exclusionCalls++; return 35; },
+    excludeGrandWarehouseMisplacedSixStair: () => { exclusionCalls++; return 7; },
     buildImportedWarehouseCollision: () => ({ collision: { children: [] }, rails: [], triangles: 120, surfaces: [] }),
     batchWarehouseVisuals: () => ({
       park: {}, sourceMeshes: 1400, visualTriangles: 10000,
@@ -47,14 +47,14 @@ test('Grand Warehouse completes the loader and retains its stair exclusion count
   });
   const grand = await load('grand-warehouse');
   assert.equal(grand.manifest.id, 'grand-warehouse');
-  assert.equal(grand.manifest.statistics.excludedNineStairMeshes, 35);
+  assert.equal(grand.manifest.statistics.excludedMisplacedSixStairMeshes, 7);
   assert.equal(grand.manifest.statistics.rubberFloorMeshes, 1);
   assert.equal(exclusionCalls, 1);
 
   // Same test safeguards Map 2's loader against accidental Grand-only edits.
   const urban = await load('urban-warehouse');
   assert.equal(urban.manifest.id, 'urban-warehouse');
-  assert.equal('excludedNineStairMeshes' in urban.manifest.statistics, false);
+  assert.equal('excludedMisplacedSixStairMeshes' in urban.manifest.statistics, false);
   assert.equal(exclusionCalls, 1);
   assert.deepEqual(requests, ['/granwarehouse.glb', '/urban-warehouse.glb']);
 });

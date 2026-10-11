@@ -10,7 +10,7 @@ import { createWarehousePark } from '../src/park/WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from '../src/park/ImportedWarehouseCollision.js';
 import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysics.js';
 import { ensureGrandWarehouseSpawns } from '../src/park/GrandWarehouseSpawns.js';
-import { excludeGrandWarehouseNineStair, isGrandWarehouseNineStair } from '../src/park/GrandWarehouseSceneFilter.js';
+import { excludeGrandWarehouseMisplacedSixStair, isGrandWarehouseMisplacedSixStair } from '../src/park/GrandWarehouseSceneFilter.js';
 import { batchWarehouseVisuals } from '../src/park/WarehouseVariants.js';
 
 const file = 'public/assets/warehouse/granwarehouse.glb';
@@ -60,7 +60,7 @@ test('original map geometry is embedded in an immutable, separately versioned Ma
 });
 
 const root = await loadGeometry(file);
-const removed = excludeGrandWarehouseNineStair(root);
+const removed = excludeGrandWarehouseMisplacedSixStair(root);
 const baseline = createWarehousePark({ textures: false });
 const before = new Map();
 root.updateMatrixWorld(true);
@@ -101,41 +101,52 @@ test('every named skateable ramp skin has physics, and wood/trim/roof art is not
   assert.ok(imported.repairs.movedRamps.length===0,'Grand must retain artist positions');
 });
 
-test('the screenshot stair assembly is excluded from visuals, supports, and grind rails', () => {
-  assert.equal(removed, 35, 'the exported Nine stair assembly changed unexpectedly');
-  let excluded=0, visible=0;
+test('remove ONLY the duplicated near-volcano Six stair and preserve original Nine stair', () => {
+  assert.ok(removed >= 7, `expected seven multi-material slices of misplaced stair; excluded ${removed}`);
+  let excluded=0, visible=0, preservedNine=0, preservedOtherSix=0;
   root.traverse(object => {
     if (!object.isMesh) return;
-    if (isGrandWarehouseNineStair(warehouseObjectName(object))) {
-      assert.equal(object.userData.grandWarehouseExcluded, true);
+    const name=warehouseObjectName(object);
+    if (object.userData.grandWarehouseExcluded) {
+      assert.match(name,/Six stair kinked down rail \/ Hubba_Solid_-1 001/);
       excluded++;
-    } else if (!object.userData.grandWarehouseExcluded) visible++;
+    } else {
+      visible++;
+      if (/^01_STREET_DISTRICT \/ Nine stair(?: \/| )/.test(name)) preservedNine++;
+      if (/Six stair kinked down rail \/ Hubba_Solid_-1 001\.00[12]/.test(name)) preservedOtherSix++;
+    }
   });
-  assert.equal(excluded, removed);
-  assert.equal(imported.rails.some(rail=>/Nine stair/.test(rail.name)), false);
-  assert.ok(!imported.surfaces.some(name=>isGrandWarehouseNineStair(name)),
-    'removed stairs still produce rideable contact');
-  // The visuals batching must observe the exact same exclusion decisions as
-  // the physics proxy builder; otherwise an invisible skate obstacle remains.
+  assert.equal(excluded,removed);
+  assert.ok(preservedNine >= 35,'correct Blender-reference Nine stair must remain');
+  assert.ok(preservedOtherSix >= 2,'other positioned Six stair copies must remain');
+  assert.ok(imported.rails.some(rail=>/Nine stair/.test(rail.name)),
+    'correct Nine stair handrails must remain grindable');
+  assert.ok(!imported.surfaces.some(name=>/^01_STREET_DISTRICT \/ Six stair kinked down rail \/ Hubba_Solid_-1 001$/.test(name)),
+    'misplaced near-volcano stair still produces rideable contact');
+
+  // Visual batching must share EXACTLY the same exclusions as collision.
   const scene = new THREE.Group();
-  const kept = new THREE.Mesh(new THREE.BoxGeometry(2,1,2),
-    new THREE.MeshBasicMaterial());
-  kept.name='Visible ramp test'; scene.add(kept);
-  const banned = kept.clone();
-  banned.name='01_STREET_DISTRICT / Nine stair / Step_00 001';
-  scene.add(banned);
-  assert.equal(excludeGrandWarehouseNineStair(scene),1);
-  const batches = batchWarehouseVisuals(scene,'Grand Warehouse scene filter test');
-  assert.equal(batches.sourceMeshes,1);
-  assert.equal(batches.visualTriangles,12);
-  assert.ok(visible > 1200, 'unexpectedly removed most of the imported scene');
+  const keep = new THREE.Mesh(new THREE.BoxGeometry(2,1,2),new THREE.MeshBasicMaterial());
+  keep.name='01_STREET_DISTRICT / Nine stair / Step_00 001'; keep.position.set(10,1,31);
+  scene.add(keep);
+  const stray=keep.clone();
+  stray.name='01_STREET_DISTRICT / Six stair kinked down rail / Hubba_Solid_-1 001';
+  stray.position.set(42,1,-7); scene.add(stray);
+  const other=keep.clone();
+  other.name='01_STREET_DISTRICT / Six stair kinked down rail / Hubba_Solid_-1 001.001';
+  other.position.set(-21,1,17);scene.add(other);
+  assert.equal(excludeGrandWarehouseMisplacedSixStair(scene),1);
+  const batches=batchWarehouseVisuals(scene,'Grand Warehouse spatial filter QA');
+  assert.equal(batches.sourceMeshes,2);
+  assert.equal(batches.visualTriangles,24);
+  assert.ok(visible>1200,'unexpectedly removed most of the imported scene');
 });
 
 test('Grand Warehouse extracts actual joined metal coping tubes, not their wooden support meshes', () => {
   assert.ok(imported.rails.length>=25,`only ${imported.rails.length} grind paths in revised Blender GLB`);
   assert.ok(imported.rails.some(r=>/West transfer quarter/.test(r.name)),
     'West quarter copings embedded in the wood mesh must be grindable');
-  assert.ok(!imported.rails.some(r=>/Nine stair/.test(r.name)),'hidden Nine stair still has a grind path');
+  assert.ok(imported.rails.some(r=>/Nine stair/.test(r.name)),'correct Nine stair grind path missing');
   assert.ok(imported.rails.some(r=>/Timber bowl/.test(r.name)),'bowl coping missing');
   const names=new Set();
   for(const rail of imported.rails){

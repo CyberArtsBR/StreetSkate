@@ -5,7 +5,7 @@ import { createWarehousePark } from './WarehousePark.js';
 import { buildImportedWarehouseCollision, warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubberFloorUVs } from './UrbanRubberFloor.js';
 import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
-import { excludeGrandWarehouseNineStair } from './GrandWarehouseSceneFilter.js';
+import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFilter.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -135,11 +135,12 @@ export async function createWarehouseVariant(id) {
   const rubberMaterial = id === 'urban-warehouse' ? createUrbanRubberFloorMaterial()
     : id === 'grand-warehouse' ? createUrbanRubberFloorMaterial() : null;
   try {
-    // Map 3 only: omit the exported Nine stair assembly the artist does not
-    // want in this scene. Mark *before* deriving visuals, wheel collision and
-    // grind paths so the removed obstacle has no invisible physical remnants.
+    // Map 3 only: omit the mistakenly exported near-volcano Six stair clone.
+    // Its seven material primitives include treads, wood bank, and handrails.
+    // KEEP the correctly placed Nine stair assembly beside the far rail.
+    // Mark before collision and visual batching, avoiding invisible colliders.
     excludedStairMeshes = id === 'grand-warehouse'
-      ? excludeGrandWarehouseNineStair(gltf.scene) : 0;
+      ? excludeGrandWarehouseMisplacedSixStair(gltf.scene) : 0;
     if (id === 'urban-warehouse' || id === 'grand-warehouse') {
       imported = buildImportedWarehouseCollision(gltf.scene, world.manifest.rails, {
         grandMode: id === 'grand-warehouse',
@@ -209,7 +210,7 @@ export async function createWarehouseVariant(id) {
     ...manifest.statistics, sourceMeshes: batched.sourceMeshes, visualMeshes: batched.drawCalls,
     visualTriangles: batched.visualTriangles, batchedDrawCalls: batched.drawCalls,
     rubberFloorMeshes: batched.rubberFloorMeshes,
-    ...(id === 'grand-warehouse' ? { excludedNineStairMeshes: excludedStairMeshes } : {}),
+    ...(id === 'grand-warehouse' ? { excludedMisplacedSixStairMeshes: excludedStairMeshes } : {}),
   };
   manifest.visualTriangles = batched.visualTriangles;
   manifest.environment = {
