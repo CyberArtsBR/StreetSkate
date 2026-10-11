@@ -261,7 +261,8 @@ export class TransitionController {
     // launch energy once at departure, then leaves gravity/steering unchanged.
     launchVertical = Math.min(launchVertical, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     const lateralVelocity = tangentVelocity;
-    const exitRequested = Boolean(edge.exitRequested && edge.supportsTransfer !== false);
+    const exitRequested = Boolean(edge.exitRequested && edge.supportsTransfer !== false
+      && incomingSpeed >= 4.8 && incomingVelocity.y > 0.12);
 
     let launchHorizontal;
     if (exitRequested) {
