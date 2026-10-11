@@ -2,7 +2,7 @@ import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion, pushMotion } from './TrickMotion.js';
-import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets } from './AnimationDynamics.js';
+import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
@@ -46,7 +46,7 @@ function aim(bone, child, target) {
     .multiply(bone.getWorldQuaternion(Q())));
 }
 
-function limb(upper, lower, end, target, pole) {
+function limb(upper, lower, end, target, pole, maximumFlex = 2.55) {
   if (!upper || !lower || !end || !finiteV(target) || !finiteV(pole)) return;
   const origin = upper.getWorldPosition(V());
   const joint = lower.getWorldPosition(V());
@@ -54,7 +54,7 @@ function limb(upper, lower, end, target, pole) {
   const a = origin.distanceTo(joint), b = joint.distanceTo(tip);
   const axis = target.clone().sub(origin);
   if (a < 1e-5 || b < 1e-5 || axis.lengthSq() < 1e-9) return;
-  const distance = safeLimbReach(a, b, axis.length());
+  const distance = safeLimbReach(a, b, axis.length(), maximumFlex);
   if (distance < 1e-6) return;
   axis.normalize();
   const along = (a * a + distance * distance - b * b) / (2 * distance);
@@ -508,6 +508,13 @@ export class UnrealRider {
       if (reach) {
         world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
       }
+      const outwardWorld = lateral.clone().applyQuaternion(rootQ);
+      const headWorld = this.bones.head?.getWorldPosition(V()) || null;
+      // Stop wrists traversing the body or the head during ground, vert,
+      // landing, turn and grab blends. Cross-body deck grabs retain their
+      // intent but never pass through the face.
+      world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
+        armLength, { crossBody: (grab > .12 && !!reach) || !!flatland || bail }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
       // swing across the body even when their wrist target is reachable.
       const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
@@ -516,6 +523,16 @@ export class UnrealRider {
         .addScaledVector(this.kneeForward, elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
       if (neutralPose) elbowPole.lerp(neutralPose.elbow, neutralArms);
+      if (headWorld) {
+        const fromHead = elbowPole.clone().sub(headWorld);
+        const radius = Math.max(.075, armLength * .34);
+        if (fromHead.lengthSq() < radius * radius) {
+          // Elbow pole must stay on its own anatomical side if a trick brings
+          // the hand close to the face; a tiny headward pole causes IK flips.
+          elbowPole.copy(headWorld).addScaledVector(
+            outwardWorld.clone().setY(0).normalize(), radius);
+        }
+      }
       // Planted, near-straight A-pose arms must follow their own moving
       // shoulders exactly. World-space lag here makes elbows buckle on frame
       // two even if the destination itself is valid. Dampen only aerial/grab
@@ -525,7 +542,9 @@ export class UnrealRider {
         : smoothHandDestination(this.smoothedHands[side], world, dt,
           grab > 0.01 ? 30 : 24);
       this.smoothedHands[side] = smoothedWorld.clone();
-      limb(upper, lower, hand, smoothedWorld, elbowPole);
+      // Maximum elbow flex ~120 degrees: disallow the previous IK fold-back
+      // during rapid stance swaps, high grabs or short-rig transitions.
+      limb(upper, lower, hand, smoothedWorld, elbowPole, 2.10);
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
         // Neutral wrists follow their forearms in local space. Holding the
