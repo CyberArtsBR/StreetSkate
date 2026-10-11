@@ -61,13 +61,13 @@ export function resolveVertReturnVelocity(air, position, velocity, dt) {
   const nextRadial = radial + clamp(targetRadial - radial, -maxStep, maxStep);
 
   const lateral = velocity.dot(frame.copingTangent);
-  const lateralLimit = clamp(Math.abs(Number(air.lateralVelocity) || 0),
-    VERT_RETURN.maxLateralSpeed, VERT_RETURN.maxCarveLateralSpeed);
   let targetLateral = lateral;
   if (Math.abs(lateralOffset) > VERT_RETURN.lateralCorridor) {
     const excess = Math.abs(lateralOffset) - VERT_RETURN.lateralCorridor;
-    targetLateral = -Math.sign(lateralOffset)
-      * Math.min(lateralLimit, excess * 3);
+    // Do not steer backwards toward the *takeoff point* at a wide coping.
+    // A shallow dt-aware drag is enough to avoid runaway lateral motion;
+    // landing geometry validates whether the real authored lip continues.
+    targetLateral = lateral * Math.exp(-0.5 * excess * dt);
   }
   const nextLateral = lateral
     + clamp(targetLateral - lateral, -maxStep, maxStep);
