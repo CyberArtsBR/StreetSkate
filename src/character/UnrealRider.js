@@ -606,6 +606,16 @@ export class UnrealRider {
           this.smoothedHands[side].copy(candidate);
         }
       }
+      if (this.url === 'The_Heretic' && presentation?.state === 'AIR' && side === 'l') {
+        this.root.userData.debugAirLeft = {
+          measuredAtStart: armLength, neutralArms, nearNeutral,
+          finalTarget: this.smoothedHands[side].distanceTo(shoulderWorld),
+          measuredAtEnd: upper.getWorldPosition(V()).distanceTo(lower.getWorldPosition(V()))
+            + lower.getWorldPosition(V()).distanceTo(hand.getWorldPosition(V())),
+          shoulder: shoulderWorld.toArray(), poseWrist: neutralPose?.wrist.toArray(),
+          actualWrist: hand.getWorldPosition(V()).toArray(),
+        };
+      }
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
         // Neutral wrists follow their forearms in local space. Holding the
