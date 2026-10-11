@@ -2,7 +2,7 @@
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
   Object.freeze({ id: 'urban-warehouse', number:2, name: 'URBAN WAREHOUSE', subtitle: 'Concrete, coping & after-hours sessions', available: true, selectable: true }),
-  Object.freeze({ id: 'grand-warehouse', number:3, name: 'GRAND WAREHOUSE', subtitle: '90s graffiti / massive indoor wooden ramps', available: true, selectable: true }),
+  Object.freeze({ id: 'grand-warehouse', number:3, name: 'GRAND WAREHOUSE', subtitle: 'Your custom-built indoor wooden skatepark', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
