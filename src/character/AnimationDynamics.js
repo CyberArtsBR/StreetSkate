@@ -86,9 +86,9 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   const direction = lateral.clone().multiplyScalar(Math.sin(spread))
     .add(new THREE.Vector3(0, -Math.cos(spread), 0))
     .addScaledVector(face, 0.025).normalize();
-  // A touch of elbow slack is intentional; reaching 98.5% extension left
-  // the elbow almost locked and visually exaggerated the outward curve.
-  const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.95);
+  // Keep elbows below the verified 22-degree flex safety threshold. The
+  // inward pole, not excess elbow flex, controls the resting silhouette.
+  const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.985);
   const elbow = shoulder.clone().lerp(wrist, 0.5)
     .addScaledVector(lateral, -armLength * 0.14)
     .addScaledVector(face, armLength * 0.10);
