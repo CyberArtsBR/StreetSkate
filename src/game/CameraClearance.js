@@ -6,8 +6,8 @@ export const CAMERA_CLEARANCE = Object.freeze({
   radius: 0.28,
   // Start finding alternate sightlines before the camera becomes a face close-up.
   comfortMargin: 1.3,
-  sideOffsets: [1.4, 2.8, 4.2],
-  verticalOffsets: [0, 1.8, 3.8, 5.8],
+  sideOffsets: [1.5, 3.5],
+  verticalOffsets: [0, 2.6, 5.2],
 });
 
 /**
@@ -87,12 +87,14 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
     if (normal.lengthSq() > 1e-8) {
       normal.normalize();
       const normalSide = Math.sign(normal.dot(side)) || 0;
-      for (const offset of [1.5, 3.5, 5.5]) {
-        for (const lift of [0, 2, 4, 6]) {
+      for (const offset of [1.8, 4]) {
+        for (const lift of [0, 2.5, 5]) {
           consider(desired.clone().addScaledVector(normal, offset)
             .addScaledVector(UP, lift), 0.1 + offset * 0.055 + lift * 0.07,
           normalSide);
+          if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
         }
+        if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
       }
     }
   }
@@ -108,14 +110,14 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
           .addScaledVector(UP, lift), 0.16 + offset * 0.09 + lift * 0.1, sign);
       }
     }
-    if (bestSafe && bestScore < 0.6) break;
+    if (bestSafe && bestScore < 1.3 && bestSafe.point.distanceTo(anchor) >= comfort) break;
   }
 
   // Classic is free to reframe slightly around obstructions, but large
   // behind-to-front flips are forbidden (especially around bowl lips).
   if (!cache?.fixedAxis && (!bestSafe || bestScore > 1)) {
-    for (const degrees of [20, -20, 40, -40, 65, -65]) {
-      for (const lift of [0, 2.6, 5]) {
+    for (const degrees of [30, -30, 60, -60]) {
+      for (const lift of [0, 3]) {
         const eye = anchor.clone().add(arm.clone().applyAxisAngle(
           UP, degrees * Math.PI / 180)).addScaledVector(UP, lift);
         consider(eye, 0.6 + Math.abs(degrees) / 100 + lift * 0.1,
