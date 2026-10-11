@@ -71,8 +71,12 @@ export class ParkCollision {
         const normal = triangle.getNormal(new THREE.Vector3());
         // Imported degenerate facets cannot create physical walls or corrupt the BVH.
         if (normal.lengthSq() < EPS) continue;
-        // Even an accidentally reversed floor triangle is rideable when approached from above.
-        if (rideable && Math.abs(normal.y) > 0.035) continue;
+        // A rideable ramp/corner is *wheel support*, not a phantom body wall.
+        // The older 0.035 threshold marked its nearly vertical coping facets
+        // as hard blockers, stopping climbs and preventing lip takeoff.
+        // Real structural sides/backing remain in the separate SOLID meshes.
+        if (rideable && (Math.abs(normal.y) > 0.012
+          || (mesh.userData.transitionSkin && normal.y >= -0.012))) continue;
         triangle.faceNormal = normal;
         triangle.railId = mesh.userData.railId || null;
         this.blocks.addTriangle(triangle);
