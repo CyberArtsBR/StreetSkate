@@ -1,7 +1,8 @@
 import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { flipMotion } from './TrickMotion.js';
+import { flipMotion, pushMotion } from './TrickMotion.js';
+import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
@@ -53,10 +54,8 @@ function limb(upper, lower, end, target, pole) {
   const a = origin.distanceTo(joint), b = joint.distanceTo(tip);
   const axis = target.clone().sub(origin);
   if (a < 1e-5 || b < 1e-5 || axis.lengthSq() < 1e-9) return;
-  const epsilon = Math.min(0.001, a * 0.01, b * 0.01);
-  const minReach = Math.abs(a - b) + epsilon, maxReach = a + b - epsilon;
-  if (maxReach <= minReach) return;
-  const distance = C(axis.length(), minReach, maxReach);
+  const distance = safeLimbReach(a, b, axis.length());
+  if (distance < 1e-6) return;
   axis.normalize();
   const along = (a * a + distance * distance - b * b) / (2 * distance);
   const side = pole.clone().sub(origin).projectOnPlane(axis);
@@ -90,6 +89,7 @@ export class UnrealRider {
     this.kneeForward = V(1, 0, 0);
     this.outward={l:-1,r:1};
     this.at = { l: V(), r: V() };
+    this.smoothedHands = { l: null, r: null };
     this.poseCalibration = avatarPoseCalibration(0.72);
   }
 
@@ -205,6 +205,8 @@ export class UnrealRider {
   }
 
   resetPresentation() {
+    this.smoothedHands.l = null;
+    this.smoothedHands.r = null;
     for (const [name, channel] of this.channels) Object.assign(channel, { value: name === 'IDLE' ? 1 : 0, velocity: 0 });
     for (const channel of Object.values(this.scalar)) Object.assign(channel, { value: 0, velocity: 0 });
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
@@ -245,7 +247,7 @@ export class UnrealRider {
   boardPoint(board, x, y, z) { return board?.pointWorld?.(x, y, z, V()) || null; }
 
   grabTarget(name, side, stance, board) {
-    const sign = side === 'l' ? -1 : 1;
+    const sign = this.outward[side] || (side === 'l' ? -1 : 1);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     switch (name) {
       case 'Indy': return side === rear ? this.boardPoint(board, sign * 0.14, 0.04, 0) : null;
@@ -281,6 +283,8 @@ export class UnrealRider {
     const flat = this.w(PRESENTATION_STATES.FLATLAND), grind = this.w(PRESENTATION_STATES.GRIND);
     const manualW = this.w(PRESENTATION_STATES.MANUAL) + this.w(PRESENTATION_STATES.NOSE_MANUAL);
     const pump = this.w(PRESENTATION_STATES.PUMP);
+    const rolling = C(this.w(PRESENTATION_STATES.COAST) + this.w(PRESENTATION_STATES.PUSH), 0, 1);
+    const rollSway = Math.sin((Number.isFinite(time) ? time : 0) * (5 + C(speedRatio, 0, 1) * 4)) * rolling;
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     // Half Pipe's compact air silhouette: knees stay tucked through the flight,
     // instead of standing at takeoff and only bending near the apex.
@@ -333,6 +337,8 @@ export class UnrealRider {
     this.root.updateWorldMatrix(true,true);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
+    const push = pushWeight > 0.005 && !flipState && !grab && !bail && !flatland
+      ? pushMotion(pushPhase) : null;
     const deckLocked = Boolean(board && !flipState && !bail && !flatland);
     for (const side of SIDES) {
       if (!this.feet[side]) continue;
@@ -361,11 +367,19 @@ export class UnrealRider {
       this.ft[front].y += motion.frontLift;
       this.ft[rear].y += motion.rearLift;
       const heel = /Heel/i.test(flipState.name), kick = /Kick|Hard|Varial/i.test(flipState.name);
-      this.ft[front].x += (heel ? -.19 : kick ? .22 : .06) * motion.flick;
+      const outward = this.outward[front] || (front === 'l' ? -1 : 1);
+      this.ft[front].x += outward * (heel ? -.19 : kick ? .22 : .06) * motion.flick;
       const noseSign = Math.sign(this.feet[front].point.z) || -1;
       this.ft[front].z += noseSign * .16 * motion.flick;
       this.ft[rear].z -= noseSign * .06 * motion.clearance;
       if (/Impossible|Shove/.test(flipState.name)) this.ft[rear].z -= noseSign * .10 * motion.flick;
+    }
+    if (push) {
+      // The pushing foot leaves the deck; the support foot stays locked to it.
+      const weight = C(pushWeight, 0, 1) * C(this.w(PRESENTATION_STATES.PUSH) + 0.35, 0, 1);
+      this.ft[rear].x += (this.outward[rear] || 1) * push.side * weight;
+      this.ft[rear].y += push.height * weight;
+      this.ft[rear].z += (stance < 0 ? -1 : 1) * push.foreAft * weight;
     }
     if (flatland) {
       const wave = Math.sin(time * 7);
@@ -401,6 +415,8 @@ export class UnrealRider {
       this.ft.l.x -= 0.2 + bailProgress * 0.2; this.ft.r.x += 0.2 + bailProgress * 0.2;
       this.ft.l.y += 0.16; this.ft.r.y += 0.1;
     }
+    if (motion && this.feet.l && this.feet.r)
+      preserveFootOrder(this.ft, { l: this.feet.l.point, r: this.feet.r.point }, 1 - motion.catchWeight);
     // Solve a visible knee bend against the final ankle anchors. This replaces
     // a fixed centimetre drop that barely moved the head on short-legged rigs.
     // The target is absolute from rest each frame, so it cannot accumulate.
@@ -430,9 +446,8 @@ export class UnrealRider {
       const upper = this.bones['thigh_' + side], lower = this.bones['calf_' + side], foot = this.bones['foot_' + side];
       if (!upper || !lower || !foot || !this.feet[side]) continue;
       const lateral = this.armOutward[side] || V(this.outward[side], 0, 0);
-      const poleDirection = this.kneeForward.clone().multiplyScalar(.18 + compression * .06)
-        .addScaledVector(lateral, .025).setY(-.15);
-      const kneePole=upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
+      const poleDirection = anatomicalKneeDirection(this.kneeForward, lateral, this.kneePoles[side], compression);
+      const kneePole = upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
       const releasedFoot = (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
@@ -456,6 +471,8 @@ export class UnrealRider {
         .addScaledVector(this.kneeForward, .045 + compression * .10 + balance * .04);
       target.y += -.36 + compression * .10 + air * .15;
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
+      target.z += sign * rollSway * 0.025;
+      target.y += rollSway * 0.012;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
       if (bail) { target.y += 0.24 + bailProgress * 0.12; target.z += sign * 0.16; }
@@ -487,7 +504,7 @@ export class UnrealRider {
         const angle = THREE.MathUtils.degToRad(40);
         const direction = lateral.clone().multiplyScalar(Math.sin(angle))
           .add(V(0,-Math.cos(angle),0)).addScaledVector(this.kneeForward,.025).normalize();
-        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.99);
+        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.985);
         world.lerp(restingHand,neutralArms);
       }
       const reachWeight = handstand ? flat : grab;
@@ -506,7 +523,16 @@ export class UnrealRider {
           .addScaledVector(this.kneeForward.clone().applyQuaternion(rootQ),armLength*.18);
         elbowPole.lerp(restingPole,neutralArms);
       }
-      limb(upper, lower, hand, world, elbowPole);
+      // Planted, near-straight A-pose arms must follow their own moving
+      // shoulders exactly. World-space lag here makes elbows buckle on frame
+      // two even if the destination itself is valid. Dampen only aerial/grab
+      // transitions, when hands are intentionally released from that pose.
+      const smoothedWorld = neutralArms > 0.98 && !bail
+        ? world.clone()
+        : smoothHandDestination(this.smoothedHands[side], world, dt,
+          grab > 0.01 ? 30 : 24);
+      this.smoothedHands[side] = smoothedWorld.clone();
+      limb(upper, lower, hand, smoothedWorld, elbowPole);
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
         // Neutral wrists follow their forearms in local space. Holding the
