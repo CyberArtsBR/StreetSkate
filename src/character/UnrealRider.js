@@ -483,9 +483,6 @@ export class UnrealRider {
       if (grabState?.name === 'Christ Air' && side === rear) target.addScaledVector(V(0, 0.30, sign * 0.38), grab);
       const handstand = flatland === 'Handstand' && board;
       const reach = handstand ? this.boardPoint(board, sign * 0.14, 0.04, 0) : grabTarget;
-      // Ensure descendant world matrices match their rest quaternions before
-      // measuring imported arm lengths (nonuniform GLB parent scales matter).
-      upper.updateWorldMatrix(true, true);
       const shoulderWorld = upper.getWorldPosition(V());
       const elbowWorld = lower.getWorldPosition(V());
       const wristWorld = hand.getWorldPosition(V());
@@ -559,7 +556,6 @@ export class UnrealRider {
         headWorld, armLength, { crossBody, neutral: nearNeutral });
       this.smoothedHands[side] = safeWorld.clone();
       limb(upper, lower, hand, safeWorld, elbowPole, 2.10);
-      upper.updateWorldMatrix(true, true);
       if (headWorld) {
         // A hand target can be clear while the two-bone IK arc still crosses
         // the skull. Check actual solved joints and retreat to a safe open
@@ -574,47 +570,9 @@ export class UnrealRider {
             const safeRest = safeArmGoal(shoulderWorld, rest.wrist, outwardWorld,
               headWorld, armLength, { neutral: true });
             limb(upper, lower, hand, safeRest, rest.elbow, 2.10);
-            upper.updateWorldMatrix(true, true);
             this.smoothedHands[side].copy(safeRest);
           }
         }
-      }
-      if (nearNeutral) {
-        // Some imported GLBs have nonuniform bone-parent transforms. Turning
-        // the upper arm from its bind pose changes the ACTUAL world-space
-        // segment lengths. A one-pass solver calculated reach in bind pose
-        // (~0.27m on Heretic), while the skinned arm later measured ~0.32m:
-        // the neutral wrist stayed at 0.27m and the elbow buckled visibly.
-        // Re-measure after solving and re-project at real world chain reach.
-        // Three bounded refinements avoid scale editing or per-frame drift.
-        for (let pass = 0; pass < 3; pass++) {
-          upper.updateWorldMatrix(true, true);
-          const shoulderNow = upper.getWorldPosition(V());
-          const elbowNow = lower.getWorldPosition(V());
-          const wristNow = hand.getWorldPosition(V());
-          const reachNow = shoulderNow.distanceTo(elbowNow) + elbowNow.distanceTo(wristNow);
-          if (!Number.isFinite(reachNow) || reachNow <= 1e-5) break;
-          const desiredReach = reachNow * .997;
-          if (Math.abs(this.smoothedHands[side].distanceTo(shoulderNow) - desiredReach) < .002) break;
-          const stable = neutralArmIKTargets(shoulderNow, outwardWorld,
-            this.kneeForward.clone().applyQuaternion(rootQ), reachNow);
-          if (!stable) break;
-          const candidate = safeArmGoal(shoulderNow, stable.wrist, outwardWorld,
-            headWorld, reachNow, { neutral: true });
-          limb(upper, lower, hand, candidate, stable.elbow, 2.10);
-          upper.updateWorldMatrix(true, true);
-          this.smoothedHands[side].copy(candidate);
-        }
-      }
-      if (this.url === 'The_Heretic' && presentation?.state === 'AIR' && side === 'l') {
-        this.root.userData.debugAirLeft = {
-          measuredAtStart: armLength, neutralArms, nearNeutral,
-          finalTarget: this.smoothedHands[side].distanceTo(shoulderWorld),
-          measuredAtEnd: upper.getWorldPosition(V()).distanceTo(lower.getWorldPosition(V()))
-            + lower.getWorldPosition(V()).distanceTo(hand.getWorldPosition(V())),
-          shoulder: shoulderWorld.toArray(), poseWrist: neutralPose?.wrist.toArray(),
-          actualWrist: hand.getWorldPosition(V()).toArray(),
-        };
       }
       if (this.hands[side]) {
         const restHand = this.rest.get(hand);
