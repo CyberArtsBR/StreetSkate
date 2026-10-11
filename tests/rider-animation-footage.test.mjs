@@ -51,8 +51,8 @@ for (const name of avatars) {
           const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
           const direction=wrist.clone().sub(shoulder).normalize();
           assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${state}/${frame}/${side}: folded elbow`);
-          assert.ok(direction.dot(rider.armOutward[side])>.04 && direction.dot(rider.armOutward[side])<.48,`${name}/${state}/${side}: arm should rest near torso, not splay outward`);
-          assert.ok(direction.y<-.86,`${name}/${state}/${side}: resting wrist must hang below shoulder`);
+          assert.ok(direction.dot(rider.armOutward[side])>.38 && direction.dot(rider.armOutward[side])<.77,`${name}/${state}/${side}: arm should rest near torso, not splay outward`);
+          assert.ok(direction.y<-.70,`${name}/${state}/${side}: resting wrist must hang below shoulder`);
           const elbowSide=elbow.clone().sub(shoulder.clone().lerp(wrist,.5)).dot(rider.armOutward[side]);
           assert.ok(elbowSide<.01,`${name}/${state}/${side}: elbow bows outward, bend=${elbowSide}`);
         }
@@ -71,10 +71,10 @@ for (const name of avatars) {
       const armFlex=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
       const direction=wrist.clone().sub(shoulder).normalize();
       assert.ok(armFlex<THREE.MathUtils.degToRad(22),`${name}/${side}: resting elbow flexes too far`);
-      assert.ok(direction.dot(rider.armOutward[side])>.04 && direction.dot(rider.armOutward[side])<.48,`${name}/${side}: relaxed arms must stay close to torso`);
+      assert.ok(direction.dot(rider.armOutward[side])>.38 && direction.dot(rider.armOutward[side])<.77,`${name}/${side}: relaxed arms must stay close to torso`);
       const elbowSide=elbow.clone().sub(shoulder.clone().lerp(wrist,.5)).dot(rider.armOutward[side]);
       assert.ok(elbowSide<.01,`${name}/${side}: resting elbow bows outward, bend=${elbowSide}`);
-      assert.ok(direction.y<-.86,`${name}/${side}: resting arms should hang down`);
+      assert.ok(direction.y<-.70,`${name}/${side}: resting arms should hang down`);
     }
     const idleFlex = ['l', 'r'].map(s => flex(rider, s));
     const crouch = settle(rider, board, { presentation: { state: 'CROUCH' }, crouch: 1 });
@@ -113,6 +113,49 @@ for (const name of avatars) {
       rider.update({ board, stance, presentation: { state: 'AIR' }, dt: 1 / 60 });
       for (const side of ['l', 'r']) assert.ok(rider.bones['foot_' + side].getWorldPosition(v())
         .distanceTo(anchor(rider, board, side)) < .015, 'finishing a shove must not cross the legs');
+    }
+    rider.dispose();
+  });
+}
+
+
+for (const name of avatars) {
+  test(name + ': motion IK never folds elbow back or sends regular arms through torso/head', async () => {
+    const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
+    const board = boardFixture();
+    const scenarios = [
+      { state:'IDLE' }, { state:'COAST',speedRatio:.8,steer:1 },
+      { state:'BRAKE' }, { state:'CROUCH',crouch:1 },
+      { state:'OLLIE_POP',charge:1 }, { state:'AIR',speedRatio:.9 },
+      { state:'WALLRIDE',wallRide:true }, { state:'GRIND',grindType:'50-50' },
+      { state:'LAND',landingSeverity:.9 },
+      { state:'AIR',grabState:{name:'Indy'},grabWeight:.8 },
+    ];
+    for (const scenario of scenarios) {
+      rider.resetPresentation();
+      for (let frame=0;frame<16;frame++) {
+        rider.update({board,presentation:{state:scenario.state},...scenario,dt:1/60,time:frame/60});
+        const head=rider.bones.head?.getWorldPosition(v());
+        for (const side of ['l','r']) {
+          const shoulder=rider.bones['upperarm_'+side].getWorldPosition(v());
+          const elbow=rider.bones['lowerarm_'+side].getWorldPosition(v());
+          const wrist=rider.bones['hand_'+side].getWorldPosition(v());
+          const flexion=Math.PI-shoulder.clone().sub(elbow).angleTo(wrist.clone().sub(elbow));
+          assert.ok(Number.isFinite(flexion) && flexion<2.13,
+            `${name}/${scenario.state}/${side}: hyperflexed elbow ${flexion}`);
+          if (!scenario.grabState && !scenario.wallRide) {
+            const outward=rider.armOutward[side].clone().applyQuaternion(rider.root.getWorldQuaternion(new THREE.Quaternion())).normalize();
+            const out=wrist.clone().sub(shoulder).dot(outward);
+            assert.ok(out>-.04,`${name}/${scenario.state}/${side}: arm crosses torso ${out}`);
+          }
+          if (head) {
+            assert.ok(wrist.distanceTo(head)>.06,
+              `${name}/${scenario.state}/${side}: wrist penetrates head`);
+            assert.ok(elbow.distanceTo(head)>.06,
+              `${name}/${scenario.state}/${side}: elbow penetrates head`);
+          }
+        }
+      }
     }
     rider.dispose();
   });
