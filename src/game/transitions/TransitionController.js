@@ -187,6 +187,9 @@ export class TransitionController {
         0,
         1,
       );
+      // A nearby crossing rail may be geometrically close but belong to a
+      // perpendicular ramp. Its lip cannot launch this surface normal.
+      if (Math.abs(edgeInfo.tangent.dot(rampInward)) > 0.63) continue;
       const lipPoint = edgeInfo.a.clone().lerp(edgeInfo.b, t);
       const gap = horizontal(position.clone().sub(lipPoint)).length();
       const lipSurfaceY = lipPoint.y - 0.025;
@@ -266,10 +269,13 @@ export class TransitionController {
 
     let launchHorizontal;
     if (exitRequested) {
-      const exitSpeed = clamp(incomingSpeed * 0.78 + 0.9, 4.8, 12.8);
+      // First-stage direction only: real collision-deck transfer planning will
+      // replace this vector. Avoid spending all rise energy on a phantom 12 m/s
+      // outward kick before that geometry has been checked.
+      const exitSpeed = Math.min(8.4, incomingSpeed * 0.64);
       const retainedLateral = edge.copingTangent.clone().multiplyScalar(lateralVelocity * 0.45);
       launchHorizontal = edge.deckOutward.clone().multiplyScalar(exitSpeed).add(retainedLateral);
-      launchVertical = clamp(launchVertical * 0.80, 3.2, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
+      launchVertical = clamp(launchVertical * 0.84, 0, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     } else {
       // Near-vertical coping retains a small physically directional outward
       // component rather than annihilating radial velocity in one frame.
