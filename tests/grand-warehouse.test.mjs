@@ -80,7 +80,14 @@ test('every named skateable ramp skin has physics, and wood/trim/roof art is not
   assert.ok(imported.triangles > 500,'collision mesh is incomplete');
   const fixtures = ['Cube__0','Cube__0.001','Plane_SkateLite_base_color.002_0'];
   for (const fixture of fixtures) {
-    assert.ok(imported.surfaces.includes(fixture), `${fixture}: missing rideable top/transition geometry`);
+    const observed=[];
+    root.traverse(node=>{
+      if(node.isMesh && /Cube|SkateLite/i.test(node.name+node.userData?.name)) {
+        observed.push({mesh:node.name,source:node.userData?.name,label:warehouseObjectName(node)});
+      }
+    });
+    assert.ok(imported.surfaces.includes(fixture),
+      `${fixture}: missing rideable top/transition geometry; observed=${JSON.stringify(observed)}; indexed=${JSON.stringify(imported.surfaces.filter(s=>/Cube|SkateLite/i.test(s)))}`);
   }
   assert.ok(imported.repairs.movedRamps.length===0,'Grand must retain artist positions');
 });
