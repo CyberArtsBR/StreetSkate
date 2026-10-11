@@ -22,14 +22,14 @@ export const PARK_REGISTRY = Object.freeze({
       fallback: { background: '#c1d1cf', fogColor: '#c1d1cf', keyColor: '#fff1d9',
         keyIntensity: 2.8, keyPosition: [-25, 65, 2], ambientIntensity: 0.9, environmentIntensity: 0.24 } },
   },
-  'urban-warehouse': {
-    name: 'Urban Warehouse',
-    create: async () => (await import('../park/WarehouseVariants.js')).createWarehouseVariant('urban-warehouse'),
-    presentation: { center: [0, 0, 0], sky: false, exposure: 1.1, background: '#3f4549',
-      fogColor: '#3f4549', fogNear: 100, fogFar: 225, ambientSky: '#d8e1e9',
-      ambientGround: '#544434', ambientIntensity: 1.6,
-      keyColor: '#ffe4cb', keyIntensity: 2.6, keyPosition: [25, 35, 10],
-      shadowExtent: 82, environmentIntensity: .38, roofCutawayHeight: 18.5 },
+  orbit: {
+    name: 'ORBIT',
+    create: async () => (await import('../park/OrbitPark.js')).createOrbitPark(),
+    presentation: { center: [0, 0, 0], sky: false, exposure: 1.05, background: '#090e22',
+      fogColor: '#090e22', fogDensity: 0, ambientSky: '#b2d8ff',
+      ambientGround: '#233452', ambientIntensity: 1.4,
+      keyColor: '#c6efff', keyIntensity: 2.2, keyPosition: [25, 55, 10],
+      shadowExtent: 82, environmentIntensity: .45 },
   },
   legacy: {
     name: 'Legacy park',

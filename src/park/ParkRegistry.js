@@ -1,7 +1,7 @@
 /** Stable park identifiers; public map numbers are independent of saved IDs. */
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
-  Object.freeze({ id: 'urban-warehouse', number:2, name: 'URBAN WAREHOUSE', subtitle: 'Concrete, coping & after-hours sessions', available: true, selectable: true }),
+  Object.freeze({ id: 'orbit', number:2, name: 'ORBIT', subtitle: 'Neon lines / orbital skate terminal', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
 ]);
 
@@ -147,9 +147,9 @@ async function loadLegacy({ scope, signal }) {
 }
 
 async function loadWarehouseVariant({ scope, signal }, id) {
-  const { createWarehouseVariant } = await import('./WarehouseVariants.js');
+  const { createOrbitPark } = await import('./OrbitPark.js');
   assertNotAborted(signal);
-  const world = await createWarehouseVariant(id);
+  const world = await createOrbitPark();
   scope.trackWorld(world, { disposeTextures: true });
   await world.ready;
   assertNotAborted(signal);
@@ -160,7 +160,7 @@ export function createDefaultParkRegistry({ rooftopLoader = loadRooftop, legacyL
   const registry = new ParkRegistry();
   for (const definition of PARK_DEFINITIONS) {
     const load = definition.id === 'rooftop' ? rooftopLoader :
-      definition.id === 'legacy' ? legacyLoader : definition.id === 'urban-warehouse'
+      definition.id === 'legacy' ? legacyLoader : definition.id === 'orbit'
         ? params => loadWarehouseVariant(params, definition.id) : undefined;
     registry.register({ ...definition, ...(load ? { load } : {}) });
   }

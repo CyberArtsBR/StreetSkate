@@ -1,0 +1,1424 @@
+{
+  "name": "ORBIT",
+  "revision": 2,
+  "theme": "Expanded neon orbital skatepark",
+  "dimensions": "136 × 108 m · EXPANDED ORBIT",
+  "transitionScale": 1,
+  "visualTriangles": 298838,
+  "center": [
+    0,
+    0,
+    0
+  ],
+  "spawn": [
+    10,
+    0.15,
+    36
+  ],
+  "rails": [
+    {
+      "name": "Orbit bowl coping",
+      "points": [
+        [
+          -26.18377,
+          0.04,
+          -18.38478
+        ],
+        [
+          -26.19822,
+          0.04,
+          -18.97359
+        ],
+        [
+          -26.24155,
+          0.04,
+          -19.56098
+        ],
+        [
+          -26.31365,
+          0.04,
+          -20.14554
+        ],
+        [
+          -26.41434,
+          0.04,
+          -20.72586
+        ],
+        [
+          -26.54339,
+          0.04,
+          -21.30054
+        ],
+        [
+          -26.70048,
+          0.04,
+          -21.86819
+        ],
+        [
+          -26.88524,
+          0.04,
+          -22.42745
+        ],
+        [
+          -27.09721,
+          0.04,
+          -22.97698
+        ],
+        [
+          -27.33589,
+          0.04,
+          -23.51544
+        ],
+        [
+          -27.60071,
+          0.04,
+          -24.04154
+        ],
+        [
+          -27.89102,
+          0.04,
+          -24.55401
+        ],
+        [
+          -28.20613,
+          0.04,
+          -25.05162
+        ],
+        [
+          -28.54528,
+          0.04,
+          -25.53317
+        ],
+        [
+          -28.90764,
+          0.04,
+          -25.9975
+        ],
+        [
+          -29.29235,
+          0.04,
+          -26.44348
+        ],
+        [
+          -29.69848,
+          0.04,
+          -26.87006
+        ],
+        [
+          -30.12506,
+          0.04,
+          -27.27619
+        ],
+        [
+          -30.57105,
+          0.04,
+          -27.6609
+        ],
+        [
+          -31.03537,
+          0.04,
+          -28.02327
+        ],
+        [
+          -31.51692,
+          0.04,
+          -28.36241
+        ],
+        [
+          -32.01453,
+          0.04,
+          -28.67752
+        ],
+        [
+          -32.52701,
+          0.04,
+          -28.96783
+        ],
+        [
+          -33.05311,
+          0.04,
+          -29.23265
+        ],
+        [
+          -33.59156,
+          0.04,
+          -29.47133
+        ],
+        [
+          -34.14109,
+          0.04,
+          -29.68331
+        ],
+        [
+          -34.70035,
+          0.04,
+          -29.86806
+        ],
+        [
+          -35.268,
+          0.04,
+          -30.02515
+        ],
+        [
+          -35.84268,
+          0.04,
+          -30.1542
+        ],
+        [
+          -36.423,
+          0.04,
+          -30.25489
+        ],
+        [
+          -37.00756,
+          0.04,
+          -30.32699
+        ],
+        [
+          -37.59495,
+          0.04,
+          -30.37032
+        ],
+        [
+          -38.18377,
+          0.04,
+          -30.38478
+        ],
+        [
+          -38.77258,
+          0.04,
+          -30.37032
+        ],
+        [
+          -39.35997,
+          0.04,
+          -30.32699
+        ],
+        [
+          -39.94453,
+          0.04,
+          -30.25489
+        ],
+        [
+          -40.52485,
+          0.04,
+          -30.1542
+        ],
+        [
+          -41.09953,
+          0.04,
+          -30.02515
+        ],
+        [
+          -41.66718,
+          0.04,
+          -29.86806
+        ],
+        [
+          -42.22644,
+          0.04,
+          -29.68331
+        ],
+        [
+          -42.77597,
+          0.04,
+          -29.47133
+        ],
+        [
+          -43.31443,
+          0.04,
+          -29.23265
+        ],
+        [
+          -43.84053,
+          0.04,
+          -28.96783
+        ],
+        [
+          -44.353,
+          0.04,
+          -28.67752
+        ],
+        [
+          -44.85061,
+          0.04,
+          -28.36241
+        ],
+        [
+          -45.33216,
+          0.04,
+          -28.02327
+        ],
+        [
+          -45.79649,
+          0.04,
+          -27.6609
+        ],
+        [
+          -46.24247,
+          0.04,
+          -27.27619
+        ],
+        [
+          -46.66905,
+          0.04,
+          -26.87006
+        ],
+        [
+          -47.07518,
+          0.04,
+          -26.44348
+        ],
+        [
+          -47.45989,
+          0.04,
+          -25.9975
+        ],
+        [
+          -47.82226,
+          0.04,
+          -25.53317
+        ],
+        [
+          -48.1614,
+          0.04,
+          -25.05162
+        ],
+        [
+          -48.47651,
+          0.04,
+          -24.55401
+        ],
+        [
+          -48.76682,
+          0.04,
+          -24.04154
+        ],
+        [
+          -49.03164,
+          0.04,
+          -23.51544
+        ],
+        [
+          -49.27032,
+          0.04,
+          -22.97698
+        ],
+        [
+          -49.48229,
+          0.04,
+          -22.42745
+        ],
+        [
+          -49.66705,
+          0.04,
+          -21.86819
+        ],
+        [
+          -49.82414,
+          0.04,
+          -21.30054
+        ],
+        [
+          -49.95319,
+          0.04,
+          -20.72586
+        ],
+        [
+          -50.05388,
+          0.04,
+          -20.14554
+        ],
+        [
+          -50.12598,
+          0.04,
+          -19.56098
+        ],
+        [
+          -50.16931,
+          0.04,
+          -18.97359
+        ],
+        [
+          -50.18377,
+          0.04,
+          -18.38478
+        ],
+        [
+          -50.16931,
+          0.04,
+          -17.79596
+        ],
+        [
+          -50.12598,
+          0.04,
+          -17.20857
+        ],
+        [
+          -50.05388,
+          0.04,
+          -16.62401
+        ],
+        [
+          -49.95319,
+          0.04,
+          -16.04369
+        ],
+        [
+          -49.82414,
+          0.04,
+          -15.46901
+        ],
+        [
+          -49.66705,
+          0.04,
+          -14.90136
+        ],
+        [
+          -49.48229,
+          0.04,
+          -14.3421
+        ],
+        [
+          -49.27032,
+          0.04,
+          -13.79258
+        ],
+        [
+          -49.03164,
+          0.04,
+          -13.25412
+        ],
+        [
+          -48.76682,
+          0.04,
+          -12.72802
+        ],
+        [
+          -48.47651,
+          0.04,
+          -12.21554
+        ],
+        [
+          -48.1614,
+          0.04,
+          -11.71793
+        ],
+        [
+          -47.82226,
+          0.04,
+          -11.23638
+        ],
+        [
+          -47.45989,
+          0.04,
+          -10.77206
+        ],
+        [
+          -47.07518,
+          0.04,
+          -10.32607
+        ],
+        [
+          -46.66905,
+          0.04,
+          -9.89949
+        ],
+        [
+          -46.24247,
+          0.04,
+          -9.49336
+        ],
+        [
+          -45.79649,
+          0.04,
+          -9.10865
+        ],
+        [
+          -45.33216,
+          0.04,
+          -8.74629
+        ],
+        [
+          -44.85061,
+          0.04,
+          -8.40714
+        ],
+        [
+          -44.353,
+          0.04,
+          -8.09203
+        ],
+        [
+          -43.84053,
+          0.04,
+          -7.80172
+        ],
+        [
+          -43.31443,
+          0.04,
+          -7.5369
+        ],
+        [
+          -42.77597,
+          0.04,
+          -7.29822
+        ],
+        [
+          -42.22644,
+          0.04,
+          -7.08625
+        ],
+        [
+          -41.66718,
+          0.04,
+          -6.90149
+        ],
+        [
+          -41.09953,
+          0.04,
+          -6.7444
+        ],
+        [
+          -40.52485,
+          0.04,
+          -6.61535
+        ],
+        [
+          -39.94453,
+          0.04,
+          -6.51466
+        ],
+        [
+          -39.35997,
+          0.04,
+          -6.44256
+        ],
+        [
+          -38.77258,
+          0.04,
+          -6.39923
+        ],
+        [
+          -38.18377,
+          0.04,
+          -6.38478
+        ],
+        [
+          -37.59495,
+          0.04,
+          -6.39923
+        ],
+        [
+          -37.00756,
+          0.04,
+          -6.44256
+        ],
+        [
+          -36.423,
+          0.04,
+          -6.51466
+        ],
+        [
+          -35.84268,
+          0.04,
+          -6.61535
+        ],
+        [
+          -35.268,
+          0.04,
+          -6.7444
+        ],
+        [
+          -34.70035,
+          0.04,
+          -6.90149
+        ],
+        [
+          -34.14109,
+          0.04,
+          -7.08625
+        ],
+        [
+          -33.59156,
+          0.04,
+          -7.29822
+        ],
+        [
+          -33.05311,
+          0.04,
+          -7.5369
+        ],
+        [
+          -32.52701,
+          0.04,
+          -7.80172
+        ],
+        [
+          -32.01453,
+          0.04,
+          -8.09203
+        ],
+        [
+          -31.51692,
+          0.04,
+          -8.40714
+        ],
+        [
+          -31.03537,
+          0.04,
+          -8.74629
+        ],
+        [
+          -30.57105,
+          0.04,
+          -9.10865
+        ],
+        [
+          -30.12506,
+          0.04,
+          -9.49336
+        ],
+        [
+          -29.69848,
+          0.04,
+          -9.89949
+        ],
+        [
+          -29.29235,
+          0.04,
+          -10.32607
+        ],
+        [
+          -28.90764,
+          0.04,
+          -10.77206
+        ],
+        [
+          -28.54528,
+          0.04,
+          -11.23638
+        ],
+        [
+          -28.20613,
+          0.04,
+          -11.71793
+        ],
+        [
+          -27.89102,
+          0.04,
+          -12.21554
+        ],
+        [
+          -27.60071,
+          0.04,
+          -12.72802
+        ],
+        [
+          -27.33589,
+          0.04,
+          -13.25412
+        ],
+        [
+          -27.09721,
+          0.04,
+          -13.79258
+        ],
+        [
+          -26.88524,
+          0.04,
+          -14.3421
+        ],
+        [
+          -26.70048,
+          0.04,
+          -14.90136
+        ],
+        [
+          -26.54339,
+          0.04,
+          -15.46901
+        ],
+        [
+          -26.41434,
+          0.04,
+          -16.04369
+        ],
+        [
+          -26.31365,
+          0.04,
+          -16.62401
+        ],
+        [
+          -26.24155,
+          0.04,
+          -17.20857
+        ],
+        [
+          -26.19822,
+          0.04,
+          -17.79596
+        ],
+        [
+          -26.18377,
+          0.04,
+          -18.38478
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "orbit-bowl",
+        "type": "BOWL",
+        "axisMode": "RADIAL",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "BOWL"
+      }
+    },
+    {
+      "name": "02 / north halfpipe coping",
+      "points": [
+        [
+          14.95584,
+          4.125,
+          -39.24113
+        ],
+        [
+          35.95584,
+          4.125,
+          -39.24113
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "02 / north halfpipe",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "02 / south halfpipe coping",
+      "points": [
+        [
+          35.95584,
+          4.125,
+          -11.67056
+        ],
+        [
+          14.95584,
+          4.125,
+          -11.67056
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "02 / south halfpipe",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "03 / west return quarter coping",
+      "points": [
+        [
+          -51.26905,
+          3.225,
+          46.68377
+        ],
+        [
+          -51.26905,
+          3.225,
+          29.68377
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "03 / west return quarter",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "04 / east return quarter coping",
+      "points": [
+        [
+          59.6,
+          3.225,
+          14
+        ],
+        [
+          59.6,
+          3.225,
+          30
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "04 / east return quarter",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "08 / northwest training quarter coping",
+      "points": [
+        [
+          -24,
+          2.425,
+          -45.4
+        ],
+        [
+          -8,
+          2.425,
+          -45.4
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "08 / northwest training quarter",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "08 / north launch quarter coping",
+      "points": [
+        [
+          -5,
+          3.025,
+          -47
+        ],
+        [
+          9,
+          3.025,
+          -47
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "08 / north launch quarter",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "08 / south wide quarter coping",
+      "points": [
+        [
+          27,
+          3.225,
+          47.8
+        ],
+        [
+          3,
+          3.225,
+          47.8
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "08 / south wide quarter",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "08 / flow east transition coping",
+      "points": [
+        [
+          -30,
+          2.125,
+          23
+        ],
+        [
+          -30,
+          2.125,
+          9
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "08 / flow east transition",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "08 / flow west transition coping",
+      "points": [
+        [
+          -14,
+          2.125,
+          9
+        ],
+        [
+          -14,
+          2.125,
+          23
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "coping",
+      "transition": {
+        "id": "08 / flow west transition",
+        "type": "QUARTER",
+        "axisMode": "LINEAR",
+        "supportsVert": true,
+        "supportsTransfer": true,
+        "supportsPump": true,
+        "supportsLipTricks": true,
+        "cameraHint": "QUARTER"
+      }
+    },
+    {
+      "name": "Manual pad cyan edge",
+      "points": [
+        [
+          -27.5,
+          0.63,
+          31
+        ],
+        [
+          -16.5,
+          0.63,
+          31
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "ledge"
+    },
+    {
+      "name": "Long ledge ultraviolet edge",
+      "points": [
+        [
+          -29.5,
+          1.07,
+          41.5
+        ],
+        [
+          -16.5,
+          1.07,
+          41.5
+        ]
+      ],
+      "radius": 0.065,
+      "kind": "ledge"
+    },
+    {
+      "name": "Ion runway long rail",
+      "points": [
+        [
+          -3,
+          0.8,
+          30
+        ],
+        [
+          -3,
+          0.8,
+          9
+        ]
+      ],
+      "radius": 0.075,
+      "kind": "flat",
+      "clearance": {
+        "approach": 12,
+        "exit": 12,
+        "width": 4
+      }
+    },
+    {
+      "name": "Nebula long rail",
+      "points": [
+        [
+          -41,
+          0.8,
+          33
+        ],
+        [
+          -41,
+          0.8,
+          10
+        ]
+      ],
+      "radius": 0.075,
+      "kind": "flat",
+      "clearance": {
+        "approach": 12,
+        "exit": 12,
+        "width": 4
+      }
+    },
+    {
+      "name": "East connector long rail",
+      "points": [
+        [
+          52,
+          0.82,
+          -12
+        ],
+        [
+          52,
+          0.82,
+          -31
+        ]
+      ],
+      "radius": 0.075,
+      "kind": "flat",
+      "clearance": {
+        "approach": 12,
+        "exit": 12,
+        "width": 4
+      }
+    },
+    {
+      "name": "Cross-orbit long rail",
+      "points": [
+        [
+          -22,
+          0.8,
+          -4
+        ],
+        [
+          0,
+          0.8,
+          -4
+        ]
+      ],
+      "radius": 0.075,
+      "kind": "flat",
+      "clearance": {
+        "approach": 12,
+        "exit": 12,
+        "width": 4
+      }
+    }
+  ],
+  "playableRegions": [
+    {
+      "minX": -66.18225,
+      "maxX": 66.18225,
+      "minZ": -52.04012,
+      "maxZ": 52.04012
+    }
+  ],
+  "layout": {
+    "areaScale": 2,
+    "footprint": [
+      135.76450198781714,
+      107.48023074035522
+    ],
+    "previousFootprint": [
+      96,
+      76
+    ],
+    "stairs": false,
+    "rampCount": 11,
+    "perimeter": [
+      [
+        -67.88225,
+        0,
+        39.59798
+      ],
+      [
+        -53.74012,
+        0,
+        53.74012
+      ],
+      [
+        53.74012,
+        0,
+        53.74012
+      ],
+      [
+        67.88225,
+        0,
+        39.59798
+      ],
+      [
+        67.88225,
+        0,
+        -39.59798
+      ],
+      [
+        53.74012,
+        0,
+        -53.74012
+      ],
+      [
+        -53.74012,
+        0,
+        -53.74012
+      ],
+      [
+        -67.88225,
+        0,
+        -39.59798
+      ]
+    ],
+    "fixtures": {
+      "bowl": {
+        "center": [
+          -38.18376618407357,
+          -18.38477631085024
+        ],
+        "flatRadius": 8,
+        "transitionRun": 4,
+        "depth": 3.2
+      },
+      "ramps": [
+        {
+          "name": "02 / north halfpipe",
+          "category": "quarter",
+          "toe": [
+            25.45584,
+            -33.94113
+          ],
+          "deck": [
+            25.45584,
+            -40.54113
+          ],
+          "height": 4.1
+        },
+        {
+          "name": "02 / south halfpipe",
+          "category": "quarter",
+          "toe": [
+            25.45584,
+            -16.97056
+          ],
+          "deck": [
+            25.45584,
+            -10.37056
+          ],
+          "height": 4.1
+        },
+        {
+          "name": "03 / west return quarter",
+          "category": "quarter",
+          "toe": [
+            -46.66905,
+            38.18377
+          ],
+          "deck": [
+            -52.56905,
+            38.18377
+          ],
+          "height": 3.2
+        },
+        {
+          "name": "04 / east return quarter",
+          "category": "quarter",
+          "toe": [
+            55,
+            22
+          ],
+          "deck": [
+            60.9,
+            22
+          ],
+          "height": 3.2
+        },
+        {
+          "name": "08 / northwest training quarter",
+          "category": "quarter",
+          "toe": [
+            -16,
+            -41
+          ],
+          "deck": [
+            -16,
+            -46.7
+          ],
+          "height": 2.4
+        },
+        {
+          "name": "08 / north launch quarter",
+          "category": "quarter",
+          "toe": [
+            2,
+            -42
+          ],
+          "deck": [
+            2,
+            -48.3
+          ],
+          "height": 3
+        },
+        {
+          "name": "08 / south wide quarter",
+          "category": "quarter",
+          "toe": [
+            15,
+            42
+          ],
+          "deck": [
+            15,
+            49.1
+          ],
+          "height": 3.2
+        },
+        {
+          "name": "08 / flow east transition",
+          "category": "quarter",
+          "toe": [
+            -26,
+            16
+          ],
+          "deck": [
+            -31.3,
+            16
+          ],
+          "height": 2.1
+        },
+        {
+          "name": "08 / flow west transition",
+          "category": "quarter",
+          "toe": [
+            -18,
+            16
+          ],
+          "deck": [
+            -12.7,
+            16
+          ],
+          "height": 2.1
+        },
+        {
+          "name": "09 / broad north bank",
+          "category": "bank",
+          "toe": [
+            35,
+            17
+          ],
+          "deck": [
+            35,
+            26.5
+          ],
+          "height": 2.2
+        },
+        {
+          "name": "09 / broad south bank",
+          "category": "bank",
+          "toe": [
+            35,
+            39
+          ],
+          "deck": [
+            35,
+            29.5
+          ],
+          "height": 2.2
+        }
+      ],
+      "funboxSides": [
+        {
+          "from": [
+            7,
+            0.5,
+            7
+          ],
+          "to": [
+            8,
+            0.5,
+            7
+          ]
+        },
+        {
+          "from": [
+            17,
+            0.5,
+            7
+          ],
+          "to": [
+            16,
+            0.5,
+            7
+          ]
+        }
+      ]
+    }
+  },
+  "spots": [
+    {
+      "id": "street",
+      "label": "Street circuit",
+      "position": [
+        10,
+        0.15,
+        36
+      ]
+    },
+    {
+      "id": "bowl",
+      "label": "Orbit pool",
+      "position": [
+        -38.18376618407357,
+        -3.05,
+        -18.38477631085024
+      ]
+    },
+    {
+      "id": "flow",
+      "label": "Vert array",
+      "position": [
+        25.455844122715714,
+        0.15,
+        -25
+      ]
+    },
+    {
+      "id": "banks",
+      "label": "Broad bank circuit",
+      "position": [
+        35,
+        2.35,
+        28
+      ]
+    },
+    {
+      "id": "rail",
+      "label": "Ion runway rail",
+      "position": [
+        -3,
+        0.15,
+        42
+      ],
+      "heading": 3.141592653589793
+    },
+    {
+      "id": "training",
+      "label": "Flow lab",
+      "position": [
+        -22,
+        0.15,
+        16
+      ]
+    }
+  ],
+  "views": {
+    "overview": {
+      "position": [
+        127,
+        97,
+        134
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "caption": "ORBIT · Twice the space. Longer lines.",
+      "index": "01"
+    },
+    "bowl": {
+      "position": [
+        -12.18376618407357,
+        28,
+        10.615223689149762
+      ],
+      "target": [
+        -38.18376618407357,
+        -1,
+        -18.38477631085024
+      ],
+      "caption": "Orbit pool · Continuous neon coping",
+      "index": "02"
+    },
+    "street": {
+      "position": [
+        73,
+        28,
+        66
+      ],
+      "target": [
+        3,
+        0,
+        14
+      ],
+      "caption": "Expanded circuit · Four long rails and broad banks",
+      "index": "03"
+    },
+    "top": {
+      "position": [
+        0,
+        177,
+        0.01
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "caption": "Eleven transitions. Open rail approaches.",
+      "index": "—"
+    }
+  },
+  "source": {
+    "asset": "orbit.glb",
+    "sha256": "5038ff2ea2e65620faf098bbdf333b47163fe0837542e551e09561a2d45e674d"
+  },
+  "skybox": {
+    "path": "textures/galaxy-4k.png",
+    "dimensions": [
+      4096,
+      2048
+    ],
+    "nativeGeneratedDimensions": [
+      1774,
+      887
+    ],
+    "derivation": "Blender image resampling from preserved generated panorama"
+  },
+  "graffitiPlacement": "Reachable lower bowl transition, ramp side/rear panels, broad bank cheek, manual pad face and low perimeter walls"
+}
