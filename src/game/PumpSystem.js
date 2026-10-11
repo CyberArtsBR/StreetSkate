@@ -6,6 +6,8 @@ export const PUMP_CONFIG = Object.freeze({
   minSlopeDeg: 7,
   maxSlopeDeg: 68,
   minCurvatureRad: 0.008,
+  // A sharp wheel-normal discontinuity is a ledge/seam, not a pumpable arc.
+  maxCoherentCurvatureRad: 0.48,
   minHold: 0.075,
   cooldown: 0.22,
   landingWindow: 0.42,
@@ -55,7 +57,12 @@ export function evaluatePumpEligibility({
 } = {}, config = PUMP_CONFIG) {
   const motion = phaseFromMotion(normalY, 0);
   const curvature = Math.max(Math.abs(normalDelta), Math.abs(contactSpread));
-  const hasTransitionShape = curvature >= config.minCurvatureRad || landingWindow > 0;
+  // Four wheels straddling a hard 90-degree corner can report enormous
+  // curvature; rewarding that as a bowl compression creates seam exploits.
+  const coherent = Number.isFinite(curvature)
+    && curvature <= config.maxCoherentCurvatureRad;
+  const hasTransitionShape = coherent
+    && (curvature >= config.minCurvatureRad || landingWindow > 0);
   const eligible = contactCount >= config.minContacts
     && motion.slopeDeg >= config.minSlopeDeg
     && motion.slopeDeg <= config.maxSlopeDeg
