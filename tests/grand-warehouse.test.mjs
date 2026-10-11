@@ -18,49 +18,6 @@ const file = 'public/assets/warehouse/granwarehouse.glb';
 const expectedHash = 'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c';
 
 
-test('the imported West/Flow quarter faces by the horseshoe rail have real wheel support', () => {
-  // Sample the actual artist GLB, not a procedural replacement quarter or a
-  // flat proxy that would incorrectly cap the bowl. The wheel ray must meet
-  // the visible ramp skin at the same height.
-  const surface = new ParkCollision(imported.collision);
-  const candidates = [];
-  root.updateMatrixWorld(true);
-  root.traverse(mesh => {
-    if (!mesh.isMesh || mesh.userData.grandWarehouseExcluded) return;
-    const name = warehouseObjectName(mesh);
-    if (!/(?:West transfer quarter|Flow launch ramp)/.test(name)
-      || !/Skateable_Surface/.test(name)) return;
-    if (/Plywood_Edges|Stainless_Coping|Grind_Rail/.test(mesh.material?.name || '')) return;
-    const p = mesh.geometry?.attributes?.position, idx = mesh.geometry?.index;
-    if (!p) return;
-    for (let i = 0; i + 2 < (idx?.count || p.count); i += 3) {
-      const tri = [0,1,2].map(n => new THREE.Vector3().fromBufferAttribute(
-        p, idx ? idx.getX(i + n) : i + n).applyMatrix4(mesh.matrixWorld));
-      const normal = new THREE.Triangle(...tri).getNormal(new THREE.Vector3());
-      if (normal.y < .12 || normal.y > .98) continue;
-      const centre = tri[0].clone().add(tri[1]).add(tri[2]).multiplyScalar(1/3);
-      if (Number.isFinite(centre.y)) candidates.push({ centre, name });
-    }
-  });
-  const down = new THREE.Vector3(0,-1,0), point = new THREE.Vector3(), normal = new THREE.Vector3();
-  const failures = []; let sampled = 0;
-  for (let i = 0; i < candidates.length; i += Math.max(1, Math.ceil(candidates.length/48))) {
-    const {centre,name} = candidates[i];
-    const origin = centre.clone().addScaledVector(new THREE.Vector3(0,1,0), .35);
-    const hit = surface.rayRideable(origin, down, .75, point, normal);
-    sampled++;
-    if (!hit || Math.abs(point.y-centre.y) > .11) failures.push({
-      name, x:+centre.x.toFixed(2), y:+centre.y.toFixed(2), z:+centre.z.toFixed(2),
-      hitY:hit ? +point.y.toFixed(2) : null,
-    });
-  }
-  console.log('GRAND_QUARTER_CONTACTS ' + JSON.stringify({
-    eligibleTriangles:candidates.length, checked:sampled, failures:failures.slice(0,8),
-  }));
-  assert.ok(sampled >= 6, 'not enough authored quarter triangles tested');
-  assert.equal(failures.length, 0, 'visible imported quarter ramp has missing wheel support');
-});
-
 test('Map 3 is distinct and preserves ORBIT as Map 2', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
   assert.deepEqual(ids, ['rooftop','orbit','grand-warehouse']);
@@ -120,6 +77,51 @@ baseline.manifest.rails = imported.rails;
 ensureGrandWarehouseSpawns(baseline);
 const runtime = prepareParkRuntime(baseline);
 const objectNames = imported.surfaces.join(';');
+
+test('the imported West/Flow quarter faces by the horseshoe rail have real wheel support', () => {
+  // Sample the actual artist GLB, not a procedural replacement quarter or a
+  // flat proxy that would incorrectly cap the bowl. The wheel ray must meet
+  // the visible ramp skin at the same height.
+  const surface = new ParkCollision(imported.collision);
+  const candidates = [];
+  root.updateMatrixWorld(true);
+  root.traverse(mesh => {
+    if (!mesh.isMesh || mesh.userData.grandWarehouseExcluded) return;
+    const name = warehouseObjectName(mesh);
+    if (!/(?:West transfer quarter|Flow launch ramp)/.test(name)
+      || !/Skateable_Surface/.test(name)) return;
+    if (/Plywood_Edges|Stainless_Coping|Grind_Rail/.test(mesh.material?.name || '')) return;
+    const p = mesh.geometry?.attributes?.position, idx = mesh.geometry?.index;
+    if (!p) return;
+    for (let i = 0; i + 2 < (idx?.count || p.count); i += 3) {
+      const tri = [0,1,2].map(n => new THREE.Vector3().fromBufferAttribute(
+        p, idx ? idx.getX(i + n) : i + n).applyMatrix4(mesh.matrixWorld));
+      const normal = new THREE.Triangle(...tri).getNormal(new THREE.Vector3());
+      if (normal.y < .12 || normal.y > .98) continue;
+      const centre = tri[0].clone().add(tri[1]).add(tri[2]).multiplyScalar(1/3);
+      if (Number.isFinite(centre.y)) candidates.push({ centre, name });
+    }
+  });
+  const down = new THREE.Vector3(0,-1,0), point = new THREE.Vector3(), normal = new THREE.Vector3();
+  const failures = []; let sampled = 0;
+  for (let i = 0; i < candidates.length; i += Math.max(1, Math.ceil(candidates.length/48))) {
+    const {centre,name} = candidates[i];
+    const origin = centre.clone().addScaledVector(new THREE.Vector3(0,1,0), .35);
+    const hit = surface.rayRideable(origin, down, .75, point, normal);
+    sampled++;
+    if (!hit || Math.abs(point.y-centre.y) > .11) failures.push({
+      name, x:+centre.x.toFixed(2), y:+centre.y.toFixed(2), z:+centre.z.toFixed(2),
+      hitY:hit ? +point.y.toFixed(2) : null,
+    });
+  }
+  console.log('GRAND_QUARTER_CONTACTS ' + JSON.stringify({
+    eligibleTriangles:candidates.length, checked:sampled, failures:failures.slice(0,8),
+  }));
+  assert.ok(sampled >= 6, 'not enough authored quarter triangles tested');
+  assert.equal(failures.length, 0, 'visible imported quarter ramp has missing wheel support');
+});
+
+
 
 test('Map 3 preserves every artist-authored ramp location and original floor finish', () => {
   assert.deepEqual(imported.repairs.movedRamps,[],'must never move Blender ramps behind the artist');
