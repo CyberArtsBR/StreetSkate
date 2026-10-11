@@ -27,15 +27,16 @@ function lipEdge() {
   };
 }
 
-test('roof-level vert launch is capped even at maximal ramp speed and boost', () => {
+test('vert launch remains bounded even at maximal ramp speed and boost', () => {
   const controller = new TransitionController({ rails: [] });
   const velocity = new THREE.Vector3(0, 9, -16);
   const air = controller.begin(new THREE.Vector3(0,2.8,.18), velocity, lipEdge(), { launchBoost: 8.5 });
   assert.equal(air.transferring, false);
   assert.ok(velocity.y <= VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed + 1e-8);
   assert.ok(velocity.y > 0);
-  // At gravity=20 this is under 2.81 metres additional ascent above the lip.
-  assert.ok(velocity.y ** 2 / 40 < 2.82);
+  // At gravity=20 the charged ceiling is 5.63 metres above departure. Fast
+  // ramp air needs more than the former 2.81 m ceiling to fit multiple tricks.
+  assert.ok(velocity.y ** 2 / 40 <= 5.63);
 });
 
 test('generic quarter lip retains a strong jump but never compounds vertical velocity into a roof launch', () => {

@@ -10,11 +10,13 @@ const UP = new THREE.Vector3(0, 1, 0);
 const CAPTURE_SCALE = 1.3;
 const EPSILON = 1e-8;
 const clamp = THREE.MathUtils.clamp;
-// Tony Hawk-style height envelope: preserving a meaningful Ollie boost while
-// never allowing a steep quarter to turn 17 m/s of approach into a roof launch.
+// Preserve useful climbing momentum and room for tricks. The old 9.4 m/s
+// passive cap cut an ordinary fast quarter's upward speed by about a third,
+// making different ramp sizes all produce the same short, 2.2 m air.
+// Apply this envelope once at departure; gravity still owns the whole flight.
 export const VERT_LAUNCH_ENVELOPE = Object.freeze({
-  maximumVerticalSpeed: 10.6,
-  maximumPassiveVerticalSpeed: 9.4,
+  maximumVerticalSpeed: 15.0,
+  maximumPassiveVerticalSpeed: 13.4,
 });
 
 function horizontal(vector) {
