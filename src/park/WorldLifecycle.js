@@ -25,6 +25,14 @@ export class WorldResourceScope {
 
   trackWorld(world, options = {}) {
     if (!world) return world;
+    // A late GLB can complete after cancellation. Dispose its two roots as a
+    // single ownership graph: visual and collision may share GPU resources.
+    if (this.disposed) {
+      const roots = [world.park, world.collision]
+        .filter((root, index, values) => root && values.indexOf(root) === index);
+      disposeRoots(roots.map(root => ({ root, disposeTextures: Boolean(options.disposeTextures) })), this.errors);
+      return world;
+    }
     if (world.park) this.trackRoot(world.park, options);
     if (world.collision && world.collision !== world.park)
       this.trackRoot(world.collision, options);
