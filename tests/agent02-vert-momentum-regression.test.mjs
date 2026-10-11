@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { TransitionController } from '../src/game/transitions/TransitionController.js';
+import { evaluatePumpEligibility } from '../src/game/PumpSystem.js';
 import { VERT_RETURN, resolveVertReturnVelocity } from '../src/game/transitions/VertReturnFlight.js';
 import { resolveTransferFlightStep } from '../src/game/core/TransferFlightResult.js';
 import { resolveTransferLaunchResult } from '../src/game/core/TransferLaunchResult.js';
@@ -149,4 +150,27 @@ test('verified deck transfer cannot be stolen by original-wall emergency sweep',
     geometryAware: true, abortToReturn: false } };
   assert.equal(physics.tryContinuousTransitionReentry(transferred,
     new THREE.Vector3()), false);
+});
+
+test('pump detects continuous bowl compression but rejects a hard stair seam', () => {
+  const baseline = { contactCount: 4, normalY: Math.cos(Math.PI / 4),
+    tangentSpeed: 7, ridingAlignment: 1, normalDelta: .08, contactSpread: .10 };
+  assert.equal(evaluatePumpEligibility(baseline).eligible, true);
+  assert.equal(evaluatePumpEligibility({ ...baseline,
+    normalDelta: .72, contactSpread: .70 }).eligible, false);
+  assert.equal(evaluatePumpEligibility({ ...baseline, contactCount: 2 }).eligible, false);
+});
+
+test('nearby perpendicular rails cannot hijack a genuine quarter coping', () => {
+  const rails = [
+    { name: 'quarter', points: [[-4, 2, 0], [4, 2, 0]],
+      transition: { id: 'quarter', type: 'QUARTER', supportsVert: true } },
+    { name: 'crossing', points: [[.03, 2, -4], [.03, 2, 4]],
+      transition: { id: 'crossing', type: 'QUARTER', supportsVert: true } },
+  ];
+  const controller = new TransitionController({ rails });
+  const normal = new THREE.Vector3(0, .4, Math.sqrt(1 - .4 ** 2));
+  const edge = controller.launchAt(new THREE.Vector3(0, 1.9, .15),
+    normal, new THREE.Vector3(0, 4, -7));
+  assert.equal(edge?.transitionId, 'quarter');
 });
