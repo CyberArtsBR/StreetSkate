@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { createGrandWarehouseGraffiti } from '../src/park/GrandWarehouseGraffiti.js';
 const bytes=readFileSync('public/assets/warehouse/granwarehouse.glb');
 test('Map 3 uploaded asset is the artist-authored Blender GLB',()=>{
-  assert.equal(createHash('sha256').update(bytes).digest('hex'),'a28205a7aea6cab744f6e374e6239cac1f604f8040ab5bb41a19f78b3da50a24');
+  assert.equal(createHash('sha256').update(bytes).digest('hex'),'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c');
 });
 test('Grand Warehouse graffiti belongs only to render hierarchy, never physics',()=>{
   const visuals=createGrandWarehouseGraffiti();

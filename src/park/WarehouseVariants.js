@@ -24,7 +24,7 @@ const VARIANTS = Object.freeze({
   },
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
-    url: '/assets/warehouse/granwarehouse.glb?v=a28205a7',
+    url: '/assets/warehouse/granwarehouse.glb?v=fbc46ba3',
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',

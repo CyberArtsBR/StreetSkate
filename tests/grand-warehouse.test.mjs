@@ -12,7 +12,7 @@ import { StatefulSkillStreetPhysics } from '../src/game/StatefulSkillStreetPhysi
 import { ensureGrandWarehouseSpawns } from '../src/park/GrandWarehouseSpawns.js';
 
 const file = 'public/assets/warehouse/granwarehouse.glb';
-const expectedHash = 'a28205a7aea6cab744f6e374e6239cac1f604f8040ab5bb41a19f78b3da50a24';
+const expectedHash = 'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c';
 
 test('Map 3 is distinct and preserves the exact Map 2 asset address and selection number', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
@@ -31,7 +31,10 @@ test('original map geometry is embedded in an immutable, separately versioned Ma
   assert.equal(bytes.readUInt32LE(8),bytes.length);
   const length=bytes.readUInt32LE(12);
   const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
-  assert.equal(json.meshes.length,1412,'unexpected changed or missing revised Grand Warehouse meshes');
+  assert.equal(json.meshes.length,1412,'SKATEWAREHOUSE revised GLB mesh count changed');
+  assert.equal(json.nodes.length,1457,'SKATEWAREHOUSE revised scene hierarchy changed');
+  assert.equal(json.materials.length,134,'SKATEWAREHOUSE material slots changed');
+  assert.equal(json.images.length,6,'SKATEWAREHOUSE embedded textures missing');
   assert.equal(json.nodes.filter(n=>/^(?:Cube__0(?:\.001)?|Plane_SkateLite_base_color\.002_0)$/.test(n.name||'')).length,0,
     'the artist removed the two low obstacles and SkateLite ramp in this revision');
   assert.equal(json.nodes.filter(n=>(n.name||'').includes('___tube')).length,17,
