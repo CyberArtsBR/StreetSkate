@@ -1,6 +1,8 @@
 /* Player-facing menus. Development controls remain available only in code. */
 .topbar,.intro,.toolbar,.bottom,.view-caption,.controls-card,.spot-nav,.customize-bar,#pause-overlay,#debug-panel{display:none!important}
-#app{min-height:0}#viewport:after{background:linear-gradient(0deg,#080a1566,transparent 23%)}
+#app{min-height:0}
+/* Keep the gameplay canvas unobstructed: HUD text provides its own contrast. */
+#viewport:after{display:none}
 .skate-hud{bottom:26px!important}.skate-hud .ride-state small{font-size:9px}
 body:not([data-screen='playing']) .skate-hud,body:not([data-screen='playing']) #trick-feedback,body:not([data-screen='playing']) #balance-hud{display:none!important}
 #game-shell{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;background:#070915a8;backdrop-filter:blur(7px)}
@@ -312,4 +314,194 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 }
 @media(max-width:650px){
   .loadout-screen .loadout-locations{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* Gameplay-safe graphics picker: matches the controller-first menu system. */
+.menu-card .graphics-details{font-size:11px;line-height:1.5;color:#b9d6dc;margin:2px 0 5px;letter-spacing:.02em}
+.menu-card .graphics-details b{color:#e8f7ff}
+.menu-card button[aria-pressed="true"]{border-color:#7cebd9!important;background:#143b47!important;color:#e7fdf7!important}
+#game-shell.menu-screen:has(.graphics-details) .menu-card{width:min(520px,92vw);max-height:95dvh;overflow-y:auto;gap:7px;padding:18px}
+#game-shell.menu-screen:has(.graphics-details) button[data-action="graphicsSet"]{padding:9px 12px}
+
+
+/* STREETSKATE GRAFFITI TYPE — cyan/purple, gold, flame, lime and red references.
+   Fonts are open Google display families with local system fallbacks.
+   The baked title-screen artwork is intentionally NOT restyled. */
+#game-shell.menu-screen .menu-card h2,
+.loadout-screen .loadout-shell header h2,
+.tutorial-frame header h2,
+.result-score,
+#run-timer,
+.session-score strong,
+.speed > span {
+  font-family: 'Bangers', Impact, 'Arial Black', sans-serif;
+  font-weight: 400;
+  letter-spacing: .065em;
+}
+
+#game-shell.menu-screen .menu-card h2,
+.loadout-screen .loadout-shell header h2,
+.tutorial-frame header h2 {
+  color: #20d9f7;
+  background: linear-gradient(180deg, #9bffff 4%, #16d5ff 37%, #8057e7 72%, #4f1b9c 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.1px #090d1a;
+  text-shadow: 2px 3px 0 #080710, 3px 5px 0 #26134c, 4px 7px 0 #020309;
+  line-height: 1.05;
+}
+#game-shell.menu-screen .menu-card button,
+.loadout-screen .loadout-location strong,
+.loadout-screen .loadout-character strong,
+.loadout-screen .loadout-heading > b,
+#game-shell .loadout-shell footer button {
+  font-family: 'Bangers', Impact, 'Arial Black', sans-serif;
+  font-weight: 400;
+  letter-spacing: .07em;
+}
+#game-shell.menu-screen .menu-card button {
+  font-size: clamp(16px, 1.5vw, 22px);
+  color: #fff3c4;
+  text-shadow: 1px 2px 0 #0d071d;
+}
+#game-shell.menu-screen .menu-card button.selected,
+#game-shell.menu-screen .menu-card button:hover,
+#game-shell.menu-screen .menu-card button:focus-visible {
+  color: #ffe66b;
+  background: linear-gradient(115deg, #481a73, #2d1452 55%, #101429);
+  border-color: #19d9f3;
+  text-shadow: 2px 2px 0 #060611, 0 0 7px #8129f5;
+}
+#game-shell .loadout-heading > b { color:#ffe26a; text-shadow:2px 2px 0 #19102b; }
+#game-shell .loadout-location strong { color:#f8f7ff; text-shadow:1px 2px 0 #080516; }
+
+/* Legible arcade HUD, kept separate from the 3D level render. */
+#run-timer {
+  color: #ffe260;
+  -webkit-text-stroke: .65px #0a0711;
+  text-shadow: 2px 2px 0 #2a0c27, 3px 4px 0 #070511;
+}
+.session-score strong, .speed > span {
+  color:#fff1b5; -webkit-text-stroke:.5px #191028;
+  text-shadow:1px 2px 0 #100816,2px 3px 0 #170828;
+}
+
+/* Actual trick feedback. Do not move the existing HUD or menu hit targets. */
+#trick-feedback {
+  position:absolute;
+  top:clamp(55px,8.5vh,94px);
+  left:50%;
+  right:auto;
+  z-index:8;
+  width:max-content;
+  max-width:min(1100px,92vw);
+  margin:0;
+  transform:translateX(-50%);
+  padding:0 .15em .22em;
+  font:400 clamp(28px,4.8vw,77px)/1.09 'Bangers',Impact,'Arial Black',sans-serif;
+  letter-spacing:.042em;
+  text-transform:uppercase;
+  text-align:center;
+  white-space:normal;
+  overflow-wrap:break-word;
+  pointer-events:none;
+  color:#16dfff;
+  --graffiti-top:#8dffff;
+  --graffiti-mid:#05d1ff;
+  --graffiti-bottom:#9e36e9;
+  background:linear-gradient(174deg,var(--graffiti-top) 0%,var(--graffiti-mid) 44%,var(--graffiti-bottom) 92%);
+  background-clip:text;
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  -webkit-text-stroke:clamp(1px,.22vw,3px) #0b0616;
+  text-shadow:2px 3px 0 #070715,4px 6px 0 #201037,6px 9px 0 #06030d,8px 11px 12px #02040ac4;
+  filter:drop-shadow(0 2px 1px #05000d7a);
+  will-change:transform;
+}
+#trick-feedback:empty { display:none; }
+#trick-feedback[data-tone='gold'] {
+  --graffiti-top:#fff5a5;--graffiti-mid:#ffd91a;--graffiti-bottom:#dd8100;
+}
+#trick-feedback[data-tone='fire'] {
+  --graffiti-top:#ffff78;--graffiti-mid:#ff9d16;--graffiti-bottom:#ec1643;
+}
+#trick-feedback[data-tone='lime'] {
+  --graffiti-top:#adff65;--graffiti-mid:#39f51b;--graffiti-bottom:#03851c;
+}
+#trick-feedback[data-tone='red'] {
+  --graffiti-top:#ff9991;--graffiti-mid:#ff2629;--graffiti-bottom:#a80b22;
+}
+#trick-feedback[data-tone='purple'] {
+  --graffiti-top:#ffb0fa;--graffiti-mid:#be52f8;--graffiti-bottom:#4a1bd4;
+}
+#trick-feedback.graffiti-pop { animation:street-graffiti-pop .42s cubic-bezier(.17,.82,.28,1.1) both; }
+@keyframes street-graffiti-pop {
+  0% { opacity:0;transform:translateX(-50%) translateY(-14px) scale(.83) rotate(-1.5deg); }
+  65% { opacity:1;transform:translateX(-50%) translateY(2px) scale(1.045) rotate(.3deg); }
+  100% { opacity:1;transform:translateX(-50%) translateY(0) scale(1); }
+}
+@media(max-width:650px) {
+  #trick-feedback {
+    top:clamp(50px,11vh,72px);
+    max-width:94vw;
+    font-size:clamp(25px,7vw,43px);
+    text-shadow:2px 2px 0 #070715,3px 4px 0 #201037,4px 5px 0 #06030d;
+  }
+  #game-shell.menu-screen .menu-card button { font-size:16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  #trick-feedback.graffiti-pop { animation:none; }
+}
+
+/* HOTFIX — 2026-10-10: earlier text was 77px with 3px black fill stroke.
+   Keep colorful source-inspired lettering but make it small and readable. */
+#trick-feedback {
+  top: clamp(54px, 7.2vh, 76px);
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: min(760px, 83vw);
+  padding: .04em .2em .28em;
+  font: 400 clamp(20px, 2.5vw, 39px) / 1.12 'Bangers', Impact, 'Arial Black', sans-serif;
+  letter-spacing: .022em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--graffiti-mid);
+  -webkit-text-fill-color: var(--graffiti-mid);
+  -webkit-text-stroke: .95px #101126;
+  paint-order: stroke fill;
+  background: none;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+  filter: none;
+  text-shadow: 1px 2px 0 #170d32, 2px 3px 0 #100b1e, 3px 4px 2px #020408b0;
+}
+/* The bright gradient is a second, clean glyph fill placed above the thin
+   outlined base, not a transparent text fill overwhelmed by a huge shadow. */
+#trick-feedback::after {
+  content: attr(data-graffiti-text);
+  position: absolute;
+  inset: .04em .2em auto;
+  color: var(--graffiti-mid);
+  background: linear-gradient(174deg, var(--graffiti-top) 8%, var(--graffiti-mid) 48%, var(--graffiti-bottom) 94%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  paint-order: normal;
+  pointer-events: none;
+}
+#trick-feedback[data-graffiti-text=""]::after { content: none; }
+@media (max-width: 650px) {
+  #trick-feedback {
+    top: clamp(49px, 9vh, 67px);
+    max-width: 90vw;
+    font-size: clamp(18px, 4.2vw, 28px);
+    text-shadow: 1px 2px 0 #1d1232, 2px 3px 1px #06050c;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #trick-feedback { will-change: auto; }
 }

@@ -5,6 +5,7 @@ import {
   updateRampLaunchMemory,
 } from './core/LaunchEnergyModel.js';
 import { captureTakeoffContext } from './core/TakeoffContext.js';
+import { VERT_LAUNCH_ENVELOPE } from './transitions/TransitionController.js';
 
 // Compatibility exports while call sites migrate to LaunchEnergyModel directly.
 export const UNIFIED_RAMP_FEEL = LAUNCH_ENERGY;
@@ -67,6 +68,22 @@ export class UnifiedRampFeelSkillStreetPhysics extends StableRampReturnSkillStre
     });
 
     const result = super.takeoff(context.composedImpulse, transition, context);
+
+    // Generic AIR lip releases were adding the climb's existing positive Y
+    // velocity to the remembered ramp bonus. On tall quarters this could
+    // produce 15+ m/s even when the authored coping was missed. Clamp only
+    // ramp-origin departures; normal flat-ground Ollies are untouched.
+    if (context.rampContext && !this.transitionAir?.transferring) {
+      const maximum = context.requestedImpulse >= 4.5
+        ? VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed
+        : VERT_LAUNCH_ENVELOPE.maximumPassiveVerticalSpeed;
+      if (this.velocity.y > maximum) {
+        this.velocity.y = maximum;
+        if (this.transitionAir) {
+          this.transitionAir.launchVertical = maximum;
+        }
+      }
+    }
 
     // StableRampReturn uses this bit to apply identical no-auto-yaw/re-entry
     // semantics even when a generic lip became flat on the exact takeoff frame.

@@ -8,7 +8,7 @@ import { PARK_REGISTRY } from '../src/game/ParkRegistry.js';
 
 const assets = [
   { id: 'tron-warehouse', file: 'tron-warehouse.glb', sha256: '0306579ac6473b57c550920c9c8a39749bcc07fe59697ba149a23d380115abe3' },
-  { id: 'urban-warehouse', file: 'urban-warehouse.glb', sha256: 'f8c834b2c5402f24adcfb1ef5aec7f68f4482c7cbd79e3a66ca70a51c8427be7' },
+  { id: 'urban-warehouse', file: 'urban-warehouse.glb', sha256: '813cbf0c11ffcb9a2317843978b7d3d08973fb029d4ecdac047c018ed351a7b2' },
 ];
 const readGlb = file => {
   const path = resolve('public/assets/warehouse', file);
@@ -50,4 +50,23 @@ test('both GLB assets are present, distinct and keep the playable warehouse topo
   assert.notEqual(parsed[0].actual, parsed[1].actual, 'The two maps cannot be identical');
   assert.ok(parsed[1].json.nodes.some(n => /Premium_White_Marble_Floor/.test(n.name || '')),
     'Map 4 must use the revised Foundry export');
+});
+
+test('Map 4 revised West transfer quarter faces upward on the riding surface', () => {
+  const { bytes, json } = readGlb('urban-warehouse.glb');
+  const target = json.nodes.find(node =>
+    /03_VERT_HALL \/ West transfer quarter \/ Skateable_Surface/.test(node.name || ''));
+  assert.ok(target && Number.isInteger(target.mesh), 'West transfer quarter is missing');
+  const primitive = json.meshes[target.mesh].primitives[0];
+  const normals = json.accessors[primitive.attributes.NORMAL];
+  assert.equal(normals.componentType, 5126, 'West transfer normal format');
+  assert.equal(normals.type, 'VEC3');
+  const view = json.bufferViews[normals.bufferView];
+  const stride = view.byteStride || 12;
+  const offset = 28 + bytes.readUInt32LE(12)
+    + (view.byteOffset || 0) + (normals.byteOffset || 0);
+  let upward = 0;
+  for (let vertex = 0; vertex < normals.count; vertex++)
+    upward += bytes.readFloatLE(offset + vertex * stride + 4);
+  assert.ok(upward / normals.count > 0.40, 'rideable quarter normals point away from the skater');
 });

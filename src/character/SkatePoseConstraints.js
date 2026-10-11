@@ -52,6 +52,22 @@ export function boundedHandReach(shoulder, desired, armLength, margin=0.035) {
   return len>radius ? shoulder.clone().addScaledVector(travel,radius/len):desired.clone();
 }
 
+/**
+ * Neutral wrist IK for cartoon/short-arm Chimpions avatars.
+ * Fixed adult-sized hand targets can sit outside a small rig's entire arm
+ * reach; pin targets inside the measured chain with spare elbow bend.
+ * Named grabs still use boundedHandReach and retain their own explicit reach.
+ */
+export function boundedNeutralHandTarget(shoulder, requested, armLength) {
+  if (!shoulder?.isVector3 || !requested?.isVector3) return requested?.clone?.() || null;
+  if (!Number.isFinite(armLength) || armLength <= 0) return requested.clone();
+  const travel = requested.clone().sub(shoulder);
+  const maxReach = Math.max(.075, armLength * .84);
+  const distance = travel.length();
+  if (distance > maxReach && distance > 1e-8) return shoulder.clone().addScaledVector(travel, maxReach / distance);
+  return requested.clone();
+}
+
 /** Balanced, asymmetric ready stance: hands at the side, elbows away from the chest. */
 export function neutralHandOffset(outwardSign, frontArm=false, compression=0, air=0, balance=0) {
   const sign=outwardSign<0?-1:1;

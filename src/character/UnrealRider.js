@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
-import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, neutralHandOffset, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
+import { riderCrouchOffset, ensurePelvisDeckClearance, outwardKneePole, boundedHandReach, boundedNeutralHandTarget, neutralHandOffset, avatarPoseCalibration, legOverextension } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -433,16 +433,27 @@ export class UnrealRider {
       if (grabState?.name === 'Christ Air' && side === rear) target.addScaledVector(V(0, 0.30, sign * 0.38), grab);
       const handstand = flatland === 'Handstand' && board;
       const reach = handstand ? this.boardPoint(board, sign * 0.14, 0.04, 0) : grabTarget;
-      const world = this.root.localToWorld(target.clone());
+      const shoulderWorld = upper.getWorldPosition(V());
+      const elbowWorld = lower.getWorldPosition(V());
+      const wristWorld = hand.getWorldPosition(V());
+      const armLength = shoulderWorld.distanceTo(elbowWorld) + elbowWorld.distanceTo(wristWorld);
+      // Avoid forcing adult-sized hand offsets onto compact avatars.
+      // In neutral stances keep 16% arm-chain slack for a natural elbow bend.
+      const world = boundedNeutralHandTarget(
+        shoulderWorld, this.root.localToWorld(target.clone()), armLength,
+      );
       const reachWeight = handstand ? flat : grab;
       if (reach) {
-        const reachFrom=upper.getWorldPosition(V());
-        const limbLength=reachFrom.distanceTo(lower.getWorldPosition(V()))
-          +lower.getWorldPosition(V()).distanceTo(hand.getWorldPosition(V()));
-        world.lerp(boundedHandReach(reachFrom,reach,limbLength),reachWeight);
+        world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
       }
-      const elbowPole=this.root.localToWorld(shoulder.clone().add(
-        V(this.outward[side]*0.34,-0.18,isFront?0.17:-0.11)));
+      // Pole offsets must also scale to the actual chain, or short-rig elbows
+      // swing across the body even when their wrist target is reachable.
+      const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
+      const elbowPole = this.root.localToWorld(shoulder.clone().add(
+        V(this.outward[side] * elbowPoleReach,
+          -elbowPoleReach * .58,
+          (isFront ? .45 : -.31) * elbowPoleReach),
+      ));
       limb(upper, lower, hand, world, elbowPole);
       if (this.hands[side]) {
         const handQ = rootQ.clone().multiply(this.hands[side].q);

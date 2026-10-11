@@ -23,6 +23,14 @@ export const GRIND_CAPTURE_POLICY = Object.freeze({
   railBlendTime: 0.14,
 });
 
+// Evaluate all local paths before choosing a trick target. Nearest-only
+// selection allows a perpendicular coping to hide an aligned handrail.
+function nearbyRails(network, point, maxDistance) {
+  return typeof network.nearby === 'function'
+    ? network.nearby(point, maxDistance)
+    : [network.nearest(point, maxDistance)].filter(Boolean);
+}
+
 function horizontal(source, fallback = null) {
   const out = source?.clone?.() || new THREE.Vector3();
   out.y = 0;
@@ -75,13 +83,13 @@ export function resolveStrictGrindCapture({
 
   for (const longitudinal of contactLongitudinalOffsets(profile)) {
     const contact = position.clone().addScaledVector(flatForward, longitudinal);
-    const hit = railNetwork.nearest(contact, config.distance + 0.18);
-    if (!hit) continue;
+    for (const hit of nearbyRails(railNetwork, contact, config.distance + 0.18)) {
 
     const surfaceY = railSurfaceHeight(hit.point.y, hit.rail.radius, profile.clearance);
     const surfaceDistance = Math.max(0, hit.distance - hit.rail.radius);
     const predictedContact = contact.clone().addScaledVector(velocity, config.predictionTime);
-    const predicted = railNetwork.nearest(predictedContact, config.distance + 0.18);
+    const predicted = nearbyRails(railNetwork, predictedContact, config.distance + 0.18)
+      .find(candidate => candidate.rail === hit.rail);
     const predictedDistance = predicted?.rail === hit.rail
       ? Math.max(0, predicted.distance - hit.rail.radius)
       : surfaceDistance;
@@ -125,6 +133,7 @@ export function resolveStrictGrindCapture({
         profile,
       };
     }
+    }
   }
 
   return best;
@@ -148,8 +157,7 @@ export function resolveMagneticGrindCapture({
 
   for (const longitudinal of contactLongitudinalOffsets(profile)) {
     const contact = position.clone().addScaledVector(flatForward, longitudinal);
-    const hit = railNetwork.nearest(contact, config.railCaptureDistance + 0.20);
-    if (!hit) continue;
+    for (const hit of nearbyRails(railNetwork, contact, config.railCaptureDistance + 0.20)) {
 
     const surfaceY = railSurfaceHeight(hit.point.y, hit.rail.radius, profile.clearance);
     const verticalDelta = contact.y - surfaceY;
@@ -174,10 +182,9 @@ export function resolveMagneticGrindCapture({
       config.railPredictionTime,
     );
     predictedContact.y -= 0.5 * gravity * config.railPredictionTime ** 2;
-    const predicted = railNetwork.nearest(
-      predictedContact,
-      config.railCaptureDistance + 0.22,
-    );
+    const predicted = nearbyRails(
+      railNetwork, predictedContact, config.railCaptureDistance + 0.22,
+    ).find(candidate => candidate.rail === hit.rail);
     const predictedDistance = predicted?.rail === hit.rail
       ? Math.max(0, predicted.distance - hit.rail.radius)
       : surfaceDistance + 0.08;
@@ -199,6 +206,7 @@ export function resolveMagneticGrindCapture({
         contactLongitudinal: longitudinal,
         profile,
       };
+    }
     }
   }
 

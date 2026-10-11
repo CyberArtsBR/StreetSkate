@@ -79,9 +79,10 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
     if (joinedRamp && /Plywood_Edges/.test(materialName)) return;
     if (/^06_ROOF|Floor_Markings|mounting_plate|Step_Edge|Yellow_Rim_Inlay/.test(name)
       || (/Side_Edge_Band/.test(name) && !joinedRamp)) return;
-    const rideable = joinedRamp ? joinedRiding : /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Concrete_or_wood_support|Hubba_Solid/.test(name);
+    const stairLanding = /(?:Stair|Stairs)_(?:Landing|Top_Platform|Upper_Platform|Tread|Deck|Skateable_Surface)/i.test(name);
+    const rideable = joinedRamp ? joinedRiding : stairLanding || /Ground_Floor|Skateable_Surface|Surface_Plywood|Step_\d|Upper_Stair_Platform|Platform_Link|Bowl.*(?:Transition|Floor)|Rideable_Arc|Continuous_Rideable_Surface|Hubba_Solid/.test(name);
     const tube = joinedCoping || /___tube/.test(name);
-    const solid = joinedRamp || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door/.test(name);
+    const solid = joinedRamp || /Side_Wood_Core|Back_Panel|Concrete_or_wood_support|Hubba_Solid|vertical_post|Down_Rail_Support|End_Enclosure|Rear_Panel|Structural_Pillar|Column_Footing|Warehouse_Walls|Loading_Bay_Door|(?:Stair|Stairs)_(?:Riser|Sidewall|Side_Panel|Stringer|Support|Body|Core)/i.test(name);
     if (!rideable && !solid && !tube) return;
     const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
     if (tube) {
@@ -110,7 +111,8 @@ export function buildImportedWarehouseCollision(root, authoredRails = []) {
       // rolling through the lip. Regular handrails remain physical obstacles.
       if (template?.transition || /coping/i.test(base)) geometry.dispose();
       else add(geometry, 'solid', name, railId);
-    } else add(geometry, rideable ? 'rideable' : 'solid', name);
+    } else add(geometry, rideable ? 'rideable' : 'solid', joinedRiding
+      ? name.replace(/Side_Edge_Band|Side_Wood_Core|Back_Panel/, 'Skateable_Surface') : name);
   });
   let triangles = 0;
   for (const bucket of buckets.values()) {

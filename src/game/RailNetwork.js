@@ -30,6 +30,33 @@ export class RailNetwork {
     }).filter(rail => rail.length > 0.05);
   }
 
+  /** Closest contact on each rail, sorted by proximity. Unlike nearest(),
+   * unreachable coping cannot occlude a reachable warehouse handrail. */
+  nearby(position, maxDistance = 0.9) {
+    const results = [];
+    for (const rail of this.rails) {
+      let best = null, bestDistance = maxDistance;
+      for (let i = 1; i < rail.points.length; i++) {
+        const a = rail.points[i - 1], b = rail.points[i];
+        const edge = b.clone().sub(a), lengthSq = edge.lengthSq();
+        if (lengthSq < 1e-8) continue;
+        const t = clamp(position.clone().sub(a).dot(edge) / lengthSq, 0, 1);
+        const point = a.clone().addScaledVector(edge, t);
+        const delta = position.clone().sub(point), distance = delta.length();
+        if (distance >= bestDistance || Math.abs(delta.y) > 0.95) continue;
+        const segmentLength = Math.sqrt(lengthSq);
+        bestDistance = distance;
+        best = {
+          rail, railName: rail.name, segment: i - 1, segmentT: t,
+          s: rail.cumulative[i - 1] + segmentLength * t,
+          point, tangent: edge.multiplyScalar(1 / segmentLength), distance,
+        };
+      }
+      if (best) results.push(best);
+    }
+    return results.sort((a, b) => a.distance - b.distance);
+  }
+
   nearest(position, maxDistance = 0.9) {
     let best = null;
     let bestDistance = maxDistance;
