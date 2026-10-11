@@ -12,8 +12,8 @@ export const REQUIRED_GLBS = Object.freeze([
   'assets/rider/The_Anchor.glb',
   'assets/rider/TuxR.glb',
   'assets/rider/skateboard.glb',
-  'spacepark/orbit.glb',
-  'warehouse/granwarehouse.glb',
+  'assets/spacepark/orbit.glb',
+  'assets/warehouse/granwarehouse.glb',
 ]);
 export const REQUIRED_MEDIA = Object.freeze([
   'media/title-screen.png', 'media/trick-guide-16x9.png',
