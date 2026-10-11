@@ -2,10 +2,12 @@ import { MathUtils } from 'three';
 
 // Original procedural timings, shared by the deck and the rider. These are not
 // imported animation clips or timings extracted from a commercial game's data.
+const safe01 = value => MathUtils.clamp(Number.isFinite(value) ? value : 0, 0, 1);
+
 export const FLIP_TIMING = Object.freeze({ pop: 0.14, flick: 0.34, rotationEnd: 0.82, catchEnd: 0.94 });
 
 export function flipMotion(progress = 0) {
-  const p = MathUtils.clamp(progress, 0, 1);
+  const p = safe01(progress);
   const rotation = MathUtils.smoothstep(p, 0.12, FLIP_TIMING.rotationEnd);
   const lift = MathUtils.smoothstep(p, 0, FLIP_TIMING.flick);
   const catchWeight = MathUtils.smoothstep(p, FLIP_TIMING.rotationEnd, FLIP_TIMING.catchEnd);
@@ -20,7 +22,7 @@ export function flipMotion(progress = 0) {
 }
 
 export function flipTurns(flipState) {
-  const progress = MathUtils.clamp(flipState?.progress || 0, 0, 1);
+  const progress = safe01(flipState?.progress);
   const rotation = flipMotion(progress).rotation;
   const start = flipState?.rotationStartProgress;
   const upgrading = Number.isFinite(start) && flipState?.rotationFrom;
@@ -29,7 +31,9 @@ export function flipTurns(flipState) {
     : rotation;
   const turns = {};
   for (const axis of ['pitch', 'yaw', 'roll']) {
-    turns[axis] = MathUtils.lerp(upgrading ? flipState.rotationFrom[axis] || 0 : 0, flipState?.[axis] || 0, blend);
+    const startTurn = upgrading && Number.isFinite(flipState.rotationFrom[axis]) ? flipState.rotationFrom[axis] : 0;
+    const finalTurn = Number.isFinite(flipState?.[axis]) ? flipState[axis] : 0;
+    turns[axis] = MathUtils.lerp(startTurn, finalTurn, blend);
   }
   return turns;
 }
@@ -37,7 +41,8 @@ export function flipTurns(flipState) {
 // The foot sweeps backwards while planted, then returns above the deck. Keeping
 // one continuous phase prevents starting each push half way through a stroke.
 export function pushMotion(phase = 0) {
-  const p = ((phase % 1) + 1) % 1;
+  const finitePhase = Number.isFinite(phase) ? phase : 0;
+  const p = ((finitePhase % 1) + 1) % 1;
   const leave = MathUtils.smoothstep(p, 0, 0.16);
   const recover = MathUtils.smoothstep(p, 0.58, 0.92);
   const contact = leave * (1 - MathUtils.smoothstep(p, 0.54, 0.68));
@@ -51,12 +56,12 @@ export function pushMotion(phase = 0) {
 }
 
 export function popMotion(progress = 1) {
-  const p = MathUtils.clamp(progress, 0, 1);
+  const p = safe01(progress);
   return -0.26 * Math.sin(Math.PI * p) * (1 - MathUtils.smoothstep(p, 0.6, 1));
 }
 
 export function landingMotion(progress = 1) {
-  const p = MathUtils.clamp(progress, 0, 1);
+  const p = safe01(progress);
   return MathUtils.smoothstep(p, 0, 0.2) * (1 - MathUtils.smoothstep(p, 0.2, 1));
 }
 
