@@ -110,12 +110,15 @@ export function highFollowFraming({
   grounded = false, transitionReturning = false, wallRideActive = false,
   horizontalSpeed = 0,
 } = {}) {
-  if (transitionReturning) return { distance: 11.6, height: 5.3, lookAhead: 1.4 };
+  // Slightly tighter default Follow framing (~11% closer on flat ground).
+  // Keep a longer arm and high vantage during wallrides/vert so the next
+  // landing remains readable and collision clearance can still reposition us.
+  if (transitionReturning) return { distance: 10.9, height: 5.3, lookAhead: 1.4 };
   const lead = Math.min(THPS_CAMERA.speedLookAheadCap,
     Math.max(0, horizontalSpeed) * THPS_CAMERA.speedLookAheadGain);
-  if (wallRideActive) return { distance: 10.5, height: 6.1, lookAhead: 0.8 + lead };
-  if (grounded) return { distance: 9.5, height: 5.4, lookAhead: 0.55 + lead };
-  return { distance: 10.5, height: 5.8, lookAhead: 0.75 + lead };
+  if (wallRideActive) return { distance: 10.0, height: 6.1, lookAhead: 0.8 + lead };
+  if (grounded) return { distance: 8.5, height: 4.9, lookAhead: 0.55 + lead };
+  return { distance: 9.8, height: 5.5, lookAhead: 0.75 + lead };
 }
 
 /** Backward-compatible helper now delegated to canonical CameraState. */

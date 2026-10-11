@@ -2,7 +2,7 @@ import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion, pushMotion } from './TrickMotion.js';
-import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination } from './AnimationDynamics.js';
+import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
@@ -492,21 +492,18 @@ export class UnrealRider {
       const world = boundedNeutralHandTarget(
         shoulderWorld, this.root.localToWorld(target.clone()), armLength,
       );
-      // Standing and ordinary ground movement share an anatomical A-pose.
-      // Do not fold elbows outward by pinning both wrists to the hips. Scale to each avatar's
-      // actual arm length; almost straight elbows avoid the broken-shoulder
-      // silhouette on the short Chimpions rigs. State blending preserves the
-      // authored crouch, flick, balance and grab targets.
+      // Relaxed near-body wrists with a small INWARD elbow bend. The old
+      // 40-degree splay and outward elbow pole made neutral rigs look bow-armed.
+      // Blend this only over idle/coasting/regular pushing/braking: named grabs,
+      // flips, crouches and bails continue to use their own IK targets.
       const neutralArms = C(this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
         + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE),0,1)
         * (1-grab) * (1-flat) * (bail ? 0 : 1);
-      if (neutralArms > 0) {
-        const angle = THREE.MathUtils.degToRad(40);
-        const direction = lateral.clone().multiplyScalar(Math.sin(angle))
-          .add(V(0,-Math.cos(angle),0)).addScaledVector(this.kneeForward,.025).normalize();
-        const restingHand = shoulderWorld.clone().addScaledVector(direction.applyQuaternion(rootQ),armLength*.985);
-        world.lerp(restingHand,neutralArms);
-      }
+      const neutralPose = neutralArms > 0 ? neutralArmIKTargets(
+        shoulderWorld, lateral.clone().applyQuaternion(rootQ),
+        this.kneeForward.clone().applyQuaternion(rootQ), armLength,
+      ) : null;
+      if (neutralPose) world.lerp(neutralPose.wrist, neutralArms);
       const reachWeight = handstand ? flat : grab;
       if (reach) {
         world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
@@ -518,11 +515,7 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
-      if (neutralArms > 0) {
-        const restingPole = shoulderWorld.clone().lerp(world,.5)
-          .addScaledVector(this.kneeForward.clone().applyQuaternion(rootQ),armLength*.18);
-        elbowPole.lerp(restingPole,neutralArms);
-      }
+      if (neutralPose) elbowPole.lerp(neutralPose.elbow, neutralArms);
       // Planted, near-straight A-pose arms must follow their own moving
       // shoulders exactly. World-space lag here makes elbows buckle on frame
       // two even if the destination itself is valid. Dampen only aerial/grab

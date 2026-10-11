@@ -62,6 +62,39 @@ export function preserveFootOrder(targets, anchors, influence = 1) {
   right.addScaledVector(axis, -correction);
 }
 
+/**
+ * Relaxed skating A-pose. Previous neutral hands splayed 40 degrees sideways
+ * and the elbow's IK pole bowed out, producing a "( )" silhouette. Keep wrists
+ * near the torso and bend each elbow modestly INWARD relative to the shoulder-
+ * to-wrist line, regardless of the imported character's shoulder width.
+ *
+ * Inputs are WORLD-space rig axes, so left/right stay anatomical even on a
+ * sideways skater or on imported custom GLBs. No bone scales are changed.
+ */
+export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
+  if (!shoulder?.isVector3 || !outward?.isVector3 ||
+      !Number.isFinite(armLength) || armLength <= 0) return null;
+  const lateral = outward.clone().setY(0);
+  if (lateral.lengthSq() < 1e-8) return null;
+  lateral.normalize();
+  const face = forward?.isVector3 ? forward.clone().setY(0) : new THREE.Vector3();
+  // Some custom rig sagittal axes are nearly parallel to their shoulder axis.
+  // Do not let this cancel the inward elbow pole or bias left/right unequally.
+  face.addScaledVector(lateral, -face.dot(lateral));
+  if (face.lengthSq() > 1e-8) face.normalize();
+  const spread = THREE.MathUtils.degToRad(12);
+  const direction = lateral.clone().multiplyScalar(Math.sin(spread))
+    .add(new THREE.Vector3(0, -Math.cos(spread), 0))
+    .addScaledVector(face, 0.025).normalize();
+  // Keep elbows below the verified 22-degree flex safety threshold. The
+  // inward pole, not excess elbow flex, controls the resting silhouette.
+  const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.985);
+  const elbow = shoulder.clone().lerp(wrist, 0.5)
+    .addScaledVector(lateral, -armLength * 0.14)
+    .addScaledVector(face, armLength * 0.10);
+  return { wrist, elbow };
+}
+
 /** Smooth wrist destinations, not the solved ankles. This avoids grab target
  * snapping without sacrificing deterministic planted-foot IK. */
 export function smoothHandDestination(previous, target, dt, responsiveness = 26) {
