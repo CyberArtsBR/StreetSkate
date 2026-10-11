@@ -247,7 +247,7 @@ export class UnrealRider {
   boardPoint(board, x, y, z) { return board?.pointWorld?.(x, y, z, V()) || null; }
 
   grabTarget(name, side, stance, board) {
-    const sign = side === 'l' ? -1 : 1;
+    const sign = this.outward[side] || (side === 'l' ? -1 : 1);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     switch (name) {
       case 'Indy': return side === rear ? this.boardPoint(board, sign * 0.14, 0.04, 0) : null;
@@ -283,6 +283,8 @@ export class UnrealRider {
     const flat = this.w(PRESENTATION_STATES.FLATLAND), grind = this.w(PRESENTATION_STATES.GRIND);
     const manualW = this.w(PRESENTATION_STATES.MANUAL) + this.w(PRESENTATION_STATES.NOSE_MANUAL);
     const pump = this.w(PRESENTATION_STATES.PUMP);
+    const rolling = C(this.w(PRESENTATION_STATES.COAST) + this.w(PRESENTATION_STATES.PUSH), 0, 1);
+    const rollSway = Math.sin((Number.isFinite(time) ? time : 0) * (5 + C(speedRatio, 0, 1) * 4)) * rolling;
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     // Half Pipe's compact air silhouette: knees stay tucked through the flight,
     // instead of standing at takeoff and only bending near the apex.
@@ -469,6 +471,8 @@ export class UnrealRider {
         .addScaledVector(this.kneeForward, .045 + compression * .10 + balance * .04);
       target.y += -.36 + compression * .10 + air * .15;
       target.y += sign * manualBalance * 0.07 * manualW + sign * grindBalance * 0.1 * grind;
+      target.z += sign * rollSway * 0.025;
+      target.y += rollSway * 0.012;
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
       if (bail) { target.y += 0.24 + bailProgress * 0.12; target.z += sign * 0.16; }
