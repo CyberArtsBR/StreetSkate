@@ -39,12 +39,12 @@ try {
   report.defaults = await page.evaluate(() => ({ music: window.__musicAudio.volume,
     effectsGain: window.__audioContexts[0].observedGains[0].gain.value,
     labels: [...document.querySelectorAll('.audio-volume-control')].map(row => row.textContent.trim().replace(/\s+/g,' ')) }));
-  assert.equal(report.defaults.music, 0.8);
+  assert.equal(report.defaults.music, 0.5);
   await page.locator('[data-action="musicUp"]').click();
   await page.locator('[data-action="effectsDown"]').click();
   report.separateVolumes = await page.evaluate(() => ({ music: window.__musicAudio.volume,
     musicSaved: localStorage.getItem('streetskate.musicVolume'), effectsSaved: localStorage.getItem('streetskate.effectsVolume') }));
-  assert.deepEqual(report.separateVolumes, { music: 0.9, musicSaved: '0.9', effectsSaved: '0.75' });
+  assert.deepEqual(report.separateVolumes, { music: 0.6, musicSaved: '0.6', effectsSaved: '0.25' });
   await page.locator('[data-action="musicDown"]').click();
   await page.screenshot({ path: `${output}/audio-options-desktop.png` });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -57,11 +57,11 @@ try {
   await page.reload();
   await page.waitForFunction(() => window.streetSkate?.ready, null, { timeout: 60000 });
   await page.locator('[data-action="options"]').click();
-  assert.ok((await page.locator('.audio-volume-control').nth(1).innerText()).includes('75%'));
-  assert.equal(await page.evaluate(() => window.__musicAudio.volume), 0.8);
+  assert.ok((await page.locator('.audio-volume-control').nth(1).innerText()).includes('25%'));
+  assert.equal(await page.evaluate(() => window.__musicAudio.volume), 0.5);
   await page.locator('[data-action="effectsUp"]').focus();
   await page.keyboard.press('Enter');
-  assert.equal(await page.evaluate(() => localStorage.getItem('streetskate.effectsVolume')), '0.85');
+  assert.equal(await page.evaluate(() => localStorage.getItem('streetskate.effectsVolume')), '0.35');
   await page.locator('[data-action="practice"]').click();
   await page.locator('.loadout-character').first().click();
   await page.locator('.loadout-deck').nth(2).click();

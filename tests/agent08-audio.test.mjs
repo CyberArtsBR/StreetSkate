@@ -64,10 +64,10 @@ test('music and effects have independent louder defaults, mute and persisted lev
   try {
     env.storage.set('streetskate.masterVolume', '0.5');
     const music = new MusicPlayer(), fx = new SkateAudio();
-    assert.equal(music.audio.volume, 0.8);
-    assert.equal(fx.effectsVolume, 0.85);
+    assert.equal(music.audio.volume, 0.5);
+    assert.equal(fx.effectsVolume, 0.35);
     music.setMusicVolume(0);
-    assert.equal(fx.effectsVolume, 0.85, 'music mute must preserve effects');
+    assert.equal(fx.effectsVolume, 0.35, 'music mute must preserve effects');
     fx.setEffectsVolume(0.4);
     assert.equal(music.audio.volume, 0, 'effects change must preserve music mute');
     const restoredMusic = new MusicPlayer(), restoredFx = new SkateAudio();
