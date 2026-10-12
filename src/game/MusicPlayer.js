@@ -1,5 +1,5 @@
 export const TRACKS = [
-  ['Chimpion Drip','chimpion-drip.mp3'], ['Chimpion Slide','Chimpion Slide.mp3'],
+  ['Chimpion Drip','chimpion-drip.mp3'], ['Chimpion Slide','chimpion-slide.mp3'],
   ['West Park','west-park.mp3'], ['Old School flip','old-school-flip.mp3'],
   ['Aerial Flute','aerial-flute.mp3'], ['Skate Vibe','skate-vibe.mp3'], ['808 Bas','808-bas.mp3'],
 ];
