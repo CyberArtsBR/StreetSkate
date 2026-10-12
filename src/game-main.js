@@ -12,6 +12,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { setHudGlyphValue, preloadHudGlyphs } from './game/HudGlyphs.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
 import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
 import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
@@ -22,6 +23,7 @@ import './game-shell.css';
 import './loadout-menu.css';
 import './game-hud.css';
 import './menu-presentation.css';
+import './gameplay-instruments.css';
 
 const container = document.querySelector('#viewport');
 installGraffitiFallback();
@@ -31,6 +33,9 @@ let artCaptureMap=null;
 // Cache HUD nodes once; unchanged values need no DOM writes at 144 Hz.
 const hud = Object.fromEntries(['speed-value','charge-fill','state-value','score-value','trick-feedback']
   .map(id => [id, document.getElementById(id)]));
+preloadHudGlyphs();
+setHudGlyphValue(hud['speed-value'], '00');
+setHudGlyphValue(hud['score-value'], '0');
 // Bitmap score digits must be measured after layout, not just when the font
 // CSS is first parsed. This is an event-driven resize, not work at 144 FPS.
 const scheduleTrickHudFit = () => requestAnimationFrame(() =>
@@ -325,9 +330,12 @@ function updateHud() {
   if (!skater) return;
   const kmh = Math.round(Math.abs(skater.speed) * 3.6);
   const speedText=String(kmh).padStart(2,'0');
-  if(hud['speed-value'].textContent!==speedText)hud['speed-value'].textContent=speedText;
+  setHudGlyphValue(hud['speed-value'],speedText);
   const chargeScale=`scaleX(${skater.charge.toFixed(2)})`;
-  if(hud['charge-fill'].style.transform!==chargeScale)hud['charge-fill'].style.transform=chargeScale;
+  if(hud['charge-fill'].style.transform!==chargeScale){
+    hud['charge-fill'].style.transform=chargeScale;
+    hud['charge-fill'].parentElement.setAttribute('aria-valuenow',String(Math.round(skater.charge*100)));
+  }
   let state = skater.grounded ? 'RIDING' : 'AIR';
   if (skater.transitionAir && !skater.transitionAir.transferring) state = 'VERT';
   if (skater.manual) state = skater.manual === 'noseManual' ? 'NOSE MANUAL' : 'MANUAL';
@@ -337,7 +345,7 @@ function updateHud() {
   if (paused) state = 'PAUSED';
   if(hud['state-value'].textContent!==state)hud['state-value'].textContent=state;
   const scoreText=skater.score.toLocaleString();
-  if(hud['score-value'].textContent!==scoreText)hud['score-value'].textContent=scoreText;
+  setHudGlyphValue(hud['score-value'],scoreText);
   const trickNode = hud['trick-feedback'];
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
   // Do not reset the pop animation on every render frame.
