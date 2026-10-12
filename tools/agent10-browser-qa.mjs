@@ -454,7 +454,25 @@ try{
   await finishTutorial();
   // Exercise real in-game countdown; no timer bypass or fake result screen.
   await page.waitForFunction(()=>document.body.dataset.screen==='results',null,{timeout:160000});
-  assert.match(await page.locator('.result-score').textContent(),/POINTS BANKED/);
+  assert.match(await page.locator('.result-score').textContent(),/FINAL POINTS/);
+  const runScore=await page.evaluate(()=>{
+    const integer=text=>Number(String(text).replace(/[^0-9]/g,''));
+    const metric=label=>{
+      const row=[...document.querySelectorAll('.run-stat')].find(node=>node.querySelector('dt')?.textContent.trim()===label);
+      return integer(row.querySelector('dd').textContent);
+    };
+    return {
+      banked:integer(document.querySelector('[data-banked-score]').textContent),
+      final:integer(document.querySelector('[data-final-score]').textContent),
+      liveBanked:integer(document.querySelector('#score-value').textContent),
+      combos:metric('LANDED COMBOS'),tricks:metric('TRICKS LANDED'),
+      unique:metric('UNIQUE TRICKS'),bails:metric('BAILS'),
+    };
+  });
+  const expectedFinal=Math.max(0,Math.round((runScore.banked+100*runScore.combos+25*runScore.tricks)
+    *(100+Math.min(100,5*runScore.unique))/100)-250*runScore.bails);
+  assert.equal(runScore.final,expectedFinal,'Final score must apply displayed achievements and bail deductions');
+  assert.equal(runScore.banked,runScore.liveBanked,'Final weighting must preserve the underlying gameplay score');
   await page.screenshot({path:join(out,'timed-results.png'),fullPage:true});
   await page.locator('[data-action="title"]').click();
   await page.locator('body[data-screen="title"]').waitFor();
