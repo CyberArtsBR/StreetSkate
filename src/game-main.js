@@ -663,6 +663,8 @@ async function loadGame() {
     setPaused(true);
     gameShell.setReady();
     portalsPhase1.onGameReady();
+    // A managed Portals Party launches online immediately, no manual sub-lobby.
+    void portalsOnline?.autoJoinHostedSession();
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       currentLocation: currentWorld.id, selectLocation,
