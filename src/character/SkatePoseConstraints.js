@@ -87,7 +87,7 @@ export function avatarPoseCalibration(hipToAnkle) {
   const height = C(Number.isFinite(hipToAnkle) ? hipToAnkle : 0.72, 0.30, 1.20);
   return {
     crouchScale: C(height / 0.72, 0.72, 1.25),
-    pelvisClearance: C(height * 0.52, 0.19, 0.405),
+    pelvisClearance: C(height * 0.55, 0.19, 0.405),
   };
 }
 
