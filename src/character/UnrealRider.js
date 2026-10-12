@@ -458,7 +458,7 @@ export class UnrealRider {
       const poleDirection = anatomicalKneeDirection(this.kneeForward, lateral, this.kneePoles[side], compression);
       const kneePole = upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
-      const releasedFoot = (grab > 0.01 && (
+      const releasedFoot = (push && side === rear) || (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
       // The board may have spun 180 degrees while the skater stayed facing

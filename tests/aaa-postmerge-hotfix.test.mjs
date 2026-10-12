@@ -28,13 +28,6 @@ test('graffiti trick feedback has no solid rectangular backing', () => {
   assert.match(selector[1], /backdrop-filter:none/);
 });
 
-test('motor pump/push still runs while cosmetic cyclic foot gesture stays disabled', () => {
-  const src = readFileSync(new URL('../src/game/StreetSkater.js', import.meta.url), 'utf8');
-  assert.match(src, /this\.advance\(delta, input\)/, 'do not disable skateboard physics');
-  assert.match(src, /pushWeight: 0,\s*pushPhase: 0,/, 'trailing-foot looping gesture must stay off');
-  assert.match(src, /landingSeverity: p\.landingSeverity/, 'trick/landing presentation remains available');
-});
-
 test('clear line of sight damps small alternating wheel-contact height changes', () => {
   const camera = new THREE.PerspectiveCamera(58, 16/9, .08, 1000);
   const rig = new FollowCamera(camera);

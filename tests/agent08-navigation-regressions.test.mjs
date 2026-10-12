@@ -142,9 +142,10 @@ function fakeAudioContext() {
     destination=node();sources=[];oscillators=[];
     createGain(){return node();}
     createBiquadFilter(){return node();}
+    createDynamicsCompressor(){return {...node(),threshold:new Param(),knee:new Param(),ratio:new Param(),attack:new Param(),release:new Param()};}
     createBufferSource(){const n=node();this.sources.push(n);return n;}
     createOscillator(){const n=node();this.oscillators.push(n);return n;}
-    createBuffer(){return {getChannelData:()=>new Float32Array(16000)};}
+    createBuffer(channels,length,sampleRate){const samples=new Float32Array(length);return {duration:length/sampleRate,getChannelData:()=>samples};}
     async close(){this.state='closed';}
   };
 }
@@ -155,20 +156,21 @@ test('synthesized pop, rail and landing voices remain gated and respect pause',a
   try {
     await fx.unlock();
     const c=fx.context;
-    assert.equal(c.sources.length,3);
+    assert.equal(c.sources.length,5);
     const player={
       velocity:{length:()=>12},grounded:true,grind:null,bailTime:0,
       presentation:{landingSeverity:0.8}
     };
     fx.update(player,true);
     assert.ok(fx.roll.gain.gain.target>0);
-    player.grounded=false;c.currentTime+=.2;fx.update(player,true);
-    assert.equal(c.sources.length,4,'ollie pop is a distinct transient');
+    player.grounded=false;player.presentation.popTime=.12;c.currentTime+=.2;fx.update(player,true);
+    assert.equal(c.sources.length,6,'ollie pop is a distinct transient');
     player.grind={};c.currentTime+=.2;fx.update(player,true);
     assert.ok(fx.grind.gain.gain.target>0);
     assert.equal(fx.roll.gain.gain.target,0,'grind masks wheel hiss');
     player.grind=null;player.grounded=true;c.currentTime+=.2;fx.update(player,true);
-    assert.ok(c.oscillators.length>0,'landing includes damped low-frequency thud');
+    assert.equal(c.sources.length,8,'rail contact and truck landing each produce their own voice');
+    assert.ok(c.sources.at(-1).buffer.duration>c.sources[5].buffer.duration,'landing has a longer resonant decay than pop');
     fx.update(player,false);
     assert.equal(fx.roll.gain.gain.target,0,'pause silences rolling layer');
   }finally{await fx.dispose();globalThis.window=oldWindow;}

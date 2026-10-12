@@ -1,3 +1,5 @@
+export const DEFAULT_BOARD_FINISH = 6; // Orange
+
 function finish(color, stops) {
   const colors = Object.freeze(stops);
   return Object.freeze({
