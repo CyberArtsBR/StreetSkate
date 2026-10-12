@@ -465,6 +465,10 @@ export class GameShell {
     // synthesize a stale edge from a button held while the tab was inactive.
     if(!focused){this.padFocused=false;this.previousPad=keys;this.navRepeat=.22;return;}
     if(!this.padFocused||padChanged){this.previousPad=keys;this.padFocused=true;}
+    if(this.actions?.portalsIsOpen?.()) {
+      if(keys.back&&!this.previousPad.back)this.actions?.portalsClose?.();
+      this.previousPad=keys;return;
+    }
     const edge=k=>keys[k]&&!this.previousPad[k];
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();

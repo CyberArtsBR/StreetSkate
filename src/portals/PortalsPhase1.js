@@ -79,11 +79,11 @@ export class PortalsPhase1 {
     if (!data) return;
     const shell = this.shell;
     if (data.camera) shell.cameraIndex = cameraModes.indexOf(data.camera);
+    if (typeof data.bloomEnabled === 'boolean') shell.bloomEnabled = data.bloomEnabled;
     if (data.graphics && GRAPHICS_PRESET_ORDER.includes(data.graphics)) {
       shell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(data.graphics);
-      shell.actions.graphics?.(data.graphics);
     }
-    if (typeof data.bloomEnabled === 'boolean') shell.bloomEnabled = data.bloomEnabled;
+    if (data.graphics || data.bloomEnabled !== undefined) shell.actions.graphics?.(GRAPHICS_PRESET_ORDER[shell.graphicsIndex]);
     if (typeof data.sound === 'boolean') { shell.sound = data.sound; shell.actions.sound?.(data.sound); }
     if (data.masterVolume !== undefined) {
       shell.music.setMasterVolume(data.masterVolume);
