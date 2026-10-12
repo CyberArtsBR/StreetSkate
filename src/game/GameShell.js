@@ -9,8 +9,8 @@ import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.j
 import { characterPortrait, forgetCharacterPortrait } from './CharacterPortraits.js';
 import { boardPortraits } from './BoardPortraits.js';
 import { graffitiLettering } from './GraffitiLettering.js';
-import { LoadoutBackdrop } from './LoadoutBackdrop.js';
 import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, GRAPHICS_DESCRIPTIONS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
+import { RUN_SCORE_RULES } from './RunFinalScore.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -19,6 +19,10 @@ const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fa
 const persist = (key, value) => { try { localStorage.setItem(key, String(value)); } catch {} };
 const CAMERAS=['follow','classic','fixed'];
 const CAMERA_LABELS=['Follow','Classic','Fixed'];
+const number = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value)) : 0;
+const points = value => Math.round(number(value)).toLocaleString();
+const seconds = value => `${number(value).toFixed(1)} s`;
+const meters = value => number(value)>=1000 ? `${(number(value)/1000).toFixed(2)} km` : `${Math.round(number(value))} m`;
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
@@ -32,6 +36,7 @@ export class GameShell {
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
+    this.runSummary=null;this.timeupEndsAt=0;this.replayDisplayKey='';
     this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ ← → / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
@@ -91,6 +96,7 @@ export class GameShell {
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
   setScreen(phase){
+    if(this.phase==='highlights'&&phase!=='highlights')this.actions.stopHighlights?.();
     // Leaving the selector invalidates any pending rider swap's UI completion.
     // A previously started loader may still resolve, but must never reopen a
     // tutorial or overwrite the player's new screen after Back/Escape.
@@ -102,7 +108,7 @@ export class GameShell {
     this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();
   }
   menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
-  focusSelection(){
+  focusSelection(reveal=true){
     const buttons=this.menuButtons();
     if(!buttons.length){this.selection=0;return;}
     this.selection=(this.selection+buttons.length)%buttons.length;
@@ -111,7 +117,7 @@ export class GameShell {
     target?.focus({preventScroll:true});
     // Controller focus may be below the fold in the stacked/mobile loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
-    if(['select','pause','options','graphics','results'].includes(this.phase))
+    if(reveal&&['select','pause','options','graphics','results'].includes(this.phase))
       target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
   // Keyboard and gamepad share the same logical layout-aware focus route.
@@ -124,6 +130,8 @@ export class GameShell {
     this.focusSelection();
   }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
+  boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
+  locationName(){return LOCATIONS[this.locationIndex]?.name||'';}
   render(){
     // Keep the music panel alive while replacing menu contents; selection
     // screens give it a layout slot so it never covers their heading/cards.
@@ -132,11 +140,8 @@ export class GameShell {
     this.actions.screenChanged?.(this.phase);
     this.timer.hidden=!this.active;this.updateTimer();
     this.song.classList.remove('song-compact');this.songToastRemaining=4;
-    this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':'menu-screen';
-    if(this.phase==='select'&&!this.backdrop) {
-      try { this.backdrop=new LoadoutBackdrop(this.root); } catch { /* CSS alley remains available without WebGL. */ }
-    }
-    this.backdrop?.setActive(this.phase==='select');
+    this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':this.phase==='results'?'results-screen':this.phase==='timeup'?'timeup-screen':this.phase==='highlights'?'highlights-screen':'menu-screen';
+    this.root.classList.toggle('run-art-screen',['select','pause','timeup','results'].includes(this.phase));
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
@@ -189,15 +194,18 @@ export class GameShell {
         +`<p class="graphics-details">${safe(effective?.label||preset.label)} · ${effective?.bloomEnabled?'Glow on':'Glow off'} · stable environment reflections.<br>144 FPS is a target; actual performance depends on your hardware and display.</p>`
         +(effective?`<details class="graphics-advanced"><summary>Rendering details</summary><p>${effective.renderWidth} × ${effective.renderHeight} internal resolution · ${effective.anisotropy}× filtering · ${effective.msaaSamples}× edge samples · 1024² local shadows${effective.postProcessingAvailable?'':' · post effects unavailable'}</p></details>`:'')
         +this.button('← BACK TO OPTIONS','back');
+    } else if(this.phase==='timeup') {
+      body=`<div class="timeup-burst" role="status" aria-live="assertive"><span class="session-eyebrow">SESSION COMPLETE</span><h2>${graffitiLettering('TIME’S UP','fire')}</h2><p>YOUR RUN. YOUR LINE. YOUR SCORE.</p><div class="timeup-rule" aria-hidden="true"></div></div>`;
     } else if(this.phase==='results') {
-      title='TIME’S UP';body=`<p class="result-score">${this.finalScore.toLocaleString()}<small>POINTS BANKED</small></p>`
-        +this.button('RUN IT AGAIN · 90 SEC','start')+this.button('PRACTICE','practice')+this.button('MAIN MENU','title');
+      body=this.renderResults();
+    } else if(this.phase==='highlights') {
+      body=`<div class="highlights-overlay"><header><span class="session-eyebrow">YOUR BEST MOMENTS</span><h2>SESSION HIGHLIGHTS</h2><p data-replay-caption aria-live="polite"></p></header><footer>${this.button('← BACK TO RESULTS','stopHighlights')}<span>ESC / B · BACK TO RESULTS</span></footer></div>`;
     } else if(this.phase==='tutorial') {
       const page=this.pages[this.page];
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=['title','tutorial','select'].includes(this.phase)?body:`<div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><small>CHIMP HAWK / UNDERGROUND</small><h2>${safe(title)}</h2>${body}</div>`;
+    this.content.innerHTML=['title','tutorial','select','timeup','results','highlights'].includes(this.phase)?body:`<div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><small>CHIMP HAWK / UNDERGROUND</small><h2>${safe(title)}</h2>${body}</div>`;
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
@@ -218,7 +226,68 @@ export class GameShell {
       if(index>=0)this.selection=index;
       this.focusHint=null;
     }
-    this.focusSelection();
+    if(this.phase==='results')this.content.scrollTop=0;
+    this.focusSelection(this.phase!=='results');
+  }
+  renderResults(){
+    const run=this.runSummary||{};
+    const best=run.bestCombo||{};
+    const achievements=Array.isArray(run.achievements)?run.achievements:[];
+    const topTricks=Array.isArray(run.runTopTricks)?run.runTopTricks.slice(0,3):[];
+    const highlights=Array.isArray(run.highlights)?run.highlights.slice(0,3):[];
+    const highlightCount=Math.min(3,number(run.highlightsCount??highlights.length));
+    const canReplay=this.actions.canWatchHighlights?.()??highlightCount>0;
+    const finalScore=run.finalScore??run.totalScore??this.finalScore;
+    const stats=[
+      ['LANDED COMBOS',points(run.landedCombos)],['TRICKS LANDED',points(run.tricksLanded)],
+      ['UNIQUE TRICKS',points(Array.isArray(run.uniqueTricks)?run.uniqueTricks.length:run.uniqueTricks)],['BAILS',points(run.bails)],
+      ['TOP SPEED',`${number(run.topSpeedKmh).toFixed(1)} km/h`],['DISTANCE',meters(run.distanceMeters)],
+      ['TOTAL AIR TIME',seconds(run.airTime)],['LONGEST AIR',seconds(run.maxAirTime)],
+      ['GRIND DISTANCE',meters(run.grindDistanceMeters)],['MANUAL TIME',seconds(run.manualSeconds)]
+    ].map(([label,value])=>`<div class="run-stat"><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+    const achievementRows=achievements.length?achievements.map((item,i)=>`<li><span class="achievement-number" aria-hidden="true">${String(i+1).padStart(2,'0')}</span><div><strong>${safe(item.title)}</strong><p>${safe(item.detail)}</p></div></li>`).join(''):`<li class="run-empty"><p>No scored achievements this run. Land a trick or link a combo to build your next session.</p></li>`;
+    const topRows=topTricks.length?topTricks.map((item,i)=>`<li><span>${String(i+1).padStart(2,'0')}</span><strong>${safe(item.label)}</strong><b>${points(item.points)} <small>PTS</small></b></li>`).join(''):'<li class="run-empty"><p>No scored tricks landed.</p></li>';
+    return `<article class="run-results" aria-label="Session results">
+      <header class="run-results-header"><div><span class="session-eyebrow">CHIMP HAWK / SESSION COMPLETE</span><h2>${graffitiLettering('YOUR RUN','gold')}</h2><p>${safe(run.mapName||LOCATIONS[this.locationIndex]?.name||'')} <span>·</span> ${Math.round(number(run.durationSeconds??90))} SEC SESSION</p></div><div class="run-loadout"><strong>${safe(run.riderName||this.heroes[this.heroIndex]?.name||'')}</strong><span>${safe(run.deckName||BOARD_CHOICES[this.boardIndex]?.label||'')}</span>${this.button('▶ Watch the Highlights','watchHighlights',!canReplay)}</div></header>
+      <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderScoreBreakdown(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} tricks linked</span>`:''}</div><h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
+      <div class="run-detail-column"><section class="run-achievements"><h3>SESSION ACHIEVEMENTS</h3><ol>${achievementRows}</ol></section><section class="run-top-tricks"><h3>HIGHEST SCORING TRICKS</h3><ol>${topRows}</ol></section><section class="run-highlights"><span class="session-eyebrow">THE HIGHLIGHT REEL</span><p>${canReplay?`${highlightCount} best scored moment${highlightCount===1?'':'s'} · cinematic cameras & slow motion`:'Land a scored trick to capture your highlights.'}</p><small>${canReplay?'2.5 seconds before and after each moment, where the session allows.':'Highlights are recorded during this session only.'}</small></section></div></div>
+      <footer class="run-results-actions">${this.button('RUN IT AGAIN · 90 SEC','restart')}${this.button('CHANGE RIDER / SPOT','start')}${this.button('PRACTICE','practice')}${this.button('MAIN MENU','title')}</footer></article>`;
+  }
+  renderScoreBreakdown(run){
+    const score=run.scoreBreakdown;
+    if(!score)return '';
+    const multiplier=(number(score.multiplierPercent)/100).toFixed(2);
+    const varietyCap=number(score.uniqueTrickCount)*RUN_SCORE_RULES.percentPerUniqueTrick>RUN_SCORE_RULES.maxVarietyBonusPercent;
+    const row=(label,detail,value,kind='',valueAttribute='')=>`<div class="run-score-row ${kind}"><dt><strong>${label}</strong>${detail?`<small>${detail}</small>`:''}</dt><dd${valueAttribute?` ${valueAttribute}`:''}>${value}</dd></div>`;
+    const rows=[
+      row('POINTS BANKED','Score earned during the session',points(score.bankedScore),'','data-banked-score'),
+      row('LANDED COMBOS',`${points(score.landedCombos)} × ${points(RUN_SCORE_RULES.pointsPerLandedCombo)} points`,`+${points(score.comboBonus)}`,'is-bonus'),
+      row('TRICKS LANDED',`${points(score.tricksLanded)} × ${points(RUN_SCORE_RULES.pointsPerLandedTrick)} points`,`+${points(score.trickBonus)}`,'is-bonus'),
+      row('BONUS SUBTOTAL','Banked points + landed bonuses',points(score.subtotal),'is-subtotal'),
+      row('UNIQUE TRICKS',`${points(score.uniqueTrickCount)} different tricks · +${points(score.varietyBonusPercent)}%${varietyCap?' · cap reached':''}`,`×${multiplier}`,'is-bonus','class="score-multiplier"'),
+      row('WEIGHTED SCORE',`${points(score.subtotal)} × ${multiplier} · rounded to whole points`,points(score.weightedScore),'is-subtotal'),
+      row('BAILS',`${points(score.bails)} × ${points(RUN_SCORE_RULES.pointsPerBail)} point penalty`,`${number(score.bailPenalty)>0?'−':''}${points(score.bailPenalty)}`,'is-penalty'),
+      row('FINAL SCORE','Weighted score − bail penalties',points(score.finalScore),'is-final')
+    ].join('');
+    return `<section class="run-score-breakdown" aria-label="Final score calculation"><h3>HOW YOUR RUN ADDS UP</h3><dl>${rows}</dl><p class="run-score-rule">Trick variety boosts the subtotal up to ×${((100+RUN_SCORE_RULES.maxVarietyBonusPercent)/100).toFixed(2)}. Bails subtract points after the multiplier. Final score never falls below zero.</p></section>`;
+  }
+  finishRun(){
+    this.finalScore=number(this.actions.score());
+    this.actions.pause(true);
+    this.runSummary=this.actions.finishRun?.()||{totalScore:this.finalScore,durationSeconds:90};
+    this.finalScore=number(this.runSummary.finalScore??this.runSummary.totalScore??this.finalScore);
+    this.timeupEndsAt=performance.now()+3000;
+    this.setScreen('timeup');
+  }
+  showResults(){this.setScreen('results');}
+  updateReplayCaption(){
+    const status=this.actions.replayStatus?.();
+    if(!status)return;
+    const text=`${number(status.index)+1} / ${number(status.total)||Math.min(3,this.runSummary?.highlights?.length||0)} · ${status.label||'Best moment'}${status.points?` · ${points(status.points)} PTS`:''}`;
+    if(text===this.replayDisplayKey)return;
+    this.replayDisplayKey=text;
+    const caption=this.content.querySelector('[data-replay-caption]');
+    if(caption)caption.textContent=text;
   }
   begin(practice=false){
     if(!this.ready)return;
@@ -279,7 +348,7 @@ export class GameShell {
     }
   }
   start(practice){
-    this.practice=practice;this.remaining=90;this.inputGrace=.3;
+    this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
     this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
@@ -292,8 +361,9 @@ export class GameShell {
     else if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
+    if(this.phase==='timeup')return;
     this.music.unlock();
     if(this.selectBusy&&['hero','board','location','upload','confirmLoadout'].includes(action))return;
     switch(action){
@@ -306,6 +376,8 @@ export class GameShell {
       case 'upload':this.avatarInput.click();break;
       case 'confirmLoadout':void this.confirmLoadout();break;
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
+      case 'watchHighlights':if(this.actions.watchHighlights?.()){this.replayDisplayKey='';this.setScreen('highlights');this.updateReplayCaption();}break;
+      case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
@@ -331,6 +403,8 @@ export class GameShell {
   }
   key(event){
     if(/INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))return;
+    if(this.phase==='timeup'){event.preventDefault();event.stopImmediatePropagation();return;}
+    if(this.phase==='highlights'&&event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();return;}
     if(event.code==='Backspace'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)this.music.next();return;}
     if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else this.openTutorial();}return;}
     if(this.active)return;
@@ -360,6 +434,8 @@ export class GameShell {
     this.timer.dataset.warningLabel=warn==='critical'?'FINAL 5 SECONDS':warn==='warning'?'10 SECONDS LEFT':'';
   }
   update(dt){
+    if(this.phase==='timeup'&&performance.now()>=this.timeupEndsAt)this.showResults();
+    if(this.phase==='highlights')this.updateReplayCaption();
     this.inputGrace=Math.max(0,this.inputGrace-dt);this.navRepeat=Math.max(0,this.navRepeat-dt);
     if(this.active&&this.songToastRemaining>0){
       this.songToastRemaining=Math.max(0,this.songToastRemaining-dt);
@@ -383,7 +459,7 @@ export class GameShell {
     const edge=k=>keys[k]&&!this.previousPad[k];
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();
-    if(!this.active){
+    if(!this.active&&this.phase!=='timeup'){
       const direction=keys.left?'left':keys.right?'right':keys.up?'up':keys.down?'down':null;
       if(this.open){
         if(edge('back'))this.back();
@@ -409,7 +485,7 @@ export class GameShell {
       this.remaining=Math.max(0,this.remaining-dt);this.updateTimer();
       const threshold=countdownCrossing(before,this.remaining,this.practice);
       if(threshold)this.actions.countdownWarning?.(threshold);
-      if(!this.remaining){this.finalScore=this.actions.score();this.actions.pause(true);this.music.next();this.setScreen('results');}
+      if(!this.remaining)this.finishRun();
     }
   }
 }

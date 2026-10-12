@@ -250,6 +250,20 @@ try{
   await page.screenshot({path:join(out,'timed-session.png'),fullPage:true});
  });
  await checked('gold/fire/red graffiti score fits on wide and narrow screens',async()=>{
+  // SwiftShader captures can exceed a timed run. Use the real practice flow
+  // for extended visual/camera checks; expiry is independently checked below.
+  if(await page.locator('body').getAttribute('data-screen')==='playing')
+    await page.keyboard.press('Escape');
+  await page.locator('body[data-screen="pause"],body[data-screen="results"],body[data-screen="title"]').waitFor();
+  if(await page.locator('body').getAttribute('data-screen')!=='title')
+    await page.locator('[data-action="title"]').click();
+  await page.locator('body[data-screen="title"]').waitFor();
+  await page.locator('[data-action="options"]').click();
+  await page.locator('[data-action="practice"]').click();
+  await page.locator('body[data-screen="select"]').waitFor();
+  await chooseLoadout();
+  await finishTutorial();
+  assert.equal(await page.locator('#run-timer').getAttribute('data-practice'),'true');
   const original = await page.evaluate(() => ({
     feedback: window.streetSkate.skater.feedback,
     feedbackTime: window.streetSkate.skater.feedbackTime,
@@ -454,7 +468,25 @@ try{
   await finishTutorial();
   // Exercise real in-game countdown; no timer bypass or fake result screen.
   await page.waitForFunction(()=>document.body.dataset.screen==='results',null,{timeout:160000});
-  assert.match(await page.locator('.result-score').textContent(),/POINTS BANKED/);
+  assert.match(await page.locator('.result-score').textContent(),/FINAL POINTS/);
+  const runScore=await page.evaluate(()=>{
+    const integer=text=>Number(String(text).replace(/[^0-9]/g,''));
+    const metric=label=>{
+      const row=[...document.querySelectorAll('.run-stat')].find(node=>node.querySelector('dt')?.textContent.trim()===label);
+      return integer(row.querySelector('dd').textContent);
+    };
+    return {
+      banked:integer(document.querySelector('[data-banked-score]').textContent),
+      final:integer(document.querySelector('[data-final-score]').textContent),
+      liveBanked:integer(document.querySelector('#score-value').textContent),
+      combos:metric('LANDED COMBOS'),tricks:metric('TRICKS LANDED'),
+      unique:metric('UNIQUE TRICKS'),bails:metric('BAILS'),
+    };
+  });
+  const expectedFinal=Math.max(0,Math.round((runScore.banked+100*runScore.combos+25*runScore.tricks)
+    *(100+Math.min(100,5*runScore.unique))/100)-250*runScore.bails);
+  assert.equal(runScore.final,expectedFinal,'Final score must apply displayed achievements and bail deductions');
+  assert.equal(runScore.banked,runScore.liveBanked,'Final weighting must preserve the underlying gameplay score');
   await page.screenshot({path:join(out,'timed-results.png'),fullPage:true});
   await page.locator('[data-action="title"]').click();
   await page.locator('body[data-screen="title"]').waitFor();

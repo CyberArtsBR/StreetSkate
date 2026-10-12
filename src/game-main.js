@@ -12,6 +12,9 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { RunSummary } from './game/RunSummary.js';
+import { HighlightRecorder } from './game/HighlightRecorder.js';
+import { HighlightPlayback } from './game/HighlightPlayback.js';
 import { setHudGlyphValue, preloadHudGlyphs } from './game/HudGlyphs.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
 import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
@@ -24,6 +27,7 @@ import './loadout-menu.css';
 import './game-hud.css';
 import './menu-presentation.css';
 import './gameplay-instruments.css';
+import './session-results.css';
 
 const container = document.querySelector('#viewport');
 installGraffitiFallback();
@@ -129,19 +133,55 @@ const skateAudio = new SkateAudio();
 window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: true });
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
+const runSummary = new RunSummary();
+const highlightRecorder = new HighlightRecorder();
+let runInProgress = false;
+let runFinished = false;
+let highlightClips = [];
+let highlightStatus = null;
+let sessionEventTime = 0;
+let comboStartTime = 0;
+let pendingReplayMoments = [];
+const highlightPlayback = new HighlightPlayback({
+  camera,
+  getSurface: () => collision,
+  onFinish: () => gameShell.showResults(),
+  onMoment: moment => { highlightStatus = { ...moment, total: moment.count }; },
+});
 const gameShell = new GameShell({
-  start: () => {
+  start: practice => {
     if (!skater) return;
+    highlightPlayback.stop();
     skater.spawn.set(...manifest.spawn); skater.spawnHeading = Number(manifest.spawnHeading) || 0;
     skater.reset(skater.spawn, skater.spawnHeading);
     setMode('skate'); input.read(); input.clear(); followCamera.snap(skater);
+    runSummary.begin({ practice, riderName: gameShell.heroes[gameShell.heroIndex]?.name,
+      deckName: gameShell.boardLabel(), mapName: gameShell.locationName() }, skater);
+    highlightRecorder.reset(skater);
+    runInProgress = true; runFinished = false; highlightClips = []; highlightStatus = null;
+    sessionEventTime = 0; comboStartTime = 0; pendingReplayMoments = [];
   },
   pause: value => setPaused(value),
   camera: mode => setCameraMode(mode),
   graphics: name => applyGraphicsPreset(name),
   graphicsStatus: () => graphicsPipeline.getStatus(),
-  screenChanged: () => { sceneNeedsRender=true; },
+  screenChanged: phase => {
+    sceneNeedsRender=true;
+    if (phase === 'results' && runFinished && !highlightRecorder.finished) {
+      highlightClips = highlightRecorder.finish();
+      gameShell.runSummary = { ...gameShell.runSummary, highlightsCount: highlightClips.length };
+    }
+  },
   score: () => skater?.score || 0,
+  finishRun: () => {
+    runInProgress = false; runFinished = true;
+    return runSummary.finish({ totalScore: skater?.score || 0,
+      durationSeconds: gameShell.practice ? runSummary.elapsedSeconds : 90 });
+  },
+  canWatchHighlights: () => highlightClips.length > 0,
+  watchHighlights: () => highlightPlayback.start(highlightClips),
+  stopHighlights: () => { highlightPlayback.stop(); sceneNeedsRender = true; },
+  replayStatus: () => highlightStatus,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
@@ -149,6 +189,31 @@ const gameShell = new GameShell({
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
 });
+
+// Observe the existing score banks without changing scoring or simulation rules.
+function observeRunScoring(controller) {
+  const scorer = controller.tricks;
+  const originalRecord = scorer.record;
+  const originalSettle = scorer.settle;
+  scorer.record = function (...args) {
+    const first = !this.combo.length;
+    const entry = originalRecord.apply(this, args);
+    if (runInProgress && entry && first) comboStartTime = sessionEventTime;
+    return entry;
+  };
+  scorer.settle = function (...args) {
+    const entries = runInProgress && this.combo.length ? this.combo.map(entry => ({ ...entry })) : [];
+    const durationSeconds = this.comboDuration();
+    const result = originalSettle.apply(this, args);
+    if (runInProgress && result) {
+      const moment = runSummary.recordCombo({ ...result, entries, durationSeconds,
+        startTime: comboStartTime, endTime: sessionEventTime });
+      if (moment) pendingReplayMoments.push({ start: moment.startTime, end: moment.endTime,
+        points: moment.points, label: moment.label });
+    }
+    return result;
+  };
+}
 gameShell.sound = skateAudio.enabled;
 skateAudio.setMasterVolume(gameShell.music.masterVolume);
 applyGraphicsPreset(graphicsPreset);
@@ -529,6 +594,7 @@ async function loadGame() {
     document.querySelector('#load-progress').textContent = 'Loading rider and skateboard';
     skater = await new StreetSkater({ collision: initialWorld.collision, spawn: initialWorld.manifest.spawn,
       rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions }).load();
+    observeRunScoring(skater);
     scene.add(skater.root);
     // Actor-only bloom: visual contains the skateboard and currently selected GLB rider.
     // Keeping the group reference automatically tracks later character hot-swaps.
@@ -682,7 +748,14 @@ renderer.setAnimationLoop(() => {
     if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.active) {
       const respawn = skater.respawnSerial;
+      sessionEventTime = highlightRecorder.time + realDelta;
       skater.update(dt, gameShell.inputGrace > 0 ? {} : state, elapsed);
+      if (runInProgress) {
+        runSummary.update(skater, realDelta);
+        highlightRecorder.record(skater, realDelta);
+        for (const moment of pendingReplayMoments) highlightRecorder.markMoment(moment);
+        pendingReplayMoments.length = 0;
+      }
       if (skater.respawnSerial !== respawn) followCamera.snap(skater);
       followCamera.update(skater, dt, state);
       if (state.reset) followCamera.snap(skater);
@@ -698,6 +771,11 @@ renderer.setAnimationLoop(() => {
     }
     if (mode === 'explore') controls.update();
   }
+  // Capture the frozen aftermath during the three-second end-of-session beat.
+  if (runFinished && gameShell.phase === 'timeup' && !highlightRecorder.finished)
+    highlightRecorder.record(skater, realDelta);
+  if (gameShell.phase === 'highlights' && highlightPlayback.active && document.hasFocus())
+    highlightPlayback.update(realDelta);
   debugOverlay.update(dt, {
     skater, followCamera, camera, input: lastInputState,
     paused, focused: document.hasFocus(),
@@ -705,11 +783,10 @@ renderer.setAnimationLoop(() => {
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
   updateWorldVisibility();
-  // The selector supplies its own lit 3D alley. Avoid drawing the hidden park
-  // and its postprocessing at the same time, especially on mobile GPUs.
+  // Session menus use the supplied sunset artwork and need no hidden park render.
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,
   // rather than running HDR and bloom behind an opaque title/options screen.
-  if(gameShell.phase!=='select'&&(gameShell.active||mode==='explore'||sceneNeedsRender)){
+  if(gameShell.phase!=='select'&&(gameShell.active||(gameShell.phase==='highlights'&&document.hasFocus())||mode==='explore'||sceneNeedsRender)){
     graphicsPipeline.render();sceneNeedsRender=false;
     if(import.meta.env.DEV&&artCaptureMap&&!document.getElementById('art-thumbnail')){
       // Bake a compact WebP directly from the rendered canvas, after this frame.
