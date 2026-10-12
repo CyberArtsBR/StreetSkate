@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 import { buildExtendedCollisionRoot, countParkTriangles } from '../game/ExtendedParkCollision.js';
 
@@ -81,6 +82,6 @@ export function assembleExpandedPark(activePark, legacyPark, legacyCollision, ma
   ];
   manifest.visualTriangles = countParkTriangles(activePark);
   manifest.sizeMetres = [136, 92];
-  manifest.activeAsset = '/assets/park/halfnew.glb';
+  manifest.activeAsset = gameAssetUrl('/assets/park/halfnew.glb');
   return { park: activePark, collision: extended.root, diagnostics: extended.diagnostics };
 }

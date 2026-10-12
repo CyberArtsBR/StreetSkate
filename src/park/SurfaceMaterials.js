@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 
 // Original, deterministic material artwork. Generated once at park load; no
@@ -84,7 +85,7 @@ function photo(name) {
   if (photos.has(name)) return photos.get(name);
   let ready, failed;
   pending.push(new Promise((resolve, reject) => { ready = resolve; failed = reject; }));
-  const map = loader.load('/assets/park/hd/' + name + '.webp', ready, undefined, failed);
+  const map = loader.load(gameAssetUrl('/assets/park/hd/' + name + '.webp'), ready, undefined, failed);
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
   map.anisotropy = 8;

@@ -2,7 +2,7 @@
 // glTF therefore loads the entire painted costume/face as metal (factor 1).
 // Correct only this known default asset; custom artist materials stay authored.
 export function calibrateRiderMaterials(root, url) {
-  if(url!=='/assets/rider/The_Heretic.glb')return;
+  if(!String(url).split('?')[0].endsWith('/assets/rider/The_Heretic.glb'))return;
   const touched=new Set();
   root.traverse(object=>{
     if(!object.isMesh)return;

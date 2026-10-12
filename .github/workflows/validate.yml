@@ -24,3 +24,7 @@ jobs:
         run: npm run validate
       - name: Verify production build
         run: npm run build
+      - name: Verify Portals relative-base build
+        run: |
+          npm run build -- --base=./
+          node tools/agent10-verify-dist.mjs

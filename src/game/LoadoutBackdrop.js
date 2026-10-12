@@ -1,3 +1,4 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 
 /** A lit brick alley, rendered only while the loadout menu is visible. */
@@ -72,7 +73,7 @@ export class LoadoutBackdrop {
     for (const letter of text) {
       if (letter === ' ') { x += height * .45; continue; }
       const at = x;
-      const texture = loader.load(`/assets/graffiti/${tone}/${letter}.png`, loaded => {
+      const texture = loader.load(gameAssetUrl(`/assets/graffiti/${tone}/${letter}.png`), loaded => {
         if (this.disposed) { loaded.dispose(); return; }
         loaded.colorSpace = THREE.SRGBColorSpace;
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(height * .85, height),

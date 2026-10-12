@@ -1,3 +1,4 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 import { StreetBoard } from '../skateboard/StreetBoard.js';
 import { SKATEBOARD_FINISHES } from '../skateboard/BoardFinishes.js';
@@ -8,7 +9,7 @@ export function boardPortraits() {
     .catch(error => { previews = null; throw error; });
 }
 async function loadBakedBoards(){
-  const images=SKATEBOARD_FINISHES.map((_,index)=>`/assets/menu/decks/${index}.png`);
+  const images=SKATEBOARD_FINISHES.map((_,index)=>gameAssetUrl(`/assets/menu/decks/${index}.png`));
   await Promise.all(images.map(src=>new Promise((resolve,reject)=>{
     const image=new Image();image.onload=resolve;image.onerror=reject;image.src=src;
   })));
@@ -16,7 +17,7 @@ async function loadBakedBoards(){
 }
 async function renderBoards() {
   // Preview loads never change the player's saved finish.
-  const board = await new StreetBoard('/assets/rider/skateboard.glb').load({persist:false});
+  const board = await new StreetBoard(gameAssetUrl('/assets/rider/skateboard.glb')).load({persist:false});
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({alpha:true, antialias:true, powerPreference:'low-power', preserveDrawingBuffer:true});
