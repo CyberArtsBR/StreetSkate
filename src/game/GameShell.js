@@ -407,7 +407,7 @@ export class GameShell {
     this.render();
   }
   key(event){
-    if(this.actions.portalsIsOpen?.()){
+    if(this.actions?.portalsIsOpen?.()){
       if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();this.actions.portalsClose?.();}
       return;
     }
