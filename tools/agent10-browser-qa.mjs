@@ -250,6 +250,20 @@ try{
   await page.screenshot({path:join(out,'timed-session.png'),fullPage:true});
  });
  await checked('gold/fire/red graffiti score fits on wide and narrow screens',async()=>{
+  // SwiftShader captures can exceed a timed run. Use the real practice flow
+  // for extended visual/camera checks; expiry is independently checked below.
+  if(await page.locator('body').getAttribute('data-screen')==='playing')
+    await page.keyboard.press('Escape');
+  await page.locator('body[data-screen="pause"],body[data-screen="results"],body[data-screen="title"]').waitFor();
+  if(await page.locator('body').getAttribute('data-screen')!=='title')
+    await page.locator('[data-action="title"]').click();
+  await page.locator('body[data-screen="title"]').waitFor();
+  await page.locator('[data-action="options"]').click();
+  await page.locator('[data-action="practice"]').click();
+  await page.locator('body[data-screen="select"]').waitFor();
+  await chooseLoadout();
+  await finishTutorial();
+  assert.equal(await page.locator('#run-timer').getAttribute('data-practice'),'true');
   const original = await page.evaluate(() => ({
     feedback: window.streetSkate.skater.feedback,
     feedbackTime: window.streetSkate.skater.feedbackTime,
