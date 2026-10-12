@@ -274,7 +274,7 @@ export class PortalsOnlineBeta {
      (this.confirmCancel?buttons('confirm-now','CONFIRM: CANCEL CURRENT ROUND'):'')+'</div>':'')+
     '<div class="online-actions">'+buttons('mute',this.voiceConnected?(this.voice?.muted?.()?'UNMUTE':'MUTE MICROPHONE'):'VOICE UNAVAILABLE')+
     buttons('voice','RECONNECT VOICE')+buttons('play','RESUME SKATING')+
-    ...(people.filter(p=>p.id!==this.id).map(p=>buttons('watch','WATCH '+esc(s?.names?.[p.id]||p.displayName||'SKATER'),p.id)))+
+    people.filter(p=>p.id!==this.id).map(p=>buttons('watch','WATCH '+esc(s?.names?.[p.id]||p.displayName||'SKATER'),p.id)).join('')+
     buttons('report','REPORT BUG')+buttons('leave','LEAVE ROOM')+'</div>';
   }
   this.root.innerHTML='<div class="online-shade"></div><article class="online-panel" role="dialog" aria-modal="true">'+
