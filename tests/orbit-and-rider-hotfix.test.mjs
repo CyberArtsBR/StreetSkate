@@ -66,7 +66,7 @@ test('A-pose stays extended and modestly curved inward, and wrist goals avoid he
  assert.ok(relaxed.distanceTo(shoulder)>.54,'neutral arm was shortened enough to bend outward');
 });
 
-test('real rider GLBs retain A-pose and clear head during no-grab jumps and transitions',async()=>{
+test('real rider GLBs keep balanced arms clear of the head during jumps and transitions',async()=>{
  for(const name of ['The_Heretic','The_Anchor','The_AdolescentUR','TheanchoURi','TuxR']){
   const rider=new UnrealRider(name).configureModel(await loadGeometry(new URL('../public/assets/rider/'+name+'.glb',import.meta.url)));
   const board=new StreetBoard('/unused');
@@ -97,8 +97,8 @@ test('real rider GLBs retain A-pose and clear head during no-grab jumps and tran
     }
     if(!scenario.grabState && ['IDLE','COAST','OLLIE_POP','AIR','VERT_AIR'].includes(scenario.state)){
       const outward=rider.armOutward[side].clone().applyQuaternion(rider.root.getWorldQuaternion(new THREE.Quaternion())).normalize();
-      assert.ok(wrist.clone().sub(shoulder).dot(outward)>arm*.33,name+'/'+scenario.state+'/'+side+' closed A-pose');
-      assert.ok(flex<.5,name+'/'+scenario.state+'/'+side+' non-grab A-pose elbow too bent: '+flex.toFixed(3));
+      assert.ok(wrist.clone().sub(shoulder).dot(outward)>arm*.20,name+'/'+scenario.state+'/'+side+' wrist crosses torso');
+      assert.ok(flex<1.65,name+'/'+scenario.state+'/'+side+' non-grab elbow too bent: '+flex.toFixed(3));
     }
    }
   }

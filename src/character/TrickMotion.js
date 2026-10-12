@@ -38,26 +38,38 @@ export function flipTurns(flipState) {
   return turns;
 }
 
-// The foot sweeps backwards while planted, then returns above the deck. Keeping
-// one continuous phase prevents starting each push half way through a stroke.
+// Original key poses: lift off the deck, reach beside it, drive backwards,
+// roll off the toe, then recover above the deck. Values are in the rider frame.
+const PUSH_KEYS = [
+  // phase, side, lift, fore/aft, ground contact, ankle pitch, arm swing
+  [0,    0,    0,     0,     0,  0,     0],
+  [.14,  .18,  .045, -.22,   0, -.12,  -.55],
+  [.26,  .23,  0,    -.24,   1,  0,    -.7],
+  [.56,  .23,  0,     .27,   1,  0,     .8],
+  [.68,  .21,  .09,   .34,   0,  .34,   .55],
+  [.86,  .10,  .14,   .11,   0,  .12,  -.2],
+  [1,    0,    0,     0,     0,  0,     0],
+];
+
 export function pushMotion(phase = 0) {
   const finitePhase = Number.isFinite(phase) ? phase : 0;
   const p = ((finitePhase % 1) + 1) % 1;
-  const leave = MathUtils.smoothstep(p, 0, 0.16);
-  const recover = MathUtils.smoothstep(p, 0.58, 0.92);
-  const contact = leave * (1 - MathUtils.smoothstep(p, 0.54, 0.68));
-  const sweep = MathUtils.smoothstep(p, 0.18, 0.6);
+  const next = PUSH_KEYS.findIndex(key => key[0] > p);
+  const from = PUSH_KEYS[next - 1], to = PUSH_KEYS[next];
+  const t = MathUtils.smoothstep(p, from[0], to[0]);
+  const mix = column => MathUtils.lerp(from[column], to[column], t);
+  const contact = mix(4);
   return {
-    side: 0.11 * leave * (1 - recover),
-    height: -0.13 * contact + 0.08 * Math.sin(Math.PI * recover),
-    foreAft: MathUtils.lerp(-0.15, 0.27, sweep) * leave * (1 - recover),
+    side: mix(1), lift: mix(2), height: mix(2) - .14 * contact,
+    foreAft: mix(3), anklePitch: mix(5), armSwing: mix(6),
+    weightShift: MathUtils.smoothstep(p, 0, .16) * (1 - MathUtils.smoothstep(p, .72, 1)),
     contact,
   };
 }
 
 export function popMotion(progress = 1) {
   const p = safe01(progress);
-  return -0.26 * Math.sin(Math.PI * p) * (1 - MathUtils.smoothstep(p, 0.6, 1));
+  return -.36 * MathUtils.smoothstep(p, 0, .22) * (1 - MathUtils.smoothstep(p, .28, 1));
 }
 
 export function landingMotion(progress = 1) {
@@ -65,8 +77,8 @@ export function landingMotion(progress = 1) {
   // Begin absorbing the contact immediately, reach deepest bend quickly, then
   // recover over most of the landing. Never carry compression after the timer.
   if (p >= 1) return 0;
-  return (0.38 + 0.62 * MathUtils.smoothstep(p, 0, 0.16))
-    * (1 - MathUtils.smoothstep(p, 0.16, 1));
+  return (0.38 + 0.62 * MathUtils.smoothstep(p, 0, 0.20))
+    * (1 - MathUtils.smoothstep(p, 0.20, 1));
 }
 
 export const GRAB_POSES = Object.freeze({

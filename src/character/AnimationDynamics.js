@@ -95,6 +95,29 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   return { wrist, elbow };
 }
 
+/** Soft elbows and asymmetric counterbalance, proportional to the loaded rig.
+ * The open neutral pose remains a collision fallback, not the skating loop. */
+export function skatingArmIKTargets(shoulder, outward, forward, armLength, {
+  front = false, compression = 0, air = 0, balance = 0, balancePose = 0,
+  push = 0, swing = 0, landing = 0, breathing = 0, up = new THREE.Vector3(0, 1, 0),
+} = {}) {
+  const side = outward.clone().normalize();
+  const face = forward.clone().addScaledVector(side, -forward.dot(side)).normalize();
+  const lead = front ? 1 : -1;
+  const activity = C(balancePose, 0, 1);
+  const spread = .34 + air * .35 + activity * .25 + compression * .07;
+  const direction = side.clone().multiplyScalar(spread + lead * balance * .09)
+    .addScaledVector(face, .08 + compression * .17 + lead * (.045 + push * swing * .23))
+    .addScaledVector(up, -.87 + air * .39 + activity * .32
+      + landing * .12 + lead * balance * .15 + breathing).normalize();
+  const reach = armLength * C(.95 - compression * .055 - air * .035 - push * .035, .82, .96);
+  const wrist = shoulder.clone().addScaledVector(direction, reach);
+  const elbow = shoulder.clone().lerp(wrist, .5)
+    .addScaledVector(face, armLength * .20)
+    .addScaledVector(side, armLength * .025);
+  return { wrist, elbow };
+}
+
 /**
  * Keep procedural arm goals out of the torso and face. Ordinary movement is
  * bounded to the anatomical side of the shoulder; a named grab may cross the
