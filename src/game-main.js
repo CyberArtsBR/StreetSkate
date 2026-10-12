@@ -14,6 +14,7 @@ import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import { gameAssetUrl } from './game/AssetPaths.js';
 import { PortalsPhase1 } from './portals/PortalsPhase1.js';
+import { PortalsOnlineBeta } from './portals/PortalsOnlineBeta.js';
 import './portals/portals-phase1.css';
 import { RunSummary } from './game/RunSummary.js';
 import { HighlightRecorder } from './game/HighlightRecorder.js';
@@ -146,6 +147,7 @@ let sessionEventTime = 0;
 let comboStartTime = 0;
 let pendingReplayMoments = [];
 let portalsPhase1 = null;
+let portalsOnline = null;
 const highlightPlayback = new HighlightPlayback({
   camera,
   getSurface: () => collision,
@@ -190,6 +192,12 @@ const gameShell = new GameShell({
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
   effectsVolume: value => skateAudio.setEffectsVolume(value),
+  portalsPlayer: () => portalsPhase1?.gateway?.player || null,
+  portalsOnlineAvailable: () => Boolean(portalsOnline?.available),
+  portalsOnlineConnected: () => Boolean(portalsOnline?.connected),
+  portalsOnlineOpen: () => portalsOnline?.open(),
+  portalsOnlineIsOpen: () => Boolean(portalsOnline?.visible),
+  portalsOnlineClose: () => portalsOnline?.close(),
   portalsAvailable: () => Boolean(portalsPhase1?.available),
   portalsIsOpen: () => Boolean(portalsPhase1?.isOpen),
   portalsOpen: mapId => portalsPhase1?.open(mapId),
@@ -202,6 +210,13 @@ const gameShell = new GameShell({
 });
 portalsPhase1 = new PortalsPhase1(gameShell);
 void portalsPhase1.start();
+portalsOnline = new PortalsOnlineBeta({
+  sdk:globalThis.Portals,scene,camera,shell:gameShell,
+  getSkater:()=>skater,getWorld:()=>currentWorld,
+  changeMap:id=>selectLocation(id),goToSpot:id=>goToSpot(id),
+});
+portalsOnline.restoreCamera=()=>{if(followCamera&&skater)followCamera.snap(skater)};
+if (portalsOnline.available) gameShell.render();
 
 // Observe the existing score banks without changing scoring or simulation rules.
 function observeRunScoring(controller) {
@@ -731,6 +746,7 @@ window.addEventListener('resize', () => {
 function suspendSkating() {
   skateAudio.silence();
   input.clear();
+  if (portalsOnline?.connected) return; // server clock keeps running while unfocused
   if (loaded && mode === 'skate') setPaused(true);
 }
 window.addEventListener('blur', suspendSkating);
@@ -756,20 +772,23 @@ renderer.setAnimationLoop(() => {
 
   // Never silently freeze on the last airborne frame when another overlay/window
   // takes focus. Make the suspension explicit and require a deliberate resume.
-  if (loaded && mode === 'skate' && !document.hasFocus() && !paused) setPaused(true);
+  if (loaded && mode === 'skate' && !document.hasFocus() && !paused && !portalsOnline?.connected) setPaused(true);
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     lastInputState = {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
     };
-    if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
-    if (state.cameraModePressed && gameShell.active) toggleCameraMode();
+    if (state.pausePressed && gameShell.active && wasPlaying) {
+      if (portalsOnline?.connected) { portalsOnline.open(); input.clear(); }
+      else setPaused(true);
+    }
+    if (state.cameraModePressed && gameShell.active && !portalsOnline?.visible) toggleCameraMode();
     if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.active) {
       const respawn = skater.respawnSerial;
       sessionEventTime = highlightRecorder.time + realDelta;
-      skater.update(dt, gameShell.inputGrace > 0 ? {} : state, elapsed);
+      skater.update(dt, gameShell.inputGrace > 0 || portalsOnline?.visible || portalsOnline?.watchId ? {} : state, elapsed);
       if (runInProgress) {
         runSummary.update(skater, realDelta);
         highlightRecorder.record(skater, realDelta);
@@ -802,6 +821,7 @@ renderer.setAnimationLoop(() => {
   });
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
+  portalsOnline?.tick(dt);
   updateWorldVisibility();
   // Session menus use the supplied sunset artwork and need no hidden park render.
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,

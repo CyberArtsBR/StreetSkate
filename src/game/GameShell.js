@@ -158,7 +158,7 @@ export class GameShell {
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading the rooftop…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}${this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading the rooftop…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -194,7 +194,7 @@ export class GameShell {
         +this.volumeControl('effects','EFFECTS',this.effectsVolume)
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
-        +(this.actions.portalsAvailable?.()?this.button('PORTALS / TOP 10','portals'):'')
+        +(this.actions.portalsAvailable?.()?this.button('PORTALS / TOP 10','portals'):'')+(this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):'')
         +this.button('BACK','back');
     } else if(this.phase==='graphics') {
       const key=GRAPHICS_PRESET_ORDER[this.graphicsIndex];
@@ -365,7 +365,7 @@ export class GameShell {
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
     this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);this.actions.portalsStart?.(LOCATIONS[this.locationIndex]?.id,practice);
   }
-  pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
+  pause(){if(this.active){if(this.actions.portalsOnlineConnected?.()){this.actions.portalsOnlineOpen?.();return;}this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
   syncPause(value){if(value&&this.active)this.setScreen('pause');else if(!value&&this.phase==='pause')this.setScreen('playing');}
   openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.actions.pause(true);this.setScreen('tutorial');}
@@ -383,6 +383,7 @@ export class GameShell {
     switch(action){
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
       case 'portals':this.actions.portalsOpen?.(LOCATIONS[this.locationIndex]?.id);break;
+      case 'online':this.actions.portalsOnlineOpen?.();break;
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
       case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
       case 'hero':this.heroIndex=index;this.heroConfirmed=true;this.focusHint={action:'hero',index};this.render();break;
@@ -422,6 +423,10 @@ export class GameShell {
     this.render();
   }
   key(event){
+    if(this.actions?.portalsOnlineIsOpen?.()){
+      if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();this.actions.portalsOnlineClose?.();}
+      return;
+    }
     if(this.actions?.portalsIsOpen?.()){
       if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();this.actions.portalsClose?.();}
       return;
@@ -480,6 +485,10 @@ export class GameShell {
     // synthesize a stale edge from a button held while the tab was inactive.
     if(!focused){this.padFocused=false;this.previousPad=keys;this.navRepeat=.22;return;}
     if(!this.padFocused||padChanged){this.previousPad=keys;this.padFocused=true;}
+    if(this.actions?.portalsOnlineIsOpen?.()) {
+      if(keys.back&&!this.previousPad.back)this.actions?.portalsOnlineClose?.();
+      this.previousPad=keys;return;
+    }
     if(this.actions?.portalsIsOpen?.()) {
       if(keys.back&&!this.previousPad.back)this.actions?.portalsClose?.();
       this.previousPad=keys;return;
