@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
@@ -95,7 +96,7 @@ export function createCloudBackdrop(fallback) {
 // Full-resolution photographic sky; a smaller, one-time convolution supplies
 // roughness-aware reflections without a 4K lighting bake on every frame.
 export async function loadSolarSky(renderer) {
-  const background = await new HDRLoader().loadAsync('/assets/park/hd/solar-dusk-4k.hdr');
+  const background = await new HDRLoader().loadAsync(gameAssetUrl('/assets/park/hd/solar-dusk-4k.hdr'));
   background.mapping = THREE.EquirectangularReflectionMapping;
   const skyScene = new THREE.Scene();
   skyScene.background = background;

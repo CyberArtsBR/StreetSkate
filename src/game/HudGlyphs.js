@@ -1,7 +1,8 @@
+import { gameAssetUrl } from './AssetPaths.js';
 /** Numeric HUD artwork keeps real text in the DOM and writes only on change. */
 export const HUD_GLYPH_URLS = Object.freeze(Object.fromEntries([
-  ...Array.from({ length: 10 }, (_, digit) => [String(digit), `/assets/hud/glyphs/${digit}.png`]),
-  [':', '/assets/hud/glyphs/colon.png'], ['∞', '/assets/hud/glyphs/infinity.png'],
+  ...Array.from({ length: 10 }, (_, digit) => [String(digit), gameAssetUrl(`/assets/hud/glyphs/${digit}.png`)]),
+  [':', gameAssetUrl('/assets/hud/glyphs/colon.png')], ['∞', gameAssetUrl('/assets/hud/glyphs/infinity.png')],
 ]));
 
 const glyphs = new Map();

@@ -1,3 +1,4 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import { tutorialPages } from './TutorialPages.js';
 import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
@@ -27,7 +28,7 @@ export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
-    this.pages=[{image:'/media/trick-guide-16x9.png'},...tutorialPages()];
+    this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
     this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';

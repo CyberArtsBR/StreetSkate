@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 /** Stable park identifiers; public map numbers are independent of saved IDs. */
 export const PARK_DEFINITIONS = Object.freeze([
   Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
@@ -213,15 +214,15 @@ async function loadLegacy({ scope, signal }) {
     return gltf.scene;
   };
   const loadManifest = async () => {
-    const response = await fetch('/assets/park/park-manifest.json', { signal });
+    const response = await fetch(gameAssetUrl('/assets/park/park-manifest.json'), { signal });
     if (!response.ok) throw new Error(`Legacy manifest unavailable (HTTP ${response.status}).`);
     return response.json();
   };
   const [park, collision, manifest, expanded] = await Promise.all([
-    loadModel('/assets/park/insanity-inspired-park.glb'),
-    loadModel('/assets/park/park-collision.glb'),
+    loadModel(gameAssetUrl('/assets/park/insanity-inspired-park.glb')),
+    loadModel(gameAssetUrl('/assets/park/park-collision.glb')),
     loadManifest(),
-    loadModel('/assets/park/halfnew.glb?v=fixed-black'),
+    loadModel(gameAssetUrl('/assets/park/halfnew.glb?v=fixed-black')),
   ]);
   assertNotAborted(signal);
   const assembled = assembleExpandedPark(expanded, park, collision, manifest);

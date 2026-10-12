@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { batchWarehouseVisuals } from './WarehouseVariants.js';
@@ -214,12 +215,12 @@ export function addChimpionsOrbitSign(park, anchor, canvasFactory = () => docume
 
 export async function createOrbitPark() {
   const [gltf, manifest, sky] = await Promise.all([
-    new GLTFLoader().loadAsync('/assets/spacepark/orbit.glb'),
-    fetch('/assets/spacepark/orbit-manifest.json').then(response => {
+    new GLTFLoader().loadAsync(gameAssetUrl('/assets/spacepark/orbit.glb')),
+    fetch(gameAssetUrl('/assets/spacepark/orbit-manifest.json')).then(response => {
       if (!response.ok) throw new Error('ORBIT manifest unavailable.');
       return response.json();
     }),
-    new THREE.TextureLoader().loadAsync('/assets/spacepark/textures/galaxy-4k.png'),
+    new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.png')),
   ]);
   const world = splitOrbitScene(gltf.scene, manifest.rails);
   addChimpionsOrbitSign(world.park, world.brandingAnchor);

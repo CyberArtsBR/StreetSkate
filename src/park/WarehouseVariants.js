@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -16,7 +17,7 @@ import { refineWarehouseMaterials } from './WarehouseMaterialPresentation.js';
 const VARIANTS = Object.freeze({
   'tron-warehouse': {
     name: 'TRON WAREHOUSE',
-    url: '/assets/warehouse/tron-warehouse.glb',
+    url: gameAssetUrl('/assets/warehouse/tron-warehouse.glb'),
     exposure: .94,
     light: '#a4eaff',
     ambient: '#b2d8ff',
@@ -27,7 +28,7 @@ const VARIANTS = Object.freeze({
   },
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
-    url: '/assets/warehouse/granwarehouse.glb?v=fbc46ba3',
+    url: gameAssetUrl('/assets/warehouse/granwarehouse.glb?v=fbc46ba3'),
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',
@@ -38,7 +39,7 @@ const VARIANTS = Object.freeze({
   },
   'urban-warehouse': {
     name: 'URBAN WAREHOUSE',
-    url: '/assets/warehouse/urban-warehouse.glb?v=813cbf0c',
+    url: gameAssetUrl('/assets/warehouse/urban-warehouse.glb?v=813cbf0c'),
     exposure: 1.1,
     light: '#ffe4cb',
     ambient: '#d8e1e9',

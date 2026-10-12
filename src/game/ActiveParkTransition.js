@@ -1,8 +1,9 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 
-export const ACTIVE_PARK_ASSET = '/assets/park/halfnew.glb';
-export const LEGACY_VISUAL_PARK_ASSET = '/assets/park/insanity-inspired-park.glb';
-export const LEGACY_COLLISION_ASSET = '/assets/park/park-collision.glb';
+export const ACTIVE_PARK_ASSET = gameAssetUrl('/assets/park/halfnew.glb');
+export const LEGACY_VISUAL_PARK_ASSET = gameAssetUrl('/assets/park/insanity-inspired-park.glb');
+export const LEGACY_COLLISION_ASSET = gameAssetUrl('/assets/park/park-collision.glb');
 
 /**
  * Park transition routing:

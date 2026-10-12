@@ -1,3 +1,4 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from './StatefulSkillStreetPhysics.js';
 import { UnrealRider } from '../character/UnrealRider.js';
@@ -92,8 +93,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
 
   async load() {
     [this.board, this.rider] = await Promise.all([
-      new StreetBoard('/assets/rider/skateboard.glb').load(),
-      new UnrealRider('/assets/rider/TheanchoURi.glb').load(),
+      new StreetBoard(gameAssetUrl('/assets/rider/skateboard.glb')).load(),
+      new UnrealRider(gameAssetUrl('/assets/rider/TheanchoURi.glb')).load(),
     ]);
     this.visual.add(this.board.root, this.rider.root);
     this.flashMaterials = [];

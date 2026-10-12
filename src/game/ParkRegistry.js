@@ -1,3 +1,4 @@
+import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 import { ParkCollision } from './ParkCollision.js';
 import { RailNetwork } from './RailNetwork.js';
@@ -49,13 +50,13 @@ export const PARK_REGISTRY = Object.freeze({
       ]);
       const loader = new GLTFLoader();
       const [original, proxies, manifest, extended] = await Promise.all([
-        loader.loadAsync('/assets/park/insanity-inspired-park.glb'),
-        loader.loadAsync('/assets/park/park-collision.glb'),
-        fetch('/assets/park/park-manifest.json').then(response => {
+        loader.loadAsync(gameAssetUrl('/assets/park/insanity-inspired-park.glb')),
+        loader.loadAsync(gameAssetUrl('/assets/park/park-collision.glb')),
+        fetch(gameAssetUrl('/assets/park/park-manifest.json')).then(response => {
           if (!response.ok) throw new Error('Legacy park manifest unavailable');
           return response.json();
         }),
-        loader.loadAsync('/assets/park/halfnew.glb?v=fixed-black'),
+        loader.loadAsync(gameAssetUrl('/assets/park/halfnew.glb?v=fixed-black')),
       ]);
       return { ...assembleExpandedPark(extended.scene, original.scene, proxies.scene, manifest), manifest };
     },

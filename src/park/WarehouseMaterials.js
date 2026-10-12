@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
 
 // Original industrial detail maps, plus the project's already-vendored photographic
@@ -39,7 +40,7 @@ export function createWarehouseMaterials({ textures = true } = {}) {
     t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
     return t;
   };
-  const photo = name => localPhoto(`/assets/park/hd/${name}.webp`);
+  const photo = name => localPhoto(gameAssetUrl(`/assets/park/hd/${name}.webp`));
   materials.wood.map = photo('plywood'); materials.woodDark.map = materials.wood.map;
   materials.wood.color.set('#fff0cb'); materials.woodDark.color.set('#c2a479');
   materials.concrete.map = photo('concrete'); materials.concrete.color.set('#dad9cf');
@@ -70,7 +71,7 @@ export function createWarehouseMaterials({ textures = true } = {}) {
 
   // Original photographic brick atlas has its own mortar courses. Do not overlay
   // the former 32-course procedural bump pattern onto the photographed joints.
-  materials.brick.map = localPhoto('/assets/warehouse/foundry-brick-albedo.webp');
+  materials.brick.map = localPhoto(gameAssetUrl('/assets/warehouse/foundry-brick-albedo.webp'));
   materials.brick.color.set('#fff');
 
   const floor = canvas(WAREHOUSE_RELIEF_SIZE), f = floor.getContext('2d');

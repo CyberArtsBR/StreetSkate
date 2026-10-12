@@ -1,3 +1,4 @@
+import { gameAssetUrl } from '../src/game/AssetPaths.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -26,4 +27,14 @@ test('soundtrack files and committed playlist match runtime track paths', () => 
     assert.match(filename, /^[A-Za-z0-9._-]+$/);
     assert.ok(statSync(resolve(root, 'public/media', filename)).size > 1024, filename);
   }
+});
+
+test('public runtime assets respect relative and absolute deployment bases', () => {
+  assert.equal(gameAssetUrl('/assets/park/halfnew.glb', './'), './assets/park/halfnew.glb');
+  assert.equal(gameAssetUrl('/media/chimpion-slide.mp3', './'), './media/chimpion-slide.mp3');
+  assert.equal(gameAssetUrl('/assets/rider/TuxR.glb', '/'), '/assets/rider/TuxR.glb');
+  assert.equal(gameAssetUrl('/assets/spacepark/orbit.glb', '/games/streetskate/'),
+    '/games/streetskate/assets/spacepark/orbit.glb');
+  assert.equal(gameAssetUrl('blob:local-rider', './'), 'blob:local-rider');
+  assert.equal(gameAssetUrl('https://example.org/a.glb', './'), 'https://example.org/a.glb');
 });
