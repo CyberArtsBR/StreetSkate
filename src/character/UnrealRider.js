@@ -527,9 +527,8 @@ export class UnrealRider {
       const skatingPose = skatingArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
         this.kneeForward.clone().applyQuaternion(rootQ), armLength,
-        { front: side === front, compression, air, balance,
-          balancePose: C(manualW + grind, 0, 1), push: pushAmount,
-          swing: push?.armSwing || 0, landing: landingSeverity,
+        { front: side === front, balance,
+          balancePose: C(manualW + grind, 0, 1),
           up: V(0, 1, 0).applyQuaternion(rootQ),
           breathing: Math.sin(poseTime * 1.8 + (side === front ? .3 : 0)) * .006 * (1 - air) },
       );
@@ -544,14 +543,17 @@ export class UnrealRider {
       // landing, turn and grab blends. Cross-body deck grabs retain their
       // intent but never pass through the face.
       const crossBody = (grab > .12 && !!reach) || !!flatland;
+      // Keep the requested A-pose nearly extended through both safety passes.
+      // Shortening its wrist goal forces the elbow to fold against the torso.
+      const neutralArms = skatingWeight > .98 && reachWeight < .01;
       world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
-        armLength, { crossBody }));
+        armLength, { crossBody, neutral: neutralArms }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
       // swing across the body even when their wrist target is reachable.
       const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
       const elbowPole = this.root.localToWorld(shoulder.clone()
         .addScaledVector(lateral, elbowPoleReach)
-        .addScaledVector(this.kneeForward, elbowPoleReach * .35)
+        .addScaledVector(this.kneeForward, -elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
       elbowPole.lerp(skatingPose.elbow, skatingWeight * (1 - reachWeight));
       if (headWorld) {
@@ -574,7 +576,7 @@ export class UnrealRider {
       // frame's grab/air destination can otherwise cut straight through the
       // head even when both animation endpoints are safe.
       const safeWorld = safeArmGoal(shoulderWorld, smoothedWorld, outwardWorld,
-        headWorld, armLength, { crossBody });
+        headWorld, armLength, { crossBody, neutral: neutralArms });
       this.smoothedHands[side] = this.root.worldToLocal(safeWorld.clone()).sub(shoulder);
       limb(upper, lower, hand, safeWorld, elbowPole, 2.10);
       if (headWorld) {
