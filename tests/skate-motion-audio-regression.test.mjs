@@ -7,7 +7,7 @@ import { UnrealRider } from '../src/character/UnrealRider.js';
 import { StreetBoard } from '../src/skateboard/StreetBoard.js';
 import { loadGeometry } from '../tools/load-geometry.mjs';
 
-test('shipping skater forwards the push cycle and cancels the gesture for air and charge', () => {
+test('shipping skater keeps pushing cosmetic motion disabled while preserving acceleration state', () => {
   const floor = new THREE.Mesh(new THREE.BoxGeometry(40, 0.1, 40));
   floor.position.y = -0.05; floor.updateMatrixWorld(true);
   const skater = new StreetSkater({ collision: floor, spawn: [0,0.015,0] });
@@ -17,7 +17,9 @@ test('shipping skater forwards the push cycle and cancels the gesture for air an
   skater.speed = 6; skater.velocity.set(0,0,-6); skater.grounded = true;
   const velocity = skater.velocity.clone();
   for (let i=0;i<30;i++) skater.update(1/60, {}, i/60);
-  assert.ok(pose.pushWeight > 0.8 && pose.pushPhase > 0.2, 'visible push must reach the rider');
+  assert.equal(pose.pushWeight, 0, 'both feet stay on the board while accelerating');
+  assert.equal(pose.pushPhase, 0, 'no push cycle or footstep audio');
+  assert.equal(skater.presentation.state, 'COAST');
   assert.ok(skater.velocity.equals(velocity), 'presentation must preserve physics velocity');
   skater.grounded = false;
   skater.update(1/60, {}, 1);

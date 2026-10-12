@@ -35,6 +35,11 @@ export function flipTurns(flipState) {
     const finalTurn = Number.isFinite(flipState?.[axis]) ? flipState[axis] : 0;
     turns[axis] = MathUtils.lerp(startTurn, finalTurn, blend);
   }
+  // A hardflip's nose-up accent is temporary. Ending with a fractional pitch
+  // turn left the deck upside down during the catch and snapped it back later.
+  const pitchArc = Number.isFinite(flipState?.pitchArc) ? flipState.pitchArc : 0;
+  const arc = rotation > 0 && rotation < 1 ? Math.sin(Math.PI * rotation) ** 2 : 0;
+  turns.pitch += pitchArc * arc * (upgrading ? blend : 1);
   return turns;
 }
 

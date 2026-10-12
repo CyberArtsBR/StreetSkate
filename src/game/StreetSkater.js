@@ -214,31 +214,11 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       && controlIntent.pushingAllowed && this.autoPushActive
       && this.normal.y >= GROUND_MOTOR.autoPushSurfaceY && this.charge < 0.05
       && speed < GROUND_MOTOR.autoPushTarget;
-    const pushAllowed = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime
-      && !braking && this.charge < 0.05 && p.landingTime <= 0;
-    // Propel with a single trailing-foot stride; keep the leading foot locked
-    // to the deck. Fade out on braking, charging, takeoff or grind rather than
-    // abruptly resetting the foot halfway through its stroke.
-    // Finish an ordinary stride before coasting, instead of pulling a grounded
-    // pushing foot sideways onto the deck at the speed threshold.
-    const finishingStroke = pushAllowed && p.pushWeight > .15 && p.pushPhase > .02 && p.pushPhase < .94;
-    const pushTarget = pushAllowed && (pushDemand || finishingStroke) ? 1 : 0;
-    const pushBlend = 1 - Math.exp(-(pushTarget ? 10 : 18) * Math.max(0, delta));
-    p.pushWeight = clamp(p.pushWeight + (pushTarget - p.pushWeight) * pushBlend, 0, 1);
-    if (p.pushWeight > 0.005) {
-      const previousPhase = p.pushPhase;
-      p.pushClock += Math.max(0, delta) * clamp(0.78 + speed / 18, 0.78, 1.45);
-      p.pushPhase = p.pushClock % 1;
-      if (!pushDemand && p.pushPhase < previousPhase) {
-        p.pushWeight = 0;
-        p.pushClock = 0;
-        p.pushPhase = 0;
-      }
-    } else {
-      p.pushWeight = 0;
-      p.pushClock = 0;
-      p.pushPhase = 0;
-    }
+    // Auto acceleration remains in physics; visually both feet stay on deck.
+    // Clearing the gesture also removes its footstep sound and weight shift.
+    p.pushWeight = 0;
+    p.pushClock = 0;
+    p.pushPhase = 0;
 
     const pumpSource = this.pumpState ?? this.pump ?? this.pumping ?? null;
     const pumpActive = Boolean(pumpSource && pumpSource !== 'OFF' && pumpSource !== 'idle');
@@ -254,7 +234,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       manual: this.manual, grind: this.grind, wallRide: this.wallRide, flatland: this.flatland, bail: this.bailTime > 0,
     };
     p.physicsState = physicsMovementState(context);
-    const next = resolvePresentationState(context);
+    const next = resolvePresentationState({ ...context, pushDemand: false });
     if (next !== p.state) { p.previousState = p.state; p.state = next; p.stateTime = 0; }
     else p.stateTime += delta;
     return { speedRatio, vert };
@@ -368,9 +348,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       speedRatio: present.speedRatio,
       crouch: this.charge,
       steer: this.steer,
-      pushWeight: this.grounded && !this.grind && !this.manual && !this.wallRide && !this.bailTime
-        && this.charge < 0.05 ? p.pushWeight : 0,
-      pushPhase: p.pushPhase,
+      pushWeight: 0,
+      pushPhase: 0,
       landingSeverity: p.landingSeverity * landingMotion(1 - p.landingTime / p.landingDuration),
       pumpState: this.presentation.pumpState,
     });
