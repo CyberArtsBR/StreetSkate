@@ -2,6 +2,7 @@ import { gameAssetUrl } from './AssetPaths.js';
 import { tutorialPages } from './TutorialPages.js';
 import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
+import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
 import { sessionWarning, countdownCrossing } from './SessionCountdown.js';
 import { setHudGlyphValue } from './HudGlyphs.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
@@ -34,6 +35,7 @@ export class GameShell {
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
     this.songToastRemaining=4;
     this.sound=stored('streetskate.sound','on')!=='off';this.finishIndex=0;this.inputGrace=0;
+    this.effectsVolume=readAudioVolume('effects');
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=0;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
@@ -131,6 +133,12 @@ export class GameShell {
     this.focusSelection();
   }
   button(label,action,disabled=false){return `<button data-menu data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;}
+  volumeControl(channel, label, value){
+    return `<div class="audio-volume-control" role="group" aria-label="${label} volume">
+      <span>${label} <strong>${Math.round(value*100)}%</strong></span>
+      <button data-menu data-action="${channel}Down" aria-label="Decrease ${label.toLowerCase()} volume">−</button>
+      <button data-menu data-action="${channel}Up" aria-label="Increase ${label.toLowerCase()} volume">+</button></div>`;
+  }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
   locationName(){return LOCATIONS[this.locationIndex]?.name||'';}
   render(){
@@ -178,9 +186,8 @@ export class GameShell {
       title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')
-        +this.button('MASTER VOLUME −','volumeDown')
-        +this.button('MASTER · '+Math.round(this.music.masterVolume*100)+'%','volumeUp')
-        +this.button('MASTER VOLUME +','volumeUp')
+        +this.volumeControl('music','MUSIC',this.music.musicVolume)
+        +this.volumeControl('effects','EFFECTS',this.effectsVolume)
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
         +this.button('BACK','back');
@@ -385,8 +392,10 @@ export class GameShell {
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'bloomToggle':this.bloomEnabled=!this.bloomEnabled;persist('streetskate.bloomEnabled',this.bloomEnabled?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
-      case 'volumeDown':this.adjustMaster(-.1);break;
-      case 'volumeUp':this.adjustMaster(.1);break;
+      case 'musicDown':this.adjustVolume('music',-.1);break;
+      case 'musicUp':this.adjustVolume('music',.1);break;
+      case 'effectsDown':this.adjustVolume('effects',-.1);break;
+      case 'effectsUp':this.adjustVolume('effects',.1);break;
       case 'sound':this.sound=!this.sound;persist('streetskate.sound',this.sound?'on':'off');this.actions.sound(this.sound);this.render();break;
       case 'deck':this.finishIndex=(this.finishIndex+1)%BOARD_CHOICES.length;this.actions.deck(this.finishIndex);this.render();break;
       case 'title':this.actions.pause(true);this.setScreen('title');break;
@@ -397,9 +406,11 @@ export class GameShell {
       case 'skipTutorial':this.closeTutorial();break;
     }
   }
-  adjustMaster(step){
-    this.music.setMasterVolume(Math.round(Math.max(0,Math.min(1,this.music.masterVolume+step))*100)/100);
-    this.actions.masterVolume?.(this.music.masterVolume);
+  adjustVolume(channel,step){
+    const current=channel==='music'?this.music.musicVolume:this.effectsVolume;
+    const value=Math.round(Math.max(0,Math.min(1,current+step))*100)/100;
+    if(channel==='music')this.music.setMusicVolume(value);
+    else { this.effectsVolume=saveAudioVolume('effects',value);this.actions.effectsVolume?.(value); }
     this.render();
   }
   key(event){

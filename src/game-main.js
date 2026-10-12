@@ -185,7 +185,7 @@ const gameShell = new GameShell({
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
-  masterVolume: value => skateAudio.setMasterVolume(value),
+  effectsVolume: value => skateAudio.setEffectsVolume(value),
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
 });
@@ -215,7 +215,7 @@ function observeRunScoring(controller) {
   };
 }
 gameShell.sound = skateAudio.enabled;
-skateAudio.setMasterVolume(gameShell.music.masterVolume);
+skateAudio.setEffectsVolume(gameShell.effectsVolume);
 applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 

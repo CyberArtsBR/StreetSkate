@@ -1,24 +1,19 @@
 import { gameAssetUrl } from './AssetPaths.js';
+import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
 export const TRACKS = [
   ['Chimpion Drip','chimpion-drip.mp3'], ['Chimpion Slide','chimpion-slide.mp3'],
   ['West Park','west-park.mp3'], ['Old School flip','old-school-flip.mp3'],
   ['Aerial Flute','aerial-flute.mp3'], ['Skate Vibe','skate-vibe.mp3'], ['808 Bas','808-bas.mp3'],
 ];
 
-const clamp = value => Number.isFinite(Number(value)) ? Math.max(0, Math.min(1, Number(value))) : 0.5;
-
 export class MusicPlayer {
   constructor(onChange = () => {}) {
     this.audio = new Audio();
     this.audio.preload = 'auto';
-    this.baseVolume = 0.55;
-    let saved = 0.5;
-    try {
-      const stored = localStorage.getItem('streetskate.masterVolume');
-      if (stored !== null) saved = Number(stored);
-    } catch {}
-    this.masterVolume = clamp(saved);
-    this.audio.volume = this.baseVolume * this.masterVolume;
+    this.baseVolume = 1;
+    this.musicVolume = readAudioVolume('music');
+    this.masterVolume = this.musicVolume;
+    this.audio.volume = this.musicVolume;
     this.queue = [];
     this.current = -1;
     this.onChange = onChange;
@@ -112,13 +107,19 @@ export class MusicPlayer {
     void this.play();
   }
 
-  setVolume(value) { this.audio.volume = clamp(value); }
+  setVolume(value) { this.setMusicVolume(value); }
+
+  setMusicVolume(value) {
+    this.musicVolume = saveAudioVolume('music', value);
+    this.masterVolume = this.musicVolume;
+    this.audio.volume = this.musicVolume;
+    this.onChange(this.title, '');
+  }
 
   setMasterVolume(value) {
-    this.masterVolume = clamp(value);
-    this.audio.volume = this.baseVolume * this.masterVolume;
+    // Compatibility for saved clients; the menu now controls music alone.
+    this.setMusicVolume(value);
     try { localStorage.setItem('streetskate.masterVolume', String(this.masterVolume)); } catch {}
-    this.onChange(this.title, '');
   }
 
   dispose() {

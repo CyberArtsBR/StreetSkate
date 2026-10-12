@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MusicPlayer, TRACKS } from '../src/game/MusicPlayer.js';
 import { SkateAudio } from '../src/game/SkateAudio.js';
+import { createSkateImpact } from '../src/game/SkateSoundSynthesis.js';
 
 function fakeMusicEnvironment() {
   const oldAudio = globalThis.Audio;
@@ -48,14 +49,81 @@ test('music shuffle never repeats adjacent tracks and honors volume persistence'
     }
     for (let i = 1; i < sequence.length; i++)
       assert.notEqual(sequence[i], sequence[i - 1], 'adjacent song repeat');
-    m.setMasterVolume(0.3);
-    assert.equal(env.storage.get('streetskate.masterVolume'), '0.3');
-    assert.equal(m.audio.volume, 0.55 * 0.3);
+    m.setMusicVolume(0.3);
+    assert.equal(env.storage.get('streetskate.musicVolume'), '0.3');
+    assert.equal(m.audio.volume, 0.3);
     m.dispose();
     assert.equal(m.disposed, true);
     assert.equal(m.audio.listeners.size, 0);
     await Promise.resolve();
   } finally { env.restore(); }
+});
+
+test('music and effects have independent louder defaults, mute and persisted levels', () => {
+  const env = fakeMusicEnvironment();
+  try {
+    env.storage.set('streetskate.masterVolume', '0.5');
+    const music = new MusicPlayer(), fx = new SkateAudio();
+    assert.equal(music.audio.volume, 0.8);
+    assert.equal(fx.effectsVolume, 0.85);
+    music.setMusicVolume(0);
+    assert.equal(fx.effectsVolume, 0.85, 'music mute must preserve effects');
+    fx.setEffectsVolume(0.4);
+    assert.equal(music.audio.volume, 0, 'effects change must preserve music mute');
+    const restoredMusic = new MusicPlayer(), restoredFx = new SkateAudio();
+    assert.equal(restoredMusic.musicVolume, 0);
+    assert.equal(restoredFx.effectsVolume, 0.4);
+    music.dispose(); restoredMusic.dispose();
+  } finally { env.restore(); }
+});
+
+test('skate events follow intentional pop, truck contact and rail/bail state, without phantom hits', () => {
+  const fx = new SkateAudio(), hits = [];
+  fx.impact = (strength, metal, kind = 'landing') => hits.push(metal ? 'grind' : kind);
+  const layer = () => ({ gain: { gain: { setTargetAtTime() {} } },
+    filter: { frequency: { setTargetAtTime() {} } } });
+  fx.roll = layer(); fx.grind = layer(); fx.wind = layer();
+  fx.context = { state: 'running', currentTime: 0 };
+  const player = { grounded: true, velocity: { length: () => 6, dot: () => -3 },
+    normal: {}, presentation: {}, respawnSerial: 1 };
+  const step = (changes = {}, active = true) => {
+    Object.assign(player, changes); fx.context.currentTime += 0.1; fx.update(player, active);
+  };
+  step();
+  step({ grounded: false });
+  assert.deepEqual(hits, [], 'rolling over a ledge does not make an ollie pop');
+  step({ grounded: true });
+  step({ grounded: false, presentation: { popTime: 0.12 } });
+  step();
+  step({ presentation: { popTime: 0, flipPhase: 'CATCH' } });
+  step({ grounded: true });
+  step({ grind: {}, grounded: false });
+  step({ bailTime: 1, grounded: true });
+  assert.deepEqual(hits, ['landing','pop','catch','landing','grind','bail']);
+  hits.length = 0;
+  step({ respawnSerial: 2, bailTime: 0, grind: null });
+  step({ grounded: false, presentation: { popTime: 0.12 } }, false);
+  step({ grounded: true });
+  assert.deepEqual(hits, [], 'respawn and resume do not replay old contacts');
+  fx.enabled = false;
+  step({ grounded: false, presentation: { popTime: 0.12 } });
+  assert.deepEqual(hits, [], 'sound toggle gates one-shots');
+});
+
+test('generated board impacts are finite, audible and distinguish pop from two-truck landing', () => {
+  const context = { sampleRate: 24000, createBuffer(channels, length, sampleRate) {
+    const samples = new Float32Array(length);
+    return { duration: length / sampleRate, getChannelData: () => samples };
+  } };
+  const pop = createSkateImpact(context, 'pop'), landing = createSkateImpact(context, 'landing');
+  assert.ok(landing.duration > pop.duration * 1.5, 'landing must have a heavier decay');
+  for (const kind of ['pop','landing','grind','bail','catch','push']) {
+    const samples = createSkateImpact(context, kind).getChannelData(0);
+    assert.ok(samples.every(Number.isFinite));
+    const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+    assert.ok(rms > 0.04 && rms < 0.5, `${kind}: signal strength ${rms}`);
+    assert.ok(samples.every(value => Math.abs(value) < 1), `${kind}: unclipped waveform`);
+  }
 });
 
 test('rapid skip ignores a rejected stale play promise and successfully plays the new track', async () => {
