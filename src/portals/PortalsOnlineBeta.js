@@ -1,4 +1,5 @@
 import { OnlineGhosts } from './OnlineGhosts.js';
+import { chooseOnlinePartyEntry } from './OnlinePartyEntry.js';
 import './portals-online.css';
 
 const MAPS=[{id:'rooftop',name:'Skyline Rooftop'},{id:'orbit',name:'ORBIT'},{id:'grand-warehouse',name:'Grand Warehouse'}];
@@ -35,10 +36,29 @@ export class PortalsOnlineBeta {
  }
  get available(){return this.shell.ready===true&&typeof this.sdk?.ready==='function'&&typeof this.net?.join==='function'}
  get isHost(){return this.connected&&this.state?.host===this.id}
+ // Native Party and managed lobby joins happen at startup with no extra click.
+ async autoJoinHostedSession(){
+  if(this.autoJoinStarted||!this.available)return;
+  this.autoJoinStarted=true;
+  try{
+   const session=await this.sdk.ready();
+   let match=null;
+   try{match=await this.sdk.matchmaking?.current?.()}catch{match=session?.matchmaking||null}
+   const params=new URLSearchParams(location.search);
+   const route=chooseOnlinePartyEntry({match:match||session?.matchmaking,
+    channel:params.get('channel')||'',invite:params.get('online-room')||''});
+   this.hostedRoute=route;
+   if(route.kind==='manual')return;
+   const native=route.kind==='managed'||route.kind==='party';
+   const joined=await this.joinRoom(native?'PORTALS PARTY':route.code,route.privateRoom,false,{native});
+   if(!joined){this.errors='Unable to join Portals Party. Retry the assigned session.';this.open()}
+  }catch(error){this.errors='Portals Party connection failed: '+(error?.message||'unknown error');this.open()}
+ }
  open(){if(!this.available)return;this.visible=true;this.render()}
  close(){this.visible=false;this.render()}
  async action(a,v){
   if(a==='close'){this.close();return}
+  if(a==='retry-party'&&this.hostedRoute){const route=this.hostedRoute;await this.joinRoom(route.kind==='invite'?route.code:'PORTALS PARTY',route.privateRoom,false,{native:route.kind!=='invite'});return}
   if(a==='quick'){await this.quickPlay();return}
   if(a==='public'){await this.joinRoom(v,false);return}
   if(a==='create-private'){await this.joinRoom(code(),true);return}
@@ -128,14 +148,14 @@ export class PortalsOnlineBeta {
   }
   this.busy=false;this.errors='Public rooms are full or unavailable. Try again.';this.render();
  }
- async joinRoom(room,privateRoom,scan=false){
+ async joinRoom(room,privateRoom,scan=false,{native=false}={}){
   if(!this.available||this.connected)return false;
   this.busy=true;this.errors='';this.render();
   try{
    // Channels isolate the rooms. Four seats are enforced by the server referee.
-   const session=await this.net.join({channel:channelFor(room)});
+   const session=native?await this.net.join():await this.net.join({channel:channelFor(room)});
    if(session.players?.length>4){await this.net.leave();return false}
-   this.id=session.self.id;this.connected=true;this.roomCode=room;this.roomPrivate=privateRoom;
+   this.id=session.self.id;this.connected=true;this.roomCode=room;this.roomPrivate=privateRoom;this.nativeParty=native;
    this.mode='play';this.watchId=null;this.bind();
    this.ghosts=new OnlineGhosts({scene:this.scene,camera:this.camera,heroUrl:id=>{
      return this.shell.heroes.find(h=>h.id===id)?.url||this.shell.heroes[0].url;
@@ -197,7 +217,7 @@ export class PortalsOnlineBeta {
   for(const off of this.handlers.splice(0))off();
   try{await this.voice?.leave?.()}catch{}
   try{await this.net?.leave?.()}catch{}
-  this.ghosts?.dispose();this.ghosts=null;this.state=null;this.voiceConnected=false;this.voiceWasConnected=false;
+  this.ghosts?.dispose();this.ghosts=null;this.state=null;this.nativeParty=false;this.voiceConnected=false;this.voiceWasConnected=false;
   this.mode='menu';this.render();
   this.shell.setScreen('title');
  }
@@ -257,7 +277,8 @@ export class PortalsOnlineBeta {
   const label=map=>MAPS.find(m=>m.id===map)?.name||map||'—';
   let body='';
   if(!inRoom){
-   body=nameInput+ '<p>Free Skate or Skate Jam · 4 skaters · no player collisions.</p>'+
+   body=nameInput+(this.hostedRoute&&this.hostedRoute.kind!=='manual'?'<p>Portals Party detected. Your friends use the same assigned session.</p>'+buttons('retry-party','RETRY JOIN PORTALS PARTY'):'')+
+    '<p>Free Skate or Skate Jam · 4 skaters · no player collisions.</p>'+
    '<div class="online-actions">'+buttons('quick','⚡ QUICK PLAY','',this.busy)+buttons('create-private','CREATE PRIVATE ROOM','',this.busy)+'</div>'+
    '<label>JOIN PRIVATE CODE<input name="room" maxlength="10" placeholder="CHXXXXXXXX" value="'+esc(this.inviteInput||'')+'"></label>'+
    buttons('join-private','JOIN PRIVATE','',this.busy)+
@@ -268,7 +289,7 @@ export class PortalsOnlineBeta {
     '<label>DESCRIPTION<textarea name="bugDescription" maxlength="240">'+esc(this.bugDescription||'')+'</textarea></label>'+
     '<p>Optional report is sent to Portals Analytics; do not include personal data or voice recordings.</p>'+buttons('send-report','SEND REPORT')+buttons('home','BACK');
   }else{
-   body='<p>ROOM '+esc(this.roomCode)+(this.roomPrivate?' · PRIVATE':' · PUBLIC')+' · '+esc(label(s?.map))+' · '+esc(s?.mode==='jam'?'SKATE JAM':'FREE SKATE')+'</p>'+
+   body='<p>ROOM '+esc(this.nativeParty?'PORTALS PARTY':this.roomCode)+(this.roomPrivate?' · PRIVATE':' · PUBLIC')+' · '+esc(label(s?.map))+' · '+esc(s?.mode==='jam'?'SKATE JAM':'FREE SKATE')+'</p>'+
     '<strong data-live-clock>'+esc(s?.phase||'CONNECTING')+'</strong>'+
     '<div class="online-roster">'+people.map(p=>{
      const id=p.id,n=s?.names?.[id]||p.displayName||'Guest';
@@ -276,7 +297,7 @@ export class PortalsOnlineBeta {
       '</span>'+(isHost&&id!==this.id&&!locked?buttons('kick','KICK',id):'')+'</div>';
     }).join('')+'</div>'+
     '<h3>SKATE JAM SCOREBOARD</h3><div class="online-roster">'+(s?.scores||[]).map((p,i)=>'<div><b>'+(i+1)+'. '+esc(p.name)+'</b><span>'+nice(p.points)+' PTS / '+nice(p.combo)+' COMBO</span></div>').join('')+'</div>'+
-    (this.roomPrivate?buttons('copy','COPY INVITE LINK'):'')+
+    (this.roomPrivate&&!this.nativeParty?buttons('copy','COPY INVITE LINK'):'')+
     '<div class="online-actions">'+buttons('ready',s?.ready?.includes(this.id)?'NOT READY':'READY','',locked)+
     (isHost?buttons('start','START SKATE JAM','',locked||s?.mode!=='jam'||(s?.ready||[]).length<2):'')+
     (isHost&&s?.phase==='results'?buttons('next','NEXT ROUND'):'')+'</div>'+
