@@ -365,7 +365,7 @@ export class GameShell {
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
     this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);this.actions.portalsStart?.(LOCATIONS[this.locationIndex]?.id,practice);
   }
-  pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
+  pause(){if(this.active){if(this.actions.portalsOnlineConnected?.()){this.actions.portalsOnlineOpen?.();return;}this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
   syncPause(value){if(value&&this.active)this.setScreen('pause');else if(!value&&this.phase==='pause')this.setScreen('playing');}
   openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.actions.pause(true);this.setScreen('tutorial');}

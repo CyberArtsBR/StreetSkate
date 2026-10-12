@@ -194,6 +194,7 @@ const gameShell = new GameShell({
   effectsVolume: value => skateAudio.setEffectsVolume(value),
   portalsPlayer: () => portalsPhase1?.gateway?.player || null,
   portalsOnlineAvailable: () => Boolean(portalsOnline?.available),
+  portalsOnlineConnected: () => Boolean(portalsOnline?.connected),
   portalsOnlineOpen: () => portalsOnline?.open(),
   portalsOnlineIsOpen: () => Boolean(portalsOnline?.visible),
   portalsOnlineClose: () => portalsOnline?.close(),
@@ -374,10 +375,6 @@ function goToSpot(id) {
 }
 
 function setPaused(value) {
-  // Online menu coasts with physics; it never pauses the shared clock.
-  if (Boolean(value) && portalsOnline?.connected && !portalsOnline.mapLoading && gameShell.active) {
-    portalsOnline.open(); input.clear(); return;
-  }
   paused = Boolean(value) && mode === 'skate';
   app.dataset.paused = String(paused);
   input.clear();
@@ -749,6 +746,7 @@ window.addEventListener('resize', () => {
 function suspendSkating() {
   skateAudio.silence();
   input.clear();
+  if (portalsOnline?.connected) return; // server clock keeps running while unfocused
   if (loaded && mode === 'skate') setPaused(true);
 }
 window.addEventListener('blur', suspendSkating);
@@ -774,14 +772,17 @@ renderer.setAnimationLoop(() => {
 
   // Never silently freeze on the last airborne frame when another overlay/window
   // takes focus. Make the suspension explicit and require a deliberate resume.
-  if (loaded && mode === 'skate' && !document.hasFocus() && !paused) setPaused(true);
+  if (loaded && mode === 'skate' && !document.hasFocus() && !paused && !portalsOnline?.connected) setPaused(true);
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
     const state = input.read();
     lastInputState = {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
     };
-    if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
+    if (state.pausePressed && gameShell.active && wasPlaying) {
+      if (portalsOnline?.connected) { portalsOnline.open(); input.clear(); }
+      else setPaused(true);
+    }
     if (state.cameraModePressed && gameShell.active && !portalsOnline?.visible) toggleCameraMode();
     if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.active) {
