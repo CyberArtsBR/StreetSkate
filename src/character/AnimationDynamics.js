@@ -65,7 +65,7 @@ export function preserveFootOrder(targets, anchors, influence = 1) {
 /**
  * A neutral A-pose with visible daylight between both arms and the ribcage.
  * Keep both wrists ~33 degrees outward from the vertical, near full extension
- * and with only a subtle INWARD elbow pole. This avoids both glued arms and
+ * and with a subtle inward/backward elbow pole. This avoids both glued arms and
  * the reversed/hyperextended-looking elbows seen in the previous hotfix.
  *
  * World-space anatomical axes come from the loaded rig, never mesh sizing.
@@ -91,30 +91,28 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
   const wrist = shoulder.clone().addScaledVector(direction, armLength * 0.997);
   const elbow = shoulder.clone().lerp(wrist, 0.5)
     .addScaledVector(lateral, -armLength * 0.012)
-    .addScaledVector(face, armLength * 0.045);
+    .addScaledVector(face, -armLength * 0.045);
   return { wrist, elbow };
 }
 
-/** Soft elbows and asymmetric counterbalance, proportional to the loaded rig.
- * The open neutral pose remains a collision fallback, not the skating loop. */
+/** Keep the A-pose open during ordinary skating. Balance changes the shoulder
+ * angle slightly, never shortens the arm chain into a backwards elbow bend. */
 export function skatingArmIKTargets(shoulder, outward, forward, armLength, {
-  front = false, compression = 0, air = 0, balance = 0, balancePose = 0,
-  push = 0, swing = 0, landing = 0, breathing = 0, up = new THREE.Vector3(0, 1, 0),
+  front = false, balance = 0, balancePose = 0,
+  breathing = 0, up = new THREE.Vector3(0, 1, 0),
 } = {}) {
   const side = outward.clone().normalize();
   const face = forward.clone().addScaledVector(side, -forward.dot(side)).normalize();
   const lead = front ? 1 : -1;
-  const activity = C(balancePose, 0, 1);
-  const spread = .34 + air * .35 + activity * .25 + compression * .07;
-  const direction = side.clone().multiplyScalar(spread + lead * balance * .09)
-    .addScaledVector(face, .08 + compression * .17 + lead * (.045 + push * swing * .23))
-    .addScaledVector(up, -.87 + air * .39 + activity * .32
-      + landing * .12 + lead * balance * .15 + breathing).normalize();
-  const reach = armLength * C(.95 - compression * .055 - air * .035 - push * .035, .82, .96);
-  const wrist = shoulder.clone().addScaledVector(direction, reach);
+  const spread = THREE.MathUtils.degToRad(33 + 6 * C(balancePose, 0, 1)
+    + 3 * lead * C(balance, -1, 1));
+  const direction = side.clone().multiplyScalar(Math.sin(spread))
+    .addScaledVector(face, .025)
+    .addScaledVector(up, -Math.cos(spread) + breathing).normalize();
+  const wrist = shoulder.clone().addScaledVector(direction, armLength * .997);
   const elbow = shoulder.clone().lerp(wrist, .5)
-    .addScaledVector(face, armLength * .20)
-    .addScaledVector(side, armLength * .025);
+    .addScaledVector(face, -armLength * .045)
+    .addScaledVector(side, -armLength * .012);
   return { wrist, elbow };
 }
 
