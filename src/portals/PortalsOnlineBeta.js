@@ -42,7 +42,8 @@ export class PortalsOnlineBeta {
   this.autoJoinStarted=true;
   try{
    const session=await this.sdk.ready();
-   const match=await this.sdk.matchmaking?.current?.();
+   let match=null;
+   try{match=await this.sdk.matchmaking?.current?.()}catch{match=session?.matchmaking||null}
    const params=new URLSearchParams(location.search);
    const route=chooseOnlinePartyEntry({match:match||session?.matchmaking,
     channel:params.get('channel')||'',invite:params.get('online-room')||''});
