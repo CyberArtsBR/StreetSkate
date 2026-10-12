@@ -2,6 +2,7 @@ import { tutorialPages } from './TutorialPages.js';
 import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
 import { sessionWarning, countdownCrossing } from './SessionCountdown.js';
+import { setHudGlyphValue } from './HudGlyphs.js';
 import { isValidGlbHeader } from '../input/GlbHeader.js';
 import { inspectGlb } from '../../tools/agent10-glb-inspector.mjs';
 import { DEFAULT_CHARACTERS, BOARD_CHOICES, LOCATIONS } from './LoadoutCatalog.js';
@@ -35,7 +36,8 @@ export class GameShell {
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
     this.root.innerHTML='<div class="title-art"></div><div class="shell-content"></div><div class="menu-footnote">↑ ↓ ← → / LEFT STICK · ENTER / A SELECT · ESC / B BACK</div>';
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
-    this.timer=document.createElement('div');this.timer.id='run-timer';document.querySelector('#app').append(this.timer);
+    this.timer=document.createElement('div');this.timer.id='run-timer';this.timer.setAttribute('role','timer');
+    this.timerValue=document.createElement('span');this.timer.append(this.timerValue);document.querySelector('#app').append(this.timer);
     this.song=document.createElement('aside');this.song.id='now-playing';this.song.setAttribute('aria-label','Soundtrack');
     this.song.innerHTML='<span class="song-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 17V6l10-2v11M10 9l10-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="17" rx="3" ry="2.5" fill="currentColor"/><ellipse cx="17" cy="15" rx="3" ry="2.5" fill="currentColor"/></svg></span><div class="song-copy"><span class="song-label">NOW PLAYING</span><strong class="song-title" aria-live="polite"></strong><span class="song-skip">Press <kbd>Select</kbd> / <kbd>Backspace</kbd> to skip</span><span class="song-note" hidden></span></div>';
     document.body.append(this.song);
@@ -350,7 +352,9 @@ export class GameShell {
     const warn=sessionWarning(this.remaining,this.practice);
     const text=this.practice?'∞':`${Math.floor(Math.ceil(this.remaining)/60)}:${String(Math.ceil(this.remaining)%60).padStart(2,'0')}`;
     if(this.timer.textContent===text&&this.timer.dataset.timerWarning===warn)return;
-    this.timer.textContent=text;this.timer.dataset.timerWarning=warn;
+    setHudGlyphValue(this.timerValue,text);this.timer.dataset.timerWarning=warn;
+    this.timer.dataset.practice=String(this.practice);
+    this.timer.setAttribute('aria-label',this.practice?'Free skate · no time limit':`Time remaining ${text}`);
     this.timer.classList.toggle('time-low',warn!=='none');
     this.timer.classList.toggle('time-critical',warn==='critical');
     this.timer.dataset.warningLabel=warn==='critical'?'FINAL 5 SECONDS':warn==='warning'?'10 SECONDS LEFT':'';
