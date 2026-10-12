@@ -150,8 +150,8 @@ export class SkateAudio {
           }
           if (state.grind && !this.previous.grind) this.impact(0.65, true);
           if (state.flipPhase === 'CATCH' && this.previous.flipPhase !== 'CATCH') this.impact(0.32, false, 'catch');
-          if (rolling && state.pushWeight > 0.4 && state.pushPhase >= 0.18
-            && (this.previous.pushPhase < 0.18 || state.pushPhase < this.previous.pushPhase)) this.impact(0.22, false, 'push');
+          if (rolling && state.pushWeight > 0.4 && state.pushPhase >= 0.26
+            && (this.previous.pushPhase < 0.26 || state.pushPhase < this.previous.pushPhase)) this.impact(0.22, false, 'push');
         }
       }
     }

@@ -191,9 +191,9 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const speed = Math.abs(this.speed);
     const speedRatio = Math.min(speed / this.config.maxSpeed, 1);
     const justTookOff = before.grounded && !grounded && !this.grind && !this.wallRide;
-    if (justTookOff && this.takeoffOllieRequested) p.popTime = 0.12;
+    if (justTookOff && this.takeoffOllieRequested) p.popTime = 0.20;
     else p.popTime = Math.max(0, p.popTime - delta);
-    p.popProgress = p.popTime > 0 ? 1 - p.popTime / 0.12 : 1;
+    p.popProgress = p.popTime > 0 ? 1 - p.popTime / 0.20 : 1;
 
     if (this.justLanded) {
       // A fast return down a transition can have a large world-Y speed while
@@ -201,7 +201,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       const impact = Math.max(0, -before.velocity.dot(this.normal));
       const airFactor = clamp(before.airTime / 1.35, 0, 1);
       p.landingSeverity = clamp(impact / 10 + airFactor * 0.12, 0.1, 1);
-      p.landingDuration = 0.24 + p.landingSeverity * 0.12;
+      p.landingDuration = 0.32 + p.landingSeverity * 0.18;
       p.landingTime = p.landingDuration;
     } else p.landingTime = Math.max(0, p.landingTime - delta);
 
@@ -215,20 +215,29 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       && this.normal.y >= GROUND_MOTOR.autoPushSurfaceY && this.charge < 0.05
       && speed < GROUND_MOTOR.autoPushTarget;
     const pushAllowed = grounded && !this.manual && !this.grind && !this.wallRide && !this.bailTime
-      && !braking && this.charge < 0.05;
+      && !braking && this.charge < 0.05 && p.landingTime <= 0;
     // Propel with a single trailing-foot stride; keep the leading foot locked
     // to the deck. Fade out on braking, charging, takeoff or grind rather than
     // abruptly resetting the foot halfway through its stroke.
-    const pushTarget = pushAllowed && pushDemand ? 1 : 0;
+    // Finish an ordinary stride before coasting, instead of pulling a grounded
+    // pushing foot sideways onto the deck at the speed threshold.
+    const finishingStroke = pushAllowed && p.pushWeight > .15 && p.pushPhase > .02 && p.pushPhase < .94;
+    const pushTarget = pushAllowed && (pushDemand || finishingStroke) ? 1 : 0;
     const pushBlend = 1 - Math.exp(-(pushTarget ? 10 : 18) * Math.max(0, delta));
     p.pushWeight = clamp(p.pushWeight + (pushTarget - p.pushWeight) * pushBlend, 0, 1);
     if (p.pushWeight > 0.005) {
-      p.pushClock += Math.max(0, delta) * clamp(0.8 + speed / 13, 0.8, 1.8);
+      const previousPhase = p.pushPhase;
+      p.pushClock += Math.max(0, delta) * clamp(0.78 + speed / 18, 0.78, 1.45);
       p.pushPhase = p.pushClock % 1;
+      if (!pushDemand && p.pushPhase < previousPhase) {
+        p.pushWeight = 0;
+        p.pushClock = 0;
+        p.pushPhase = 0;
+      }
     } else {
-      // Keep clock continuity across autopush cruise-threshold changes.
       p.pushWeight = 0;
-      p.pushPhase = p.pushClock % 1;
+      p.pushClock = 0;
+      p.pushPhase = 0;
     }
 
     const pumpSource = this.pumpState ?? this.pump ?? this.pumping ?? null;
@@ -343,6 +352,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       wallRide: this.wallRide,
       vert: present.vert,
       verticalVelocity: this.velocity.y,
+      airTime: this.airTime,
       bail: this.bailTime > 0,
       bailProgress,
       stance: this.stance,

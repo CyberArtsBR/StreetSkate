@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion, pushMotion } from './TrickMotion.js';
-import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
+import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, skatingArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
@@ -78,11 +78,12 @@ export class UnrealRider {
     this.root.name = 'street-rider';
     this.rest = new Map();
     this.feet = {};
+    this.legLengths = {};
     this.hands = {};
     this.deckHeight = 0.12;
     this.channels = new Map(Object.values(PRESENTATION_STATES)
       .map(state => [state, { value: state === 'IDLE' ? 1 : 0, velocity: 0 }]));
-    this.scalar = { compression: { value: 0, velocity: 0 } };
+    this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 } };
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
     this.kneePoles={};
@@ -181,6 +182,8 @@ export class UnrealRider {
       }
       const thigh = this.bones['thigh_' + side];
       if (knee && thigh) {
+        if (foot) this.legLengths[side] = thigh.getWorldPosition(V()).distanceTo(knee.getWorldPosition(V()))
+          + knee.getWorldPosition(V()).distanceTo(foot.getWorldPosition(V()));
         // The pole tracks its HIP instead of remaining fixed during crouches.
         const kneeLocal = this.root.worldToLocal(knee.getWorldPosition(V()));
         const hipLocal = this.root.worldToLocal(thigh.getWorldPosition(V()));
@@ -277,7 +280,7 @@ export class UnrealRider {
 
   update({ presentation, board, speedRatio = 0, crouch = 0, steer = 0, pushWeight = 0, pushPhase = 0,
     flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
-    grindType = null, grindBalance = 0, wallRide = null, vert = false, verticalVelocity = 0,
+    grindType = null, grindBalance = 0, wallRide = null, vert = false, verticalVelocity = 0, airTime = null,
     bail = false, bailProgress = 0, stance = 1, flatland = null, landingSeverity = 0, time = 0, dt = 1 / 60 }) {
     if (!this.model) return;
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
@@ -290,20 +293,31 @@ export class UnrealRider {
     const manualW = this.w(PRESENTATION_STATES.MANUAL) + this.w(PRESENTATION_STATES.NOSE_MANUAL);
     const pump = this.w(PRESENTATION_STATES.PUMP);
     const rolling = C(this.w(PRESENTATION_STATES.COAST) + this.w(PRESENTATION_STATES.PUSH), 0, 1);
-    const rollSway = Math.sin((Number.isFinite(time) ? time : 0) * (5 + C(speedRatio, 0, 1) * 4)) * rolling;
+    const poseTime = Number.isFinite(time) ? time : 0;
+    const rollSway = Math.sin(poseTime * 1.9) * rolling;
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
-    // Half Pipe's compact air silhouette: knees stay tucked through the flight,
-    // instead of standing at takeoff and only bending near the apex.
+    const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
+    const motion = flipState ? flipMotion(flipState.progress) : null;
+    const push = pushWeight > .005 && !flipState && !grab && !bail && !flatland
+      ? pushMotion(pushPhase) : null;
+    const pushAmount = push ? C(pushWeight, 0, 1) : 0;
+    const supportShift = (push?.weightShift || 0) * pushAmount;
+    const balance = C(springStep(this.scalar.balance,
+      C(steer * (.3 + .7 * C(speedRatio, 0, 1)) + manualBalance * .45 + grindBalance * .5, -1, 1), 5, dt), -1, 1);
     const halfPipe = halfPipePose({ charge: crouch, air, vert, verticalVelocity,
       landing: landingSeverity, speed: speedRatio, grab,
-      popProgress: presentation?.popProgress ?? 1 });
-    const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04, 0, 1);
+      popProgress: presentation?.popProgress ?? 1, airTime });
+    const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04 + supportShift * .08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
     // Sit the hips back while the chest leans forward. The actual vertical
     // crouch is solved from each leg's lengths after foot targets are known.
     const hipSetback = compression * .09 * this.poseCalibration.crouchScale;
     this.model.position.addScaledVector(this.kneeForward, -hipSetback);
+    // Keep the centre of mass over the supporting truck during a push.
+    const travelSign = Math.sign(this.feet[front]?.point.z) || (stance < 0 ? 1 : -1);
+    this.model.position.z += travelSign * .105 * supportShift * this.poseCalibration.crouchScale;
+    this.model.position.x += balance * .045;
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -316,17 +330,18 @@ export class UnrealRider {
     }
     this.root.updateWorldMatrix(true, true);
     const rootQ = this.root.getWorldQuaternion(Q());
-    const balance = C(steer + manualBalance * 0.45 + grindBalance * 0.5, -1, 1);
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
-      this.rotate(name, V(0, 1, 0), 0.045, rootQ);
+      this.rotate(name, V(0, 1, 0), (.075 * stance + balance * .07
+        + (push?.armSwing || 0) * pushAmount * .065) / 3, rootQ);
       const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
-      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025) / 3, rootQ);
+      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025 + supportShift * .10) / 3, rootQ);
       this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
-    this.rotate('neck_01', V(0, 1, 0), 0.11, rootQ);
-    this.rotate('head', V(0, 1, 0), 0.22, rootQ);
+    this.rotate('neck_01', V(0, 1, 0), .12 * stance + balance * .04, rootQ);
+    this.rotate('head', V(0, 1, 0), .25 * stance + balance * .08, rootQ);
+    this.rotate('head', this.kneeForward.clone().cross(V(0, 1, 0)), halfPipe.torsoLean * .28, rootQ);
     this.rotate('head', V(0, 0, 1), wall * -0.08 + (bail ? 0.13 : 0), rootQ);
     // Parent-bone adjustments precede IK so they cannot move solved feet/hands.
     if (grindType === 'Smith' || grindType === 'Feeble') this.rotate('pelvis', V(1, 0, 0), -0.08 * grind, rootQ);
@@ -341,10 +356,6 @@ export class UnrealRider {
     // Grabs use constrained upper-arm reach; never compress the entire rig to
     // place a hand on a target the skeleton cannot reach.
     this.root.updateWorldMatrix(true,true);
-    const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
-    const motion = flipState ? flipMotion(flipState.progress) : null;
-    const push = pushWeight > 0.005 && !flipState && !grab && !bail && !flatland
-      ? pushMotion(pushPhase) : null;
     const deckLocked = Boolean(board && !flipState && !bail && !flatland);
     for (const side of SIDES) {
       if (!this.feet[side]) continue;
@@ -382,10 +393,15 @@ export class UnrealRider {
     }
     if (push) {
       // The pushing foot leaves the deck; the support foot stays locked to it.
-      const weight = C(pushWeight, 0, 1) * C(this.w(PRESENTATION_STATES.PUSH) + 0.35, 0, 1);
-      this.ft[rear].x += (this.outward[rear] || 1) * push.side * weight;
-      this.ft[rear].y += push.height * weight;
-      this.ft[rear].z += (stance < 0 ? -1 : 1) * push.foreAft * weight;
+      const scale = C((this.legLengths[rear] || .54) / .75, .42, 1.1);
+      const toeSide = Math.sign(this.kneeForward.x) || 1;
+      this.ft[rear].x += toeSide * push.side * pushAmount * scale;
+      // Contact follows the wheel plane, rather than a fixed 13 cm drop that
+      // left some shoes hovering and pushed other rigs into the pavement.
+      const groundAnkle = this.soleOffsets[rear] - this.root.position.y;
+      this.ft[rear].y = THREE.MathUtils.lerp(this.ft[rear].y, groundAnkle, push.contact * pushAmount)
+        + push.lift * pushAmount * scale;
+      this.ft[rear].z -= travelSign * push.foreAft * pushAmount * scale;
     }
     if (flatland) {
       const wave = Math.sin(time * 7);
@@ -437,7 +453,11 @@ export class UnrealRider {
         const upperLength = hip.distanceTo(knee), lowerLength = knee.distanceTo(ankle);
         const hipLocal = this.root.worldToLocal(hip.clone()), target = this.ft[side];
         const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
-        const flex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        const ridingFlex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        // The drive leg extends while the support knee absorbs the drop to
+        // the pavement. Applying the same crouch to both caused a deep bob.
+        const flex = side === rear && push
+          ? THREE.MathUtils.lerp(ridingFlex, .28, supportShift) : ridingFlex;
         const wantedHeight = kneeHeight(upperLength, lowerLength, flex, horizontalSquared);
         hipCorrection = Math.min(hipCorrection, target.y + wantedHeight - hipLocal.y);
       }
@@ -448,7 +468,7 @@ export class UnrealRider {
         // during full crouch. The shoe-contact calibration is independent:
         // corrected feet remain anchored by the following two-leg IK solve.
         ensurePelvisDeckClearance(this.model, this.bones.pelvis, board,
-          Math.max(0.355, this.poseCalibration.pelvisClearance));
+          Math.max(.19, this.poseCalibration.pelvisClearance));
       }
     }
     for (const side of SIDES) {
@@ -466,6 +486,8 @@ export class UnrealRider {
       setWorldQ(foot, footWorldOrientation(
         this.root, board, this.feet[side].q, (deckLocked || motion?.catchWeight > .99) && !releasedFoot,
       ));
+      if (push && side === rear) this.rotate('foot_' + side, V(1, 0, 0),
+        -travelSign * push.anklePitch * pushAmount, rootQ);
     }
 
     this.root.updateWorldMatrix(true, true);
@@ -501,24 +523,17 @@ export class UnrealRider {
       const world = boundedNeutralHandTarget(
         shoulderWorld, this.root.localToWorld(target.clone()), armLength,
       );
-      // True relaxed A-pose (the user-marked green silhouette), not elbows
-      // stuck to the torso. Normal ollies, AIR and vert returns retain this
-      // safe shoulder-to-wrist profile rather than ragdolling hands past head.
-      // Named grabs/flatland/bails still use their authored reach animations.
-      const regularNoGrabAir = [PRESENTATION_STATES.AIR, PRESENTATION_STATES.VERT_AIR,
-        PRESENTATION_STATES.OLLIE_POP].includes(presentation?.state) && !grab && !flatland && !bail;
-      // Preserve a fixed, neutral silhouette immediately on generic takeoff:
-      // spring channel blending previously permitted one-frame half-neutral
-      // arms that could fold over the face before the AIR channel settled.
-      const neutralArms = regularNoGrabAir ? 1 : C(
-        this.w(PRESENTATION_STATES.IDLE) + this.w(PRESENTATION_STATES.COAST)
-        + this.w(PRESENTATION_STATES.PUSH) + this.w(PRESENTATION_STATES.BRAKE),
-        0, 1) * (1-grab) * (1-flat) * (bail ? 0 : 1);
-      const neutralPose = neutralArms > 0 ? neutralArmIKTargets(
+      const skatingWeight = (1 - flat) * (1 - wall) * (bail ? 0 : 1);
+      const skatingPose = skatingArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
         this.kneeForward.clone().applyQuaternion(rootQ), armLength,
-      ) : null;
-      if (neutralPose) world.lerp(neutralPose.wrist, neutralArms);
+        { front: side === front, compression, air, balance,
+          balancePose: C(manualW + grind, 0, 1), push: pushAmount,
+          swing: push?.armSwing || 0, landing: landingSeverity,
+          up: V(0, 1, 0).applyQuaternion(rootQ),
+          breathing: Math.sin(poseTime * 1.8 + (side === front ? .3 : 0)) * .006 * (1 - air) },
+      );
+      world.lerp(skatingPose.wrist, skatingWeight);
       const reachWeight = handstand ? flat : grab;
       if (reach) {
         world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
@@ -529,9 +544,8 @@ export class UnrealRider {
       // landing, turn and grab blends. Cross-body deck grabs retain their
       // intent but never pass through the face.
       const crossBody = (grab > .12 && !!reach) || !!flatland;
-      const nearNeutral = neutralArms > 0.7 && !bail;
       world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
-        armLength, { crossBody, neutral: nearNeutral }));
+        armLength, { crossBody }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
       // swing across the body even when their wrist target is reachable.
       const elbowPoleReach = Math.max(.075, Math.min(.24, armLength * .42));
@@ -539,7 +553,7 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
-      if (neutralPose) elbowPole.lerp(neutralPose.elbow, neutralArms);
+      elbowPole.lerp(skatingPose.elbow, skatingWeight * (1 - reachWeight));
       if (headWorld) {
         const fromHead = elbowPole.clone().sub(headWorld);
         const radius = Math.max(.075, armLength * .34);
@@ -550,20 +564,18 @@ export class UnrealRider {
             outwardWorld.clone().setY(0).normalize(), radius);
         }
       }
-      // Planted, near-straight A-pose arms must follow their own moving
-      // shoulders exactly. World-space lag here makes elbows buckle on frame
-      // two even if the destination itself is valid. Dampen only aerial/grab
-      // transitions, when hands are intentionally released from that pose.
-      const smoothedWorld = neutralArms > 0.98 && !bail
-        ? world.clone()
-        : smoothHandDestination(this.smoothedHands[side], world, dt,
-          grab > 0.01 ? 30 : 24);
+      // Smooth the gesture relative to its moving shoulder. Smoothing world
+      // positions dragged the wrists behind the rider at skating speed.
+      const localOffset = this.root.worldToLocal(world.clone()).sub(shoulder);
+      const smoothedOffset = smoothHandDestination(this.smoothedHands[side], localOffset,
+        dt, grab > .01 ? 24 : 16);
+      const smoothedWorld = this.root.localToWorld(shoulder.clone().add(smoothedOffset));
       // Critically, safety must be checked AFTER interpolation too: a prior
       // frame's grab/air destination can otherwise cut straight through the
       // head even when both animation endpoints are safe.
       const safeWorld = safeArmGoal(shoulderWorld, smoothedWorld, outwardWorld,
-        headWorld, armLength, { crossBody, neutral: nearNeutral });
-      this.smoothedHands[side] = safeWorld.clone();
+        headWorld, armLength, { crossBody });
+      this.smoothedHands[side] = this.root.worldToLocal(safeWorld.clone()).sub(shoulder);
       limb(upper, lower, hand, safeWorld, elbowPole, 2.10);
       if (headWorld) {
         // A hand target can be clear while the two-bone IK arc still crosses
@@ -579,7 +591,7 @@ export class UnrealRider {
             const safeRest = safeArmGoal(shoulderWorld, rest.wrist, outwardWorld,
               headWorld, armLength, { neutral: true });
             limb(upper, lower, hand, safeRest, rest.elbow, 2.10);
-            this.smoothedHands[side].copy(safeRest);
+            this.smoothedHands[side].copy(this.root.worldToLocal(safeRest.clone()).sub(shoulder));
           }
         }
       }
