@@ -33,7 +33,7 @@ export class PortalsOnlineBeta {
   const invite=new URLSearchParams(location.search).get('online-room');
   if(invite&&validCode(invite.toUpperCase()))this.inviteInput=invite.toUpperCase();
  }
- get available(){return typeof this.sdk?.ready==='function'&&typeof this.net?.join==='function'}
+ get available(){return this.shell.ready===true&&typeof this.sdk?.ready==='function'&&typeof this.net?.join==='function'}
  get isHost(){return this.connected&&this.state?.host===this.id}
  open(){if(!this.available)return;this.visible=true;this.render()}
  close(){this.visible=false;this.render()}
@@ -89,7 +89,17 @@ export class PortalsOnlineBeta {
   on(this.net,'playerjoin',roster);on(this.net,'playerleave',roster);
   on(this.net,'status',status=>{if(status==='disconnected'){this.errors='Connection lost. Leave and join again.';this.connected=false;this.render()}});
   on(this.voice,'speaking',ids=>{this.speakers=ids||[];this.refreshRoster()});
-  on(this.voice,'status',status=>{if(status==='disconnected'){this.voiceConnected=false;this.render()}});
+  on(this.voice,'status',status=>{
+   if(status==='disconnected'){
+    this.voiceConnected=false;
+    const muted=this.voice?.muted?.()===true;
+    // Never bypass an explicit user mute or a denied first-time microphone consent.
+    if(this.voiceWasConnected&&!muted&&this.connected)
+     for(const delay of [800,2200,4600])
+      window.setTimeout(()=>{if(this.connected&&!this.voiceConnected)void this.startVoice()},delay);
+    if(this.visible)this.render();
+   }
+  });
  }
  refreshRoster(){
   if(!this.connected)return;
@@ -150,6 +160,9 @@ export class PortalsOnlineBeta {
   this.mapLoading=true;
   try{
    if(this.getWorld()?.id!==id)await this.changeMap(id);
+   const hero=this.shell.heroes[this.shell.heroIndex];
+   if(hero?.url&&this.getSkater()?.rider?.url!==hero.url)
+     await this.getSkater().setRiderModel(hero.url);
    this.shell.start(true);
    this.placeStart();
   }catch(error){this.errors='Map load failed: '+(error.message||error);this.open()}
@@ -162,10 +175,11 @@ export class PortalsOnlineBeta {
   if(spot&&this.getSkater()&&this.shell.active)this.goToSpot(spot.id);
  }
  async startVoice(){
-  if(!this.connected||!this.voice?.join)return;
-  try{await this.voice.join();this.voiceConnected=true}
+  if(!this.connected||!this.voice?.join||this.voiceConnecting||this.voiceConnected)return;
+  this.voiceConnecting=true;
+  try{await this.voice.join();this.voiceConnected=true;this.voiceWasConnected=true}
   catch(error){this.voiceConnected=false;console.info('[Online] Voice optional:',error?.message||error)}
-  if(this.visible)this.render();
+  finally{this.voiceConnecting=false;if(this.visible)this.render()}
  }
  report(){
   const description=String(this.bugDescription||'').trim().slice(0,240);
@@ -183,7 +197,7 @@ export class PortalsOnlineBeta {
   for(const off of this.handlers.splice(0))off();
   try{await this.voice?.leave?.()}catch{}
   try{await this.net?.leave?.()}catch{}
-  this.ghosts?.dispose();this.ghosts=null;this.state=null;this.voiceConnected=false;
+  this.ghosts?.dispose();this.ghosts=null;this.state=null;this.voiceConnected=false;this.voiceWasConnected=false;
   this.mode='menu';this.render();
   this.shell.setScreen('title');
  }
