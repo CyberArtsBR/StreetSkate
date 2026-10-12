@@ -214,6 +214,7 @@ portalsOnline = new PortalsOnlineBeta({
   getSkater:()=>skater,getWorld:()=>currentWorld,
   changeMap:id=>selectLocation(id),goToSpot:id=>goToSpot(id),
 });
+portalsOnline.restoreCamera=()=>{if(followCamera&&skater)followCamera.snap(skater)};
 if (portalsOnline.available) gameShell.render();
 
 // Observe the existing score banks without changing scoring or simulation rules.
@@ -786,7 +787,7 @@ renderer.setAnimationLoop(() => {
     if (!paused && gameShell.active) {
       const respawn = skater.respawnSerial;
       sessionEventTime = highlightRecorder.time + realDelta;
-      skater.update(dt, gameShell.inputGrace > 0 || portalsOnline?.visible ? {} : state, elapsed);
+      skater.update(dt, gameShell.inputGrace > 0 || portalsOnline?.visible || portalsOnline?.watchId ? {} : state, elapsed);
       if (runInProgress) {
         runSummary.update(skater, realDelta);
         highlightRecorder.record(skater, realDelta);

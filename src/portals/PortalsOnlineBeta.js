@@ -49,11 +49,29 @@ export class PortalsOnlineBeta {
   if(a==='ready'){this.net.send({kind:'online:ready',ready:!this.state?.ready?.includes(this.id)});return}
   if(a==='start'&&this.isHost){this.net.send({kind:'online:start'});return}
   if(a==='next'&&this.isHost){this.net.send({kind:'online:next'});return}
-  if(a==='host-map'&&this.isHost){this.net.send({kind:'online:settings',map:v,mode:this.state.mode,apply:'after'});return}
-  if(a==='host-mode'&&this.isHost){this.net.send({kind:'online:settings',map:this.state.map,mode:v,apply:'after'});return}
+  if(a==='host-map'&&this.isHost){this.pendingMap=v;this.render();return}
+  if(a==='host-mode'&&this.isHost){this.pendingMode=v;this.render();return}
+  if(a==='apply-after'&&this.isHost){
+    this.net.send({kind:'online:settings',map:this.pendingMap||this.state.map,mode:this.pendingMode||this.state.mode,apply:'after'});return;
+  }
+  if(a==='apply-now'&&this.isHost){
+    if(['jam','last','countdown'].includes(this.state?.phase)){this.confirmCancel=true;this.render();return}
+    this.net.send({kind:'online:settings',map:this.pendingMap||this.state.map,mode:this.pendingMode||this.state.mode,apply:'now'});return;
+  }
+  if(a==='confirm-now'&&this.isHost){
+    this.confirmCancel=false;this.net.send({kind:'online:settings',map:this.pendingMap||this.state.map,mode:this.pendingMode||this.state.mode,apply:'now'});return;
+  }
   if(a==='kick'&&this.isHost&&this.state&&!['jam','last','countdown'].includes(this.state.phase)){this.net.send({kind:'online:kick',target:v});return}
-  if(a==='watch'){this.watchId=v;this.mode='watch';this.close();return}
-  if(a==='play'){this.watchId=null;this.mode='play';this.close();return}
+  if(a==='watch'){
+    this.watchId=v;this.mode='watch';
+    if(this.getSkater())this.getSkater().visual.visible=false;
+    this.close();return;
+  }
+  if(a==='play'){
+    this.watchId=null;this.mode='play';
+    if(this.getSkater())this.getSkater().visual.visible=true;
+    this.restoreCamera?.();this.close();return;
+  }
   if(a==='copy'){const url=new URL(location.href);url.searchParams.set('online-room',this.roomCode);try{await navigator.clipboard.writeText(url.href);this.errors='Invite link copied.'}catch{this.errors='Use the displayed code to invite your friends.'}this.render();return}
   if(a==='report'){this.mode='report';this.render();return}
   if(a==='send-report'){this.report();return}
@@ -82,6 +100,7 @@ export class PortalsOnlineBeta {
   if(!value||value.v!==1)return;
   const prior=this.state;this.state=value;this.refreshRoster();
   if(prior?.map!==value.map){void this.enterMap(value.map)}
+  if(!prior && this.shell.active)this.placeStart();
   if(value.phase==='jam'&&this.phaseSeen!=='jam'&&value.round!==this.roundSeen){
    this.roundSeen=value.round;this.localBase=this.getSkater()?.score||0;this.bestCombo=0;
    this.placeStart();
@@ -159,7 +178,8 @@ export class PortalsOnlineBeta {
   this.render();
  }
  async leave(){
-  this.visible=false;this.connected=false;
+  this.visible=false;this.connected=false;this.watchId=null;
+  if(this.getSkater())this.getSkater().visual.visible=true;
   for(const off of this.handlers.splice(0))off();
   try{await this.voice?.leave?.()}catch{}
   try{await this.net?.leave?.()}catch{}
@@ -178,7 +198,8 @@ export class PortalsOnlineBeta {
     q:s.visual.quaternion.toArray().map(n=>+n.toFixed(4)),
     vel:s.velocity.toArray().map(n=>+n.toFixed(2)),
     state:s.presentation?.state||'IDLE',speed:s.velocity.length(),air:!s.grounded,
-    bail:s.bailTime>0,flip:flip?{name:flip.name,progress:flip.progress,type:flip.type,axis:flip.axis}:null,
+    bail:s.bailTime>0,flip:flip?{name:flip.name,progress:flip.progress,
+      pitch:flip.pitch,yaw:flip.yaw,roll:flip.roll,pitchArc:flip.pitchArc}:null,
     grab:s.grabState?.name||null,manual:s.manual||null,grind:!!s.grind,stance:s.stance||1};
    try{this.net.send(packet)}catch{}
   }
@@ -192,6 +213,17 @@ export class PortalsOnlineBeta {
     combo:this.bestCombo,active})}catch{}
   }
   this.ghosts?.update(dt,world?.id);
+  if(this.watchId){
+    const target=this.ghosts?.peers.get(this.watchId)?.root;
+    if(!target||!target.visible){this.watchId=null;if(s)s.visual.visible=true;this.restoreCamera?.()}
+    else{
+      const Vector=this.camera.position.constructor;
+      const aim=target.position.clone().add(new Vector(0,1.7,0));
+      const behind=new Vector(0,2.6,6).applyQuaternion(target.quaternion);
+      this.camera.position.lerp(target.position.clone().add(behind),1-Math.exp(-6*Math.min(dt,.05)));
+      this.camera.lookAt(aim);
+    }
+  }
  }
  renderStatus(){
   const target=this.root.querySelector('[data-live-clock]');
@@ -235,7 +267,11 @@ export class PortalsOnlineBeta {
     (isHost?buttons('start','START SKATE JAM','',locked||s?.mode!=='jam'||(s?.ready||[]).length<2):'')+
     (isHost&&s?.phase==='results'?buttons('next','NEXT ROUND'):'')+'</div>'+
     (isHost?'<h3>HOST SETTINGS</h3><div class="online-actions">'+MAPS.map(m=>buttons('host-map',m.name,m.id)).join('')+
-     buttons('host-mode','FREE SKATE','free')+buttons('host-mode','SKATE JAM','jam')+'</div><small>Map/mode changes are queued during active rounds.</small>':'')+
+     buttons('host-mode','FREE SKATE','free')+buttons('host-mode','SKATE JAM','jam')+'</div>'+
+     '<p>SELECTED: '+esc(label(this.pendingMap||s?.map))+' / '+esc((this.pendingMode||s?.mode)==='jam'?'SKATE JAM':'FREE SKATE')+'</p>'+
+     '<div class="online-actions">'+buttons('apply-after','CHANGE AFTER ROUND')+
+     buttons('apply-now','CHANGE NOW')+
+     (this.confirmCancel?buttons('confirm-now','CONFIRM: CANCEL CURRENT ROUND'):'')+'</div>':'')+
     '<div class="online-actions">'+buttons('mute',this.voiceConnected?(this.voice?.muted?.()?'UNMUTE':'MUTE MICROPHONE'):'VOICE UNAVAILABLE')+
     buttons('voice','RECONNECT VOICE')+buttons('play','RESUME SKATING')+
     ...(people.filter(p=>p.id!==this.id).map(p=>buttons('watch','WATCH '+esc(s?.names?.[p.id]||p.displayName||'SKATER'),p.id)))+
