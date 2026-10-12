@@ -12,6 +12,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { gameAssetUrl } from './game/AssetPaths.js';
 import { PortalsPhase1 } from './portals/PortalsPhase1.js';
 import './portals/portals-phase1.css';
 import { RunSummary } from './game/RunSummary.js';
@@ -445,6 +446,12 @@ function updateHud() {
 
 function showError(error) {
   gameShell.loadError = true;
+  gameShell.loadErrorDetail = String(error?.message || 'Check the browser console for the failing asset.').slice(0,220);
+  console.error('StreetSkate startup failure; resolved game asset URLs:', {
+    sampleTrack: gameAssetUrl('/media/808-bas.mp3'),
+    rider: gameAssetUrl('/assets/rider/TheanchoURi.glb'),
+    orbit: gameAssetUrl('/assets/spacepark/orbit.glb'),
+  }, error);
   gameShell.render();
   const loading = document.querySelector('#loading');
   loading.querySelector('p').innerHTML = 'The game could not continue.<span id="load-progress"></span>';
