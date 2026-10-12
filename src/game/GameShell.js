@@ -146,7 +146,7 @@ export class GameShell {
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading the rooftop…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -183,6 +183,7 @@ export class GameShell {
         +this.button('MASTER VOLUME +','volumeUp')
         +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
+        +(this.actions.portalsAvailable?.()?this.button('PORTALS / TOP 10','portals'):'')
         +this.button('BACK','back');
     } else if(this.phase==='graphics') {
       const key=GRAPHICS_PRESET_ORDER[this.graphicsIndex];
@@ -252,7 +253,7 @@ export class GameShell {
       <header class="run-results-header"><div><span class="session-eyebrow">CHIMP HAWK / SESSION COMPLETE</span><h2>${graffitiLettering('YOUR RUN','gold')}</h2><p>${safe(run.mapName||LOCATIONS[this.locationIndex]?.name||'')} <span>·</span> ${Math.round(number(run.durationSeconds??90))} SEC SESSION</p></div><div class="run-loadout"><strong>${safe(run.riderName||this.heroes[this.heroIndex]?.name||'')}</strong><span>${safe(run.deckName||BOARD_CHOICES[this.boardIndex]?.label||'')}</span>${this.button('▶ Watch the Highlights','watchHighlights',!canReplay)}</div></header>
       <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderScoreBreakdown(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} tricks linked</span>`:''}</div><h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
       <div class="run-detail-column"><section class="run-achievements"><h3>SESSION ACHIEVEMENTS</h3><ol>${achievementRows}</ol></section><section class="run-top-tricks"><h3>HIGHEST SCORING TRICKS</h3><ol>${topRows}</ol></section><section class="run-highlights"><span class="session-eyebrow">THE HIGHLIGHT REEL</span><p>${canReplay?`${highlightCount} best scored moment${highlightCount===1?'':'s'} · cinematic cameras & slow motion`:'Land a scored trick to capture your highlights.'}</p><small>${canReplay?'2.5 seconds before and after each moment, where the session allows.':'Highlights are recorded during this session only.'}</small></section></div></div>
-      <footer class="run-results-actions">${this.button('RUN IT AGAIN · 90 SEC','restart')}${this.button('CHANGE RIDER / SPOT','start')}${this.button('PRACTICE','practice')}${this.button('MAIN MENU','title')}</footer></article>`;
+      <footer class="run-results-actions">${this.button('RUN IT AGAIN · 90 SEC','restart')}${this.button('CHANGE RIDER / SPOT','start')}${this.button('PRACTICE','practice')}${this.actions.portalsAvailable?.()?this.button('PORTALS TOP 10','portals'):''}${this.button('MAIN MENU','title')}</footer></article>`;
   }
   renderScoreBreakdown(run){
     const score=run.scoreBreakdown;
@@ -279,6 +280,7 @@ export class GameShell {
     this.finalScore=number(this.runSummary.finalScore??this.runSummary.totalScore??this.finalScore);
     this.timeupEndsAt=performance.now()+3000;
     this.setScreen('timeup');
+    this.actions.portalsFinish?.(this.runSummary, LOCATIONS[this.locationIndex]?.id);
   }
   showResults(){this.setScreen('results');}
   updateReplayCaption(){
@@ -350,7 +352,7 @@ export class GameShell {
   }
   start(practice){
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
-    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);
+    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);this.actions.portalsStart?.(LOCATIONS[this.locationIndex]?.id,practice);
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
@@ -369,6 +371,7 @@ export class GameShell {
     if(this.selectBusy&&['hero','board','location','upload','confirmLoadout'].includes(action))return;
     switch(action){
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
+      case 'portals':this.actions.portalsOpen?.(LOCATIONS[this.locationIndex]?.id);break;
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
       case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
       case 'hero':this.heroIndex=index;this.heroConfirmed=true;this.focusHint={action:'hero',index};this.render();break;
@@ -396,6 +399,7 @@ export class GameShell {
       case 'closeTutorial':this.closeTutorial();break;
       case 'skipTutorial':this.closeTutorial();break;
     }
+    if(['camera','graphicsSet','bloomToggle','volumeDown','volumeUp','sound','deck','hero','board','location'].includes(action))this.actions.portalsSettingsChanged?.();
   }
   adjustMaster(step){
     this.music.setMasterVolume(Math.round(Math.max(0,Math.min(1,this.music.masterVolume+step))*100)/100);
@@ -403,6 +407,10 @@ export class GameShell {
     this.render();
   }
   key(event){
+    if(this.actions.portalsIsOpen?.()){
+      if(event.code==='Escape'){event.preventDefault();event.stopImmediatePropagation();this.actions.portalsClose?.();}
+      return;
+    }
     if(/INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))return;
     if(this.phase==='timeup'){event.preventDefault();event.stopImmediatePropagation();return;}
     if(this.phase==='highlights'&&event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();return;}

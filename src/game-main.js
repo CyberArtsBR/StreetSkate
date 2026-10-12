@@ -12,6 +12,8 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { PortalsPhase1 } from './portals/PortalsPhase1.js';
+import './portals/portals-phase1.css';
 import { RunSummary } from './game/RunSummary.js';
 import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
@@ -142,6 +144,7 @@ let highlightStatus = null;
 let sessionEventTime = 0;
 let comboStartTime = 0;
 let pendingReplayMoments = [];
+let portalsPhase1 = null;
 const highlightPlayback = new HighlightPlayback({
   camera,
   getSurface: () => collision,
@@ -186,9 +189,18 @@ const gameShell = new GameShell({
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
   masterVolume: value => skateAudio.setMasterVolume(value),
+  portalsAvailable: () => Boolean(portalsPhase1?.available),
+  portalsIsOpen: () => Boolean(portalsPhase1?.isOpen),
+  portalsOpen: mapId => portalsPhase1?.open(mapId),
+  portalsClose: () => portalsPhase1?.close(),
+  portalsSettingsChanged: () => portalsPhase1?.settingsChanged(),
+  portalsFinish: (summary, mapId) => { void portalsPhase1?.finishedRun(summary, mapId); },
+  portalsStart: (mapId, practice) => portalsPhase1?.gateway.track('skate_run_start', { map: mapId || 'rooftop', practice }),
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
 });
+portalsPhase1 = new PortalsPhase1(gameShell);
+void portalsPhase1.start();
 
 // Observe the existing score banks without changing scoring or simulation rules.
 function observeRunScoring(controller) {
@@ -616,18 +628,19 @@ async function loadGame() {
       const button = document.createElement('button'); button.style.background = finish.cssGradient;
       button.title = finishNames[i]; button.setAttribute('aria-label', `Skate ${finishNames[i]}`);
       button.setAttribute('aria-pressed', String(skater.board.finishIndex === i));
-      button.onclick = () => { skater.board.setFinish(i); finishes.querySelectorAll('button').forEach((b,j) => b.setAttribute('aria-pressed',String(i===j))); button.blur(); };
+      button.onclick = () => { skater.board.setFinish(i); gameShell.boardIndex=i; portalsPhase1?.settingsChanged(); finishes.querySelectorAll('button').forEach((b,j) => b.setAttribute('aria-pressed',String(i===j))); button.blur(); };
       finishes.append(button);
     });
     const soundButton = document.querySelector('#sound-toggle');
     soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
     soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
-    soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
+    soundButton.onclick = () => { const enabled = skateAudio.toggle(); gameShell.sound=enabled; portalsPhase1?.settingsChanged(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
     setPaused(true);
     gameShell.setReady();
+    portalsPhase1.onGameReady();
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       currentLocation: currentWorld.id, selectLocation,
