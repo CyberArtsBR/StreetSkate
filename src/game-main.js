@@ -189,7 +189,7 @@ const gameShell = new GameShell({
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
   deck: index => skater?.board?.setFinish(index),
-  masterVolume: value => skateAudio.setMasterVolume(value),
+  effectsVolume: value => skateAudio.setEffectsVolume(value),
   portalsAvailable: () => Boolean(portalsPhase1?.available),
   portalsIsOpen: () => Boolean(portalsPhase1?.isOpen),
   portalsOpen: mapId => portalsPhase1?.open(mapId),
@@ -228,7 +228,7 @@ function observeRunScoring(controller) {
   };
 }
 gameShell.sound = skateAudio.enabled;
-skateAudio.setMasterVolume(gameShell.music.masterVolume);
+skateAudio.setEffectsVolume(gameShell.effectsVolume);
 applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 

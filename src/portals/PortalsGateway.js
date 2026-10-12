@@ -29,6 +29,9 @@ export function safePreferences(value) {
   if (typeof value.bloomEnabled === 'boolean') result.bloomEnabled = value.bloomEnabled;
   if (typeof value.sound === 'boolean') result.sound = value.sound;
   if (Number.isFinite(value.masterVolume) && value.masterVolume >= 0 && value.masterVolume <= 1) result.masterVolume = value.masterVolume;
+  for (const channel of ['musicVolume', 'effectsVolume']) {
+    if (Number.isFinite(value[channel]) && value[channel] >= 0 && value[channel] <= 1) result[channel] = value[channel];
+  }
   if (['heretic', 'adolescent', 'anchor', 'tuxr'].includes(value.riderId)) result.riderId = value.riderId;
   if (Number.isInteger(value.boardIndex) && value.boardIndex >= 0 && value.boardIndex < 8) result.boardIndex = value.boardIndex;
   if (Object.hasOwn(PORTALS_MODES, value.locationId)) result.locationId = value.locationId;

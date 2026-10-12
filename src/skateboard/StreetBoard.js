@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
 import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
-import { SKATEBOARD_FINISHES } from './BoardFinishes.js';
+import { DEFAULT_BOARD_FINISH, SKATEBOARD_FINISHES } from './BoardFinishes.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -113,8 +113,11 @@ export class StreetBoard {
         return m; };
       o.material = Array.isArray(o.material) ? o.material.map(own) : own(o.material);
     });
-    let finish = 0;
-    try { finish = Number(localStorage.getItem('streetskate.boardFinish')) || 0; } catch {}
+    let finish = DEFAULT_BOARD_FINISH;
+    try {
+      const saved = localStorage.getItem('streetskate.boardFinish');
+      if (saved !== null && Number.isFinite(Number(saved))) finish = Number(saved);
+    } catch {}
     this.setFinish(finish, { persist });
     return this;
   }

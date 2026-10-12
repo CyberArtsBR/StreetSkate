@@ -62,7 +62,11 @@ export function popMotion(progress = 1) {
 
 export function landingMotion(progress = 1) {
   const p = safe01(progress);
-  return MathUtils.smoothstep(p, 0, 0.2) * (1 - MathUtils.smoothstep(p, 0.2, 1));
+  // Begin absorbing the contact immediately, reach deepest bend quickly, then
+  // recover over most of the landing. Never carry compression after the timer.
+  if (p >= 1) return 0;
+  return (0.38 + 0.62 * MathUtils.smoothstep(p, 0, 0.16))
+    * (1 - MathUtils.smoothstep(p, 0.16, 1));
 }
 
 export const GRAB_POSES = Object.freeze({

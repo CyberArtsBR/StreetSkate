@@ -1,6 +1,7 @@
 import { PortalsGateway, PORTALS_MAPS, PORTALS_MODES, guestName, scoreForPortals, safePreferences } from './PortalsGateway.js';
 import { GRAPHICS_PRESET_ORDER } from '../graphics/GraphicsSettings.js';
 import { LOCATIONS } from '../game/LoadoutCatalog.js';
+import { saveAudioVolume } from '../game/AudioSettings.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, symbol =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[symbol]);
@@ -66,7 +67,8 @@ export class PortalsPhase1 {
       camera: cameraModes[this.shell.cameraIndex],
       graphics: GRAPHICS_PRESET_ORDER[this.shell.graphicsIndex],
       bloomEnabled: this.shell.bloomEnabled, sound: this.shell.sound,
-      masterVolume: this.shell.music.masterVolume,
+      musicVolume: this.shell.music.musicVolume,
+      effectsVolume: this.shell.effectsVolume,
       riderId: this.shell.heroes[this.shell.heroIndex]?.id,
       boardIndex: this.shell.boardIndex,
       locationId: LOCATIONS[this.shell.locationIndex]?.id,
@@ -85,9 +87,11 @@ export class PortalsPhase1 {
     }
     if (data.graphics || data.bloomEnabled !== undefined) shell.actions.graphics?.(GRAPHICS_PRESET_ORDER[shell.graphicsIndex]);
     if (typeof data.sound === 'boolean') { shell.sound = data.sound; shell.actions.sound?.(data.sound); }
-    if (data.masterVolume !== undefined) {
-      shell.music.setMasterVolume(data.masterVolume);
-      shell.actions.masterVolume?.(data.masterVolume);
+    const musicVolume = data.musicVolume ?? data.masterVolume;
+    if (musicVolume !== undefined) shell.music.setMusicVolume(musicVolume);
+    if (data.effectsVolume !== undefined) {
+      shell.effectsVolume = saveAudioVolume('effects', data.effectsVolume);
+      shell.actions.effectsVolume?.(shell.effectsVolume);
     }
     if (data.riderId) {
       const i = shell.heroes.findIndex(hero => hero.id === data.riderId);

@@ -358,11 +358,9 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       speedRatio: present.speedRatio,
       crouch: this.charge,
       steer: this.steer,
-      // No automatic foot-pumping/pushing loop: retain full rolling/pump
-      // momentum physics but keep both feet planted on the deck.
-      // Deliberate ollie/flip/grab/bail foot animations still work.
-      pushWeight: 0,
-      pushPhase: 0,
+      pushWeight: this.grounded && !this.grind && !this.manual && !this.wallRide && !this.bailTime
+        && this.charge < 0.05 ? p.pushWeight : 0,
+      pushPhase: p.pushPhase,
       landingSeverity: p.landingSeverity * landingMotion(1 - p.landingTime / p.landingDuration),
       pumpState: this.presentation.pumpState,
     });
