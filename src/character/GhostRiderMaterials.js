@@ -52,7 +52,11 @@ export function applyGhostRiderPresentation(root) {
     material.name = (source.name || 'Custom') + ' / spectral glow';
     material.color.lerp(new THREE.Color('#e6fcff'), 0.42);
     material.emissive.copy(GHOST_COLOR);
-    material.emissiveIntensity = 0.88;
+    // Keep the extra high-dynamic-range emission authored in Teddy_Ghost.glb.
+    // Imported KHR_materials_emissive_strength must not be replaced by a dim
+    // generic custom-avatar default: the rim alone is not the whole ghost.
+    material.emissiveIntensity = Math.max(1.35,
+      Math.min(3.2, Number(source.emissiveIntensity) || 0));
     material.roughness = Math.max(0.48, material.roughness ?? 0.48);
     material.metalness = Math.min(0.12, material.metalness ?? 0);
     material.transparent = true;
