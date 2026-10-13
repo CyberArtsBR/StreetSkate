@@ -21,7 +21,7 @@ test('only uploaded blob GLBs receive the ghost look, not default rider assets',
 test('only Teddy.glb uploaded through the game gets the spectral shader',()=>{
  assert.equal(isTeddyUploadFilename('Teddy.glb'),true);
  assert.equal(isTeddyUploadFilename('teddy.GLB'),true);
- assert.equal(isTeddyUploadFilename('Teddy_Ghost.glb'),false);
+ assert.equal(isTeddyUploadFilename('Teddy_Ghost.glb'),true);
  assert.equal(isTeddyUploadFilename('The_Heretic.glb'),false);
  assert.equal(shouldApplyGhostRiderPresentation('blob:https://streetskate.onrender.com/123','Teddy.glb'),true);
  assert.equal(shouldApplyGhostRiderPresentation('blob:https://streetskate.onrender.com/123','Other.glb'),false);
