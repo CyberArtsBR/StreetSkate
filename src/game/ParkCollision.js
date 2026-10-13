@@ -111,10 +111,10 @@ export class ParkCollision {
     for (const hit of this._rayHits) {
       this.normal(hit, normalOut);
       if (!Number.isFinite(normalOut.x) || !Number.isFinite(normalOut.y) || !Number.isFinite(normalOut.z)) continue;
-      // Authoring/export tools sometimes reverse otherwise valid ramp/floor
-      // triangles. A ray descending from above must receive the upward face;
-      // never reorient underside hits on upward sweeps.
-      if (direction.y < -0.05 && normalOut.y < -minNormalY) normalOut.negate();
+      // Rideable skins use the upward face even when an uphill sweep is
+      // horizontal/rising. sweepRideable separately rejects departing motion,
+      // so reversed winding cannot make a ramp disappear during an ascent.
+      if (normalOut.y < -minNormalY) normalOut.negate();
       if (normalOut.y <= minNormalY) continue;
       pointOut.copy(hit.point);
       const result = this._probeResult;
@@ -159,7 +159,7 @@ export class ParkCollision {
     const distance = this._motion.length();
     if (distance < EPS) return null;
     this._direction.copy(this._motion).multiplyScalar(1 / distance);
-    const hit = this.rayRideable(from, this._direction, distance + extra, pointOut, normalOut);
+    const hit = this.rayRideable(from, this._direction, distance + extra, pointOut, normalOut, .008);
     if (!hit || this._motion.dot(normalOut) >= -1e-7) return null;
     const result = this._sweepResult;
     result.point.copy(pointOut); result.normal.copy(normalOut);

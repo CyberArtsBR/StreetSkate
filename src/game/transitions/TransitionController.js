@@ -15,7 +15,7 @@ const clamp = THREE.MathUtils.clamp;
 // making different ramp sizes all produce the same short, 2.2 m air.
 // Apply this envelope once at departure; gravity still owns the whole flight.
 export const VERT_LAUNCH_ENVELOPE = Object.freeze({
-  maximumVerticalSpeed: 15.0,
+  maximumVerticalSpeed: 17.0,
   maximumPassiveVerticalSpeed: 13.4,
 });
 
@@ -253,13 +253,13 @@ export class TransitionController {
     // face's pitch. Shallow ramps cannot turn all forward velocity into lift.
     const climbProjection = nonLateralSpeed * Math.sqrt(Math.max(0, 1 - normalY * normalY));
     const baseVertical = Math.max(0, incomingVelocity.y, climbProjection);
-    const boost = clamp(Number(launchBoost) || 0, 0, 8.5);
-    const verticalBoost = boost * 0.72;
+    const boost = clamp(Number(launchBoost) || 0, 0, 16);
+    const verticalBoost = boost * 0.82;
     const energyBudget = Math.sqrt(incomingSpeed * incomingSpeed + verticalBoost * verticalBoost);
     let launchVertical = clamp(Math.min(
       Math.sqrt(baseVertical * baseVertical + verticalBoost * verticalBoost),
       energyBudget,
-    ), 0, 15.5);
+    ), 0, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);
     // This is a physical speed bound, not a scripted trajectory. It limits
     // launch energy once at departure, then leaves gravity/steering unchanged.
     launchVertical = Math.min(launchVertical, VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed);

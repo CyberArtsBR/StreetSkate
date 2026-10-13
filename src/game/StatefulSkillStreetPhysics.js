@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SafeCopingExitSkillStreetPhysics } from './SafeCopingExitSkillStreetPhysics.js';
 import { ARCADE_PARK_MOBILITY } from './ArcadeParkMobilitySkillStreetPhysics.js';
-import { MOVEMENT_STATE } from './StreetPhysics.js';
+import { MOVEMENT_STATE, PHYSICS } from './StreetPhysics.js';
 import {
   PUMP_CONFIG,
   computePumpEnergy,
@@ -213,7 +213,10 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
     const transitionApproach = this.grounded && this.movementState === MOVEMENT_STATE.GROUND
       ? this.transitions.approachAt(this.position, this.normal, this.velocity) : null;
     const nearCoping = Boolean(transitionApproach?.supportsVert);
-    this.pumpEligible = Boolean(eligibility.eligible && !nearCoping);
+    // A release while climbing is always a jump. Pumping remains available
+    // on the descent and through the bottom of a transition.
+    const climbing = this.normal.y < .995 && this.velocity.y > .05;
+    this.pumpEligible = Boolean(eligibility.eligible && !nearCoping && !climbing);
 
     if (input.ollieHeld && this.pumpEligible) this.pumpHoldTime += dt;
     // Preserve accumulated compression through the physical release frame.
@@ -244,7 +247,17 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
       } else if (releaseCommand === OLLIE_COMMAND.PUMP_BLOCKED) {
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
       } else if (releaseCommand === OLLIE_COMMAND.AIR_RELEASE && !(this.coyote > 0)) {
-        // Releasing crouch in an existing air must not queue another takeoff.
+        // Allow the held charge to finish just after the wheels leave a lip.
+        // It is consumed once and cannot turn a later release into a double jump.
+        if (this.airTakeoffFromRamp && !this.takeoffOllieRequested
+          && this.airTime <= .14 && this.velocity.y > 0 && this.charge > .05) {
+          const impulse = THREE.MathUtils.lerp(PHYSICS.minJump, PHYSICS.maxJump, this.charge);
+          this.velocity.y = Math.min(VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed,
+            Math.hypot(this.velocity.y, impulse * .85));
+          this.takeoffOllieRequested = true;
+          if (this.transitionAir) this.transitionAir.launchVertical = this.velocity.y;
+          this.pendingOllieScore = { origin: this.position.clone(), normal: new THREE.Vector3(0, 1, 0) };
+        }
         this.charge = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
       } else if (releaseCommand !== OLLIE_COMMAND.NONE) {
         this.releaseJump();

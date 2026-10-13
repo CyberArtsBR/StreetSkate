@@ -62,6 +62,9 @@ export class SkateboardContactRig {
     this._scratchC = new THREE.Vector3();
     this._scratchD = new THREE.Vector3();
     this._candidate = new THREE.Vector3();
+    this._landingNormal = new THREE.Vector3();
+    this.landingImpact = null;
+    this._landingImpact = { position: new THREE.Vector3(), normal: new THREE.Vector3() };
     this._hitPoint = new THREE.Vector3();
     this._hitNormal = new THREE.Vector3();
     this._validWheels = [];
@@ -317,6 +320,7 @@ export class SkateboardContactRig {
   }
 
   solveLanding(from, to, heading, previousNormal, velocity) {
+    this.landingImpact = null;
     let earliest = 2;
     this._scratchC.set(0, 0, 0);
     this._scratchD.copy(previousNormal);
@@ -333,14 +337,24 @@ export class SkateboardContactRig {
         this._scratchD.copy(this._hitNormal);
       }
     }
-    if (earliest > 1) return null;
+    // The centre also guards narrow seams where neither truck finds a face.
+    if (earliest > 1) {
+      const hit = this.surface.sweepRideable(from, to, this._hitPoint, this._hitNormal);
+      if (!hit || velocity.dot(this._hitNormal) >= -.035) return null;
+      earliest = hit.fraction ?? 1;
+      this._scratchD.copy(this._hitNormal);
+    }
     const candidate = this._candidate.copy(from).lerp(to, clamp(earliest, 0, 1));
-    const support = this.solveGround(candidate, from, heading, this._scratchD, false);
-    // A single wheel or a single truck touching an edge is not a completed
-    // landing. Lip releases may keep partial contact during *ground* movement,
-    // but a new air-to-ground catch needs support on both trucks.
-    if (support.supported && support.count >= 2
-      && support.frontSupported > 0 && support.rearSupported > 0) return support;
+    // Preserve the swept collision independently of landing acceptance and
+    // scratch vectors reused by solveGround. Rejected landings still hit terrain.
+    this._landingNormal.copy(this._scratchD);
+    this._landingImpact.position.copy(candidate).addScaledVector(this._landingNormal, this.skin);
+    this._landingImpact.normal.copy(this._landingNormal);
+    this.landingImpact = this._landingImpact;
+    const support = this.solveGround(candidate, from, heading, this._landingNormal, false);
+    // The landing policy owns truck-first / wheel-first transition catches.
+    if (support.supported && (support.normal.y < .995 ||
+      (support.count >= 2 && support.frontSupported > 0 && support.rearSupported > 0))) return support;
     return null;
   }
 }
