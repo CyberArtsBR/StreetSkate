@@ -75,6 +75,10 @@ export function originalTransitionSweep(surface, from, to, air, config) {
     config.continuousSweepExtra,
   );
   if (!hit) return null;
+  // Extra sweep range searches triangle seams but is not actual travel.
+  // ParkCollision clamps an ahead-of-frame hit to fraction=1; do not snap
+  // the skater to a surface not yet crossed by the current physics step.
+  if (point.distanceTo(from) > from.distanceTo(to) + 0.008) return null;
   const candidate = { position: point.clone(), normal: normal.clone() };
   if (!supportMatchesOriginalTransition(candidate, air, config)) return null;
   return {
@@ -197,7 +201,10 @@ export function resolveSweepReentryCandidate({
   let support = resolved?.supported && resolved.position?.distanceTo?.(candidate) <= 0.18
     ? resolved
     : null;
-  if (!support || !supportMatchesOriginalTransition(support, activeAir, config)) {
+  if (support && !supportMatchesOriginalTransition(support, activeAir, config)) support = null;
+  // A center-only impact is a penetration guard, not an authorized landing.
+  const wheelVerified = Boolean(support);
+  if (!support) {
     support = makeEmergencyTransitionSupport({
       hit,
       velocity,
@@ -212,5 +219,6 @@ export function resolveSweepReentryCandidate({
     hit,
     candidate,
     support,
+    wheelVerified,
   });
 }

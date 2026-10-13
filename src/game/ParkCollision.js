@@ -114,7 +114,13 @@ export class ParkCollision {
       // Rideable skins use the upward face even when an uphill sweep is
       // horizontal/rising. sweepRideable separately rejects departing motion,
       // so reversed winding cannot make a ramp disappear during an ascent.
-      if (normalOut.y < -minNormalY) normalOut.negate();
+      if (normalOut.y < -minNormalY) {
+        // Never reinterpret an upward ray through a floor as a top-side
+        // landing. Downward/horizontal probes still recover reverse-wound
+        // bowl/ramp skins without creating gaps at triangle seams.
+        if (direction.y > 0.05) continue;
+        normalOut.negate();
+      }
       if (normalOut.y <= minNormalY) continue;
       pointOut.copy(hit.point);
       const result = this._probeResult;

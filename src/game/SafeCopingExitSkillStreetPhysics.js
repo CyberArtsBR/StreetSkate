@@ -9,7 +9,7 @@ import {
   isControlledDeckExitTouchdown,
 } from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
-import { PHYSICS } from './StreetPhysics.js';
+import { PHYSICS, MOVEMENT_STATE } from './StreetPhysics.js';
 import { applyAcceptedLanding } from './core/LandingExecutor.js';
 import {
   evaluateTransitionLanding,
@@ -259,18 +259,19 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       : resolveSweepReentryCandidate(context);
     if (!sweep?.support || !sweep.candidate) return false;
 
+    // Only true wheel support can complete the landing. Contact with the
+    // rider's center must never fabricate a grounded wheel catch.
     this.position.copy(sweep.candidate);
-    if (this.land(sweep.support)) return true;
-    if (this.bailTime > 0) {
-      this.position.copy(sweep.support.position);
-      return true;
-    }
+    if (sweep.wheelVerified && this.land(sweep.support)) return true;
+    if (this.bailTime > 0) return true;
 
-    // Final invariant: once the original transition has been swept, never allow
-    // the center to continue through it even if a future landing rule rejects.
-    this.position.copy(sweep.support.position);
-    const into = this.velocity.dot(sweep.support.normal);
-    if (into < 0) this.velocity.addScaledVector(sweep.support.normal, -into);
+    // A rejected re-entry remains airborne. Resolve actual penetration along
+    // the measured face while retaining ramp-tangent momentum. Stop steering
+    // the following frame back into the same failed coping-return contact.
+    const into = this.velocity.dot(sweep.hit.normal);
+    if (into < 0) this.velocity.addScaledVector(sweep.hit.normal, -into);
+    this.transitionAir = null;
+    this.setMovementState(MOVEMENT_STATE.AIR);
     return true;
   }
 

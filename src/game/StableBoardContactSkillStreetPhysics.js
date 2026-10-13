@@ -210,6 +210,24 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     );
 
     const landingGrace = (this.transitionLandingGrace || 0) > 0;
+    // Recovery is allowed only while the board was already grounded on a
+    // non-flat rideable transition. At diagonal bowl seams, its previous
+    // pitch/roll basis can lose all four wheel rays for a single fixed step.
+    // Re-check the actual mesh vertically before classifying that as takeoff.
+    // Never bridge real lips: all recovered contacts must be very near the
+    // current center and face roughly the same direction as the prior bowl.
+    if (!support.supported && this._supportPreviousNormal.y > 0.1
+      && this._supportPreviousNormal.y < 0.985 && this.velocity.y > -1.5) {
+      const corrected = contact.snapToGround(this.position, this.heading, 0.16, 0.20);
+      if (!(corrected.supported && corrected.count >= 2
+        && corrected.position.distanceTo(this.position) <= 0.14
+        && corrected.normal.dot(this._supportPreviousNormal) >= 0.48)) {
+        contact.clearContacts();
+        support = contact.state;
+        support.supported = false;
+      } else support = corrected;
+    }
+
     if (!support.supported && landingGrace) {
       const oldRise = contact.probeRise;
       const oldDrop = contact.probeDrop;
