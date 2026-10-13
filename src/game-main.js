@@ -775,8 +775,13 @@ renderer.setAnimationLoop(() => {
   // Never silently freeze on the last airborne frame when another overlay/window
   // takes focus. Make the suspension explicit and require a deliberate resume.
   if (loaded && mode === 'skate' && !document.hasFocus() && !paused && !portalsOnline?.connected) setPaused(true);
-  if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
-    const state = input.read();
+  // Portals Party sessions must keep simulating while the host iframe briefly
+  // loses DOM focus. Read controls only while focused; input remains cleared
+  // during focus loss so no phantom steering/jumps leak into the simulation.
+  if (loaded && mode === 'skate' && !document.hidden && (document.hasFocus() || portalsOnline?.connected)) {
+    const focused = document.hasFocus();
+    if (!focused) input.clear();
+    const state = focused ? input.read() : {};
     lastInputState = {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
