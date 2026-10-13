@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { deckEmissionForGlow, DECK_BASE_EMISSION, DECK_MAX_EMISSION } from '../src/skateboard/BoardGlow.js';
-import { applyGhostRiderPresentation, isCustomRiderUpload, isTeddyUploadFilename, shouldApplyGhostRiderPresentation } from '../src/character/GhostRiderMaterials.js';
+import { applyGhostRiderPresentation, isCustomRiderUpload, isTeddyUploadFilename, isTaggedGhostRider, shouldApplyGhostRiderPresentation } from '../src/character/GhostRiderMaterials.js';
 
 test('shape goes from 0.75 to 0.95 with smoothed speed boost and clamps safely',()=>{
  assert.equal(DECK_BASE_EMISSION,0.75);
@@ -27,6 +27,18 @@ test('only Teddy.glb uploaded through the game gets the spectral shader',()=>{
  assert.equal(shouldApplyGhostRiderPresentation('blob:https://streetskate.onrender.com/123','Other.glb'),false);
  assert.equal(shouldApplyGhostRiderPresentation('/assets/rider/Teddy.glb','Teddy.glb'),false);
  assert.equal(shouldApplyGhostRiderPresentation('https://example.org/rider.glb','Teddy.glb'),false);
+});
+test('Teddy_Ghost tagged mesh activates its bloom in custom portrait GLB previews too',()=>{
+ const root = new THREE.Group();
+ const mesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial());
+ root.add(mesh);
+ assert.equal(isTaggedGhostRider(root),false);
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/id','',root),false);
+ mesh.userData.streetskateGhost = true;
+ assert.equal(isTaggedGhostRider(root),true);
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/id','',root),true);
+ assert.equal(shouldApplyGhostRiderPresentation('/assets/rider/The_Heretic.glb','',root),false);
+ mesh.geometry.dispose(); mesh.material.dispose();
 });
 test('ghost material copies textures and keeps rigged mesh geometry without creating a fake silhouette mesh',()=>{
  const root=new THREE.Group();

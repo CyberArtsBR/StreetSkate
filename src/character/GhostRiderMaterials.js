@@ -19,8 +19,19 @@ export function isTeddyUploadFilename(filename) {
   return typeof filename === 'string' && /^teddy(?:_ghost)?\.glb$/i.test(filename.trim());
 }
 
-export function shouldApplyGhostRiderPresentation(url, uploadFilename) {
-  return isCustomRiderUpload(url) && isTeddyUploadFilename(uploadFilename);
+export function isTaggedGhostRider(root) {
+  if (!root?.traverse) return false;
+  if (root.userData?.streetskateGhost === true) return true;
+  let tagged = false;
+  root.traverse(object => {
+    if (object.isMesh && object.userData?.streetskateGhost === true) tagged = true;
+  });
+  return tagged;
+}
+
+export function shouldApplyGhostRiderPresentation(url, uploadFilename, model = null) {
+  return isCustomRiderUpload(url) &&
+    (isTeddyUploadFilename(uploadFilename) || isTaggedGhostRider(model));
 }
 
 /**

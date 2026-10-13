@@ -108,8 +108,10 @@ export class UnrealRider {
   configureModel(model) {
     this.model = model;
     calibrateRiderMaterials(this.model,this.url);
-    // Only the specifically named Teddy.glb custom upload receives the cyan
-    // spectral shader. Other custom riders keep their original PBR materials.
+    // The prepared Teddy_Ghost.glb carries its spectral marker in mesh extras;
+    // this also works for cached portrait loads where the filename is unknown.
+    this.ghostRider = this.ghostRider ||
+      shouldApplyGhostRiderPresentation(this.url, this.uploadFilename, this.model);
     if (this.ghostRider) applyGhostRiderPresentation(this.model);
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
