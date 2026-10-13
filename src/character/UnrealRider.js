@@ -8,6 +8,7 @@ import { PRESENTATION_STATES, springStep, transitionFrequency } from './Presenta
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
+import { SkateRagdoll } from './SkateRagdoll.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -83,7 +84,9 @@ export class UnrealRider {
     this.deckHeight = 0.12;
     this.channels = new Map(Object.values(PRESENTATION_STATES)
       .map(state => [state, { value: state === 'IDLE' ? 1 : 0, velocity: 0 }]));
-    this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 } };
+    this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 },
+      airBalance: { value: 0, velocity: 0 } };
+    this.ragdoll = new SkateRagdoll();
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
     this.kneePoles={};
@@ -214,6 +217,7 @@ export class UnrealRider {
   }
 
   resetPresentation() {
+    this.ragdoll.reset();
     this.smoothedHands.l = null;
     this.smoothedHands.r = null;
     for (const [name, channel] of this.channels) Object.assign(channel, { value: name === 'IDLE' ? 1 : 0, velocity: 0 });
@@ -281,8 +285,15 @@ export class UnrealRider {
   update({ presentation, board, speedRatio = 0, crouch = 0, steer = 0, pushWeight = 0, pushPhase = 0,
     flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grindType = null, grindBalance = 0, wallRide = null, vert = false, verticalVelocity = 0, airTime = null,
+    airborne = null, bailPhysics = null,
     bail = false, bailProgress = 0, stance = 1, flatland = null, landingSeverity = 0, time = 0, dt = 1 / 60 }) {
     if (!this.model) return;
+    if (bail && bailPhysics && (this.ragdoll.active || this.ragdoll.start(this, bailPhysics))) {
+      this.ragdoll.update(dt, bailPhysics);
+      this.ragdoll.apply(this, setWorldQ, limb);
+      return;
+    }
+    if (!bail && this.ragdoll.active) this.resetPresentation();
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
     this.model.position.copy(this.basePos);
     this.model.quaternion.copy(this.baseQ);
@@ -309,6 +320,11 @@ export class UnrealRider {
       popProgress: presentation?.popProgress ?? 1, airTime });
     const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04 + supportShift * .08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
+    const inAir = airborne ?? ['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state);
+    // Hold the chosen flight pose through the descent. Only contact releases
+    // it, so the arms do not drop as soon as vertical velocity turns negative.
+    const airBalance = C(springStep(this.scalar.airBalance,
+      inAir ? 1 : 0, inAir ? 3.5 : 2.6, dt), 0, 1);
     this.root.position.y = board?.root.position.y ?? this.deckHeight;
     // Sit the hips back while the chest leans forward. The actual vertical
     // crouch is solved from each leg's lengths after foot targets are known.
@@ -491,6 +507,7 @@ export class UnrealRider {
     }
 
     this.root.updateWorldMatrix(true, true);
+    const armUp = V(0, 1, 0).applyQuaternion(rootQ);
     for (const side of SIDES) {
       const sign = side === 'l' ? -1 : 1;
       const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
@@ -527,9 +544,9 @@ export class UnrealRider {
       const skatingPose = skatingArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
         this.kneeForward.clone().applyQuaternion(rootQ), armLength,
-        { front: side === front, balance,
+        { front: side === front, balance, airBalance,
           balancePose: C(manualW + grind, 0, 1),
-          up: V(0, 1, 0).applyQuaternion(rootQ),
+          up: armUp,
           breathing: Math.sin(poseTime * 1.8 + (side === front ? .3 : 0)) * .006 * (1 - air) },
       );
       world.lerp(skatingPose.wrist, skatingWeight);
@@ -545,7 +562,7 @@ export class UnrealRider {
       const crossBody = (grab > .12 && !!reach) || !!flatland;
       // Keep the requested A-pose nearly extended through both safety passes.
       // Shortening its wrist goal forces the elbow to fold against the torso.
-      const neutralArms = skatingWeight > .98 && reachWeight < .01;
+      const neutralArms = skatingWeight > .98 && (!reach || reachWeight < .01);
       world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
         armLength, { crossBody, neutral: neutralArms }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
@@ -555,7 +572,7 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, -elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
-      elbowPole.lerp(skatingPose.elbow, skatingWeight * (1 - reachWeight));
+      elbowPole.lerp(skatingPose.elbow, skatingWeight * (reach ? 1 - reachWeight : 1));
       if (headWorld) {
         const fromHead = elbowPole.clone().sub(headWorld);
         const radius = Math.max(.075, armLength * .34);
@@ -621,6 +638,7 @@ export class UnrealRider {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.ragdoll.reset();
     const geometries = new Set(), materials = new Set();
     const textures = new Set(), skeletons = new Set();
     this.model?.traverse(object => {

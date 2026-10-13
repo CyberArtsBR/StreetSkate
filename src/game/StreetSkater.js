@@ -333,8 +333,15 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       vert: present.vert,
       verticalVelocity: this.velocity.y,
       airTime: this.airTime,
+      airborne: !this.grounded && !this.grind && !this.wallRide && this.bailTime <= 0,
       bail: this.bailTime > 0,
       bailProgress,
+      bailPhysics: this.bailTime > 0 ? {
+        velocity: this.bailLaunchVelocity || this.bailVelocity,
+        severity: this.bailSeverity || 0,
+        surface: this.surface,
+        anchor: this.position,
+      } : null,
       stance: this.stance,
       flatland: this.flatland,
       time: elapsed,
@@ -353,13 +360,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       landingSeverity: p.landingSeverity * landingMotion(1 - p.landingTime / p.landingDuration),
       pumpState: this.presentation.pumpState,
     });
-    this.applyWallImpactPose(this.wallImpactPoseWeight());
-    if (this.rider && this.bailTime > 0) {
-      const fall = THREE.MathUtils.smoothstep(bailProgress, 0, 0.58);
-      // UnrealRider owns the sideways tumble; only add forward pitch here.
-      this.rider.root.rotation.x = 0.32 * fall;
-      this.rider.root.position.y += 0.16 * fall;
-    }
+    if (this.bailTime <= 0) this.applyWallImpactPose(this.wallImpactPoseWeight());
     const flashing = this.respawnTimer > 0 && Math.floor((1.8 - this.respawnTimer) / 0.3) % 2 === 0;
     for (const saved of this.flashMaterials || []) {
       const transparent = flashing || saved.transparent;

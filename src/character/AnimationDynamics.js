@@ -99,13 +99,15 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
  * angle slightly, never shortens the arm chain into a backwards elbow bend. */
 export function skatingArmIKTargets(shoulder, outward, forward, armLength, {
   front = false, balance = 0, balancePose = 0,
+  airBalance = 0,
   breathing = 0, up = new THREE.Vector3(0, 1, 0),
 } = {}) {
   const side = outward.clone().normalize();
   const face = forward.clone().addScaledVector(side, -forward.dot(side)).normalize();
   const lead = front ? 1 : -1;
-  const spread = THREE.MathUtils.degToRad(33 + 6 * C(balancePose, 0, 1)
-    + 3 * lead * C(balance, -1, 1));
+  const restingAngle = 33 + 6 * C(balancePose, 0, 1) + 3 * lead * C(balance, -1, 1);
+  const flightAngle = THREE.MathUtils.lerp(restingAngle, 90, THREE.MathUtils.smoothstep(airBalance, 0, 1));
+  const spread = THREE.MathUtils.degToRad(flightAngle);
   const direction = side.clone().multiplyScalar(Math.sin(spread))
     .addScaledVector(face, .025)
     .addScaledVector(up, -Math.cos(spread) + breathing).normalize();
