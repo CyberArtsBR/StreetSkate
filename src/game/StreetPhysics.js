@@ -73,6 +73,7 @@ export class StreetPhysics {
     this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
     this.respawnTimer = 0; this.bailDuration = 1.25;
+    this.bailLaunchVelocity = null; this.bailSeverity = 0;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
@@ -642,8 +643,13 @@ export class StreetPhysics {
 
   bail(message) {
     if (this.bailTime > 0 || this.respawnTimer > 0) return;
-    this.bailVelocity = this.velocity.clone().clampLength(0, 8);
-    this.velocity.set(0, 0, 0); this.bailDuration = 1.25; this.bailTime = this.bailDuration;
+    const impactSpeed = this.velocity.length();
+    this.bailSeverity = clamp((impactSpeed - 2) / 16, .08, 1);
+    this.bailVelocity = this.velocity.clone().clampLength(0, 10);
+    this.bailLaunchVelocity = this.bailVelocity.clone();
+    this.velocity.set(0, 0, 0);
+    this.bailDuration = 1.35 + .55 * this.bailSeverity;
+    this.bailTime = this.bailDuration;
     this.flipState = null; this.grabState = null;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
     this.setMovementState(MOVEMENT_STATE.BAIL);

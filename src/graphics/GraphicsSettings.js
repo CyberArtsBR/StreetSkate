@@ -20,7 +20,7 @@ export const GRAPHICS_DESCRIPTIONS = Object.freeze({
 export const GRAPHICS_PRESETS = Object.freeze(Object.fromEntries(
   Object.entries(PRESETS).map(([key,value])=>[key,Object.freeze({ ...value, shadowResolution:1024 })])
 ));
-export const DEFAULT_GRAPHICS_PRESET = 'high';
+export const DEFAULT_GRAPHICS_PRESET = 'cinematic';
 export const GRAPHICS_STORAGE_KEY = 'streetskate.graphicsPreset.v1';
 
 export function normalizedGraphicsPreset(value) {
