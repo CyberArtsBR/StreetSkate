@@ -90,7 +90,7 @@ export class GameShell {
       }
       this.avatarUrl=next;
       this.heroes=this.heroes.filter(h=>h.id!=='custom');
-      this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
+      this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,uploadFilename:file.name,accent:'#ffc469'});
       this.heroIndex=this.heroes.length-1;this.heroConfirmed=false;
       this.focusHint={action:'hero',index:this.heroIndex};
       this.selectError='Avatar ready · select this rider with A / Enter / Click before continuing.';

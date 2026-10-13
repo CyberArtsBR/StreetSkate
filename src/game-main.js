@@ -568,7 +568,7 @@ async function selectLocation(id, { hero, finish } = {}) {
     const runtime = nextWorld ? prepareParkRuntime(candidate, skater.board.contactRig) : null;
     if (hero?.url) {
       progress('LOADING YOUR CHARACTER…');
-      await skater.setRiderModel(hero.url);
+      await skater.setRiderModel(hero.url, { uploadFilename: hero.id === 'custom' ? hero.uploadFilename : '' });
     }
     if (request !== loadoutRequest) { if (nextWorld) disposeParkWorld(nextWorld, currentWorld); return false; }
     if (runtime) commitWorld(candidate, runtime);

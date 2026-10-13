@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { deckEmissionForGlow, DECK_BASE_EMISSION, DECK_MAX_EMISSION } from '../src/skateboard/BoardGlow.js';
-import { applyGhostRiderPresentation, isCustomRiderUpload, isTaggedGhostRider, shouldApplyGhostRiderPresentation } from '../src/character/GhostRiderMaterials.js';
+import { applyGhostRiderPresentation, isCustomRiderUpload, isTeddyUploadFilename, shouldApplyGhostRiderPresentation } from '../src/character/GhostRiderMaterials.js';
 
 test('shape goes from 0.75 to 0.95 with smoothed speed boost and clamps safely',()=>{
  assert.equal(DECK_BASE_EMISSION,0.75);
@@ -18,16 +18,15 @@ test('only uploaded blob GLBs receive the ghost look, not default rider assets',
  assert.equal(isCustomRiderUpload('/assets/rider/TuxR.glb'),false);
  assert.equal(isCustomRiderUpload('https://example.com/The_Heretic.glb'),false);
 });
-test('only tagged Teddy custom GLBs enable the additional Fresnel shader',()=>{
- const root=new THREE.Group();
- const mesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial());
- root.add(mesh);
- assert.equal(isTaggedGhostRider(root),false);
- assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/123',root),false);
- mesh.userData.streetskateGhost=true;
- assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/123',root),true);
- assert.equal(shouldApplyGhostRiderPresentation('/assets/rider/The_Heretic.glb',root),false);
- mesh.geometry.dispose();mesh.material.dispose();
+test('only Teddy.glb uploaded through the game gets the spectral shader',()=>{
+ assert.equal(isTeddyUploadFilename('Teddy.glb'),true);
+ assert.equal(isTeddyUploadFilename('teddy.GLB'),true);
+ assert.equal(isTeddyUploadFilename('Teddy_Ghost.glb'),false);
+ assert.equal(isTeddyUploadFilename('The_Heretic.glb'),false);
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://streetskate.onrender.com/123','Teddy.glb'),true);
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://streetskate.onrender.com/123','Other.glb'),false);
+ assert.equal(shouldApplyGhostRiderPresentation('/assets/rider/Teddy.glb','Teddy.glb'),false);
+ assert.equal(shouldApplyGhostRiderPresentation('https://example.org/rider.glb','Teddy.glb'),false);
 });
 test('ghost material copies textures and keeps rigged mesh geometry without creating a fake silhouette mesh',()=>{
  const root=new THREE.Group();
@@ -63,4 +62,16 @@ test('shared imported materials are cloned once and reused for matching skinned 
  assert.equal(applyGhostRiderPresentation(root),1);
  assert.equal(a.material,b.material);
  a.geometry.dispose();b.geometry.dispose();a.material.dispose();
+});
+
+test('custom upload identity passes from the validated file name into avatar load', async()=>{
+ const fs=await import('node:fs/promises');
+ const shell=await fs.readFile(new URL('../src/game/GameShell.js',import.meta.url),'utf8');
+ const game=await fs.readFile(new URL('../src/game-main.js',import.meta.url),'utf8');
+ const skater=await fs.readFile(new URL('../src/game/StreetSkater.js',import.meta.url),'utf8');
+ const rider=await fs.readFile(new URL('../src/character/UnrealRider.js',import.meta.url),'utf8');
+ assert.match(shell,/uploadFilename:file\.name/);
+ assert.match(game,/uploadFilename: hero\.id === 'custom' \? hero\.uploadFilename : ''/);
+ assert.match(skater,/new UnrealRider\(url, \{ uploadFilename \}\)/);
+ assert.match(rider,/this\.ghostRider = shouldApplyGhostRiderPresentation\(url, uploadFilename\)/);
 });

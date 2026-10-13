@@ -8,24 +8,19 @@ const GHOST_RIM_CODE = `
   totalEmissiveRadiance += vec3(0.28, 0.86, 1.0) * streetGhostRim * 2.65;
 `;
 
-/** Uploaded avatars receive a ghost presentation; shipped riders never do. */
+/** Only the explicit Teddy.glb uploaded from the custom-rider menu glows.
+ * Browser blob URLs do not retain source filenames, so caller must pass the
+ * validated original upload name along the rider-loading chain. */
 export function isCustomRiderUpload(url) {
   return typeof url === 'string' && url.startsWith('blob:');
 }
 
-/** GLB scene/mesh extras survive a browser blob upload where the filename does not. */
-export function isTaggedGhostRider(root) {
-  if (!root?.traverse) return false;
-  if (root.userData?.streetskateGhost === true) return true;
-  let found = false;
-  root.traverse(object => {
-    if (object.isMesh && object.userData?.streetskateGhost === true) found = true;
-  });
-  return found;
+export function isTeddyUploadFilename(filename) {
+  return typeof filename === 'string' && /^teddy\.glb$/i.test(filename.trim());
 }
 
-export function shouldApplyGhostRiderPresentation(url, root) {
-  return isCustomRiderUpload(url) && isTaggedGhostRider(root);
+export function shouldApplyGhostRiderPresentation(url, uploadFilename) {
+  return isCustomRiderUpload(url) && isTeddyUploadFilename(uploadFilename);
 }
 
 /**

@@ -74,8 +74,10 @@ function limb(upper, lower, end, target, pole, maximumFlex = 2.55) {
 }
 
 export class UnrealRider {
-  constructor(url) {
+  constructor(url, { uploadFilename = '' } = {}) {
     this.url = url;
+    this.uploadFilename = uploadFilename;
+    this.ghostRider = shouldApplyGhostRiderPresentation(url, uploadFilename);
     this.root = new THREE.Group();
     this.root.name = 'street-rider';
     this.rest = new Map();
@@ -106,9 +108,9 @@ export class UnrealRider {
   configureModel(model) {
     this.model = model;
     calibrateRiderMaterials(this.model,this.url);
-    // Spectral shader only for user-uploaded GLBs tagged in their scene/mesh
-    // extras (e.g. Teddy_Ghost.glb). Other custom riders remain unchanged.
-    if (shouldApplyGhostRiderPresentation(this.url, this.model)) applyGhostRiderPresentation(this.model);
+    // Only the specifically named Teddy.glb custom upload receives the cyan
+    // spectral shader. Other custom riders keep their original PBR materials.
+    if (this.ghostRider) applyGhostRiderPresentation(this.model);
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
@@ -123,8 +125,8 @@ export class UnrealRider {
     this.root.add(this.model);
     this.model.traverse(object => {
       if (object.isMesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
+        object.castShadow = !this.ghostRider;
+        object.receiveShadow = !this.ghostRider;
         object.frustumCulled = false;
       }
       if (object.isBone) this.rest.set(object, object.quaternion.clone());
