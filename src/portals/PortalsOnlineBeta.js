@@ -1,4 +1,5 @@
 import { OnlineGhosts } from './OnlineGhosts.js';
+import { OnlineMapLoadQueue } from './OnlineMapLoadQueue.js';
 import { chooseOnlinePartyEntry } from './OnlinePartyEntry.js';
 import './portals-online.css';
 
@@ -19,6 +20,7 @@ export class PortalsOnlineBeta {
   this.connected=false;this.visible=false;this.busy=false;this.mode='menu';this.state=null;this.roomCode='';
   this.errors='';this.name='';this.speakers=[];this.roomPrivate=false;this.bestCombo=0;this.localBase=0;
   this.snapshotAt=0;this.scoreAt=0;this.roundSeen=-1;this.phaseSeen='';
+  this.sessionEpoch=0;this.mapQueue=null;
   this.root=document.createElement('section');this.root.id='portals-online';this.root.hidden=true;
   this.root.setAttribute('aria-label','Chimp Hawk Online Beta');
   document.body.append(this.root);
@@ -34,14 +36,15 @@ export class PortalsOnlineBeta {
   const invite=new URLSearchParams(location.search).get('online-room');
   if(invite&&validCode(invite.toUpperCase()))this.inviteInput=invite.toUpperCase();
  }
- get available(){return this.shell.ready===true&&typeof this.sdk?.ready==='function'&&typeof this.net?.join==='function'}
+ get available(){return this.shell.ready===true&&typeof this.sdk?.ready==='function'&&typeof (this.sdk?.net||this.net)?.join==='function'}
  get isHost(){return this.connected&&this.state?.host===this.id}
  // Native Party and managed lobby joins happen at startup with no extra click.
  async autoJoinHostedSession(){
-  if(this.autoJoinStarted||!this.available)return;
+  if(this.autoJoinStarted||!this.shell.ready||typeof this.sdk?.ready!=='function')return;
   this.autoJoinStarted=true;
   try{
    const session=await this.sdk.ready();
+   this.net=this.sdk.net||this.net;this.voice=this.sdk.voice||this.voice;
    let match=null;
    try{match=await this.sdk.matchmaking?.current?.()}catch{match=session?.matchmaking||null}
    const params=new URLSearchParams(location.search);
@@ -155,7 +158,7 @@ export class PortalsOnlineBeta {
    // Channels isolate the rooms. Four seats are enforced by the server referee.
    const session=native?await this.net.join():await this.net.join({channel:channelFor(room)});
    if(session.players?.length>4){await this.net.leave();return false}
-   this.id=session.self.id;this.connected=true;this.roomCode=room;this.roomPrivate=privateRoom;this.nativeParty=native;
+   this.id=session.self.id;this.connected=true;this.sessionEpoch++;this.roomCode=room;this.roomPrivate=privateRoom;this.nativeParty=native;
    this.mode='play';this.watchId=null;this.bind();
    this.ghosts=new OnlineGhosts({scene:this.scene,camera:this.camera,heroUrl:id=>{
      return this.shell.heroes.find(h=>h.id===id)?.url||this.shell.heroes[0].url;
@@ -164,29 +167,44 @@ export class PortalsOnlineBeta {
    const player=this.shell.actions.portalsPlayer?.();
    this.name=player?.playerId?(player.displayName||'Skater'):(this.name.trim()||'Guest'+String(Math.floor(Math.random()*9000)+1000));
    this.net.send({kind:'online:hello',name:this.name});
-   await this.enterMap(this.state?.map||'grand-warehouse');
+   if(!(await this.enterMap(this.state?.map||'grand-warehouse'))) throw new Error(this.errors||'Could not load the online map');
    this.close();
-   void this.startVoice();
+   // Voice requests microphone access only after an explicit user action.
    return true;
   }catch(error){
-   this.errors='Could not connect: '+(error?.message||'Portals multiplayer unavailable');
-   if(!scan)this.render();
+   const message='Could not connect: '+(error?.message||'Portals multiplayer unavailable');
+   if(this.connected) await this.leave();
+   else try{await this.net?.leave?.()}catch{}
+   this.errors=message;
+   if(!scan){this.visible=true;this.render()}
    return false;
   }finally{this.busy=false;this.render()}
  }
  async enterMap(id){
-  if(!this.connected||this.mapLoading||!MAPS.some(m=>m.id===id))return;
-  if(this.getWorld()?.id===id&&this.shell.active)return;
-  this.mapLoading=true;
+  if(!this.connected||!MAPS.some(m=>m.id===id))return false;
+  if(!this.mapQueue){
+   const epoch=this.sessionEpoch;
+   this.mapQueue=new OnlineMapLoadQueue(async target=>{
+    if(!this.connected||epoch!==this.sessionEpoch)return;
+    if(this.getWorld()?.id===target&&this.shell.active)return;
+    if(this.getWorld()?.id!==target)await this.changeMap(target);
+    if(!this.connected||epoch!==this.sessionEpoch)return;
+    const hero=this.shell.heroes[this.shell.heroIndex];
+    if(hero?.url&&this.getSkater()?.rider?.url!==hero.url)
+      await this.getSkater().setRiderModel(hero.url);
+    if(!this.connected||epoch!==this.sessionEpoch)return;
+    this.shell.start(true);
+    this.placeStart();
+   });
+  }
   try{
-   if(this.getWorld()?.id!==id)await this.changeMap(id);
-   const hero=this.shell.heroes[this.shell.heroIndex];
-   if(hero?.url&&this.getSkater()?.rider?.url!==hero.url)
-     await this.getSkater().setRiderModel(hero.url);
-   this.shell.start(true);
-   this.placeStart();
-  }catch(error){this.errors='Map load failed: '+(error.message||error);this.open()}
-  finally{this.mapLoading=false}
+   await this.mapQueue.request(id);
+   return this.connected&&this.shell.active;
+  }catch(error){
+   this.errors='Map load failed: '+(error?.message||error);
+   this.open();
+   return false;
+  }
  }
  placeStart(){
   const spots=this.getWorld()?.manifest?.spots||[];
@@ -212,7 +230,7 @@ export class PortalsOnlineBeta {
   this.render();
  }
  async leave(){
-  this.visible=false;this.connected=false;this.watchId=null;
+  this.visible=false;this.connected=false;this.sessionEpoch++;this.mapQueue?.cancel();this.mapQueue=null;this.watchId=null;
   if(this.getSkater())this.getSkater().visual.visible=true;
   for(const off of this.handlers.splice(0))off();
   try{await this.voice?.leave?.()}catch{}
@@ -307,8 +325,8 @@ export class PortalsOnlineBeta {
      '<div class="online-actions">'+buttons('apply-after','CHANGE AFTER ROUND')+
      buttons('apply-now','CHANGE NOW')+
      (this.confirmCancel?buttons('confirm-now','CONFIRM: CANCEL CURRENT ROUND'):'')+'</div>':'')+
-    '<div class="online-actions">'+buttons('mute',this.voiceConnected?(this.voice?.muted?.()?'UNMUTE':'MUTE MICROPHONE'):'VOICE UNAVAILABLE')+
-    buttons('voice','RECONNECT VOICE')+buttons('play','RESUME SKATING')+
+    '<div class="online-actions">'+buttons('mute',this.voiceConnected?(this.voice?.muted?.()?'UNMUTE':'MUTE MICROPHONE'):'MIC NOT CONNECTED','',!this.voiceConnected)+
+    buttons('voice',this.voiceConnected?'RECONNECT VOICE':'ENABLE VOICE')+buttons('play','RESUME SKATING')+
     people.filter(p=>p.id!==this.id).map(p=>buttons('watch','WATCH '+esc(s?.names?.[p.id]||p.displayName||'SKATER'),p.id)).join('')+
     buttons('report','REPORT BUG')+buttons('leave','LEAVE ROOM')+'</div>';
   }
