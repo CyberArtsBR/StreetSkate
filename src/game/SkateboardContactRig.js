@@ -148,6 +148,28 @@ export class SkateboardContactRig {
       );
     }
 
+    // During a diagonal carve the four wheels touch different points on a
+    // curved bowl. A single average board normal can miss the next facet even
+    // while this SAME wheel was supported one fixed step ago. Retry from its
+    // last measured face and then vertically; accept only nearby geometry
+    // facing roughly the same way. Neither path invents a floor or snaps to a
+    // distant lower deck, and takeoff/landing probes cannot use this grace.
+    if (!hit && allowSweep && wheel.valid && previousNormal.y < 0.985) {
+      const continuous = () => this._hitNormal.dot(wheel.normal) > 0.48
+        && this._hitPoint.distanceTo(wheel.predicted) <= 0.22;
+      hit = this.surface.probeRideable(
+        wheel.predicted, wheel.normal, this.probeRise + 0.08,
+        this.probeDrop + 0.10, this._hitPoint, this._hitNormal,
+      );
+      if (hit && !continuous()) hit = null;
+      if (!hit) {
+        hit = this.surface.probeRideable(
+          wheel.predicted, UP, 0.16, 0.23, this._hitPoint, this._hitNormal,
+        );
+        if (hit && !continuous()) hit = null;
+      }
+    }
+
     if (!hit) {
       wheel.valid = false;
       wheel.previous.copy(wheel.predicted);
