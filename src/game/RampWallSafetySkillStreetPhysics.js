@@ -166,10 +166,18 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       }
     }
 
-    const support = this.ensureBoardContact().solveLanding(
-      before, this.position, this.heading, UP, this.velocity,
-    );
-    if (support) this.land(support);
+    const contact = this.ensureBoardContact();
+    const support = contact.solveLanding(before, this.position, this.heading, UP, this.velocity);
+    const impact = contact.landingImpact;
+    if (support && this.land(support)) return;
+    if (impact && !this.grounded && !this.grind && !this.wallRide) {
+      // A failed trick/partial edge catch is still a collision. Keep the body
+      // above the swept surface instead of falling into the ramp shell.
+      this.position.copy(impact.position);
+      const motion = this.bailTime > 0 ? this.bailVelocity : this.velocity;
+      const into = motion.dot(impact.normal);
+      if (into < 0) motion.addScaledVector(impact.normal, -into);
+    }
   }
 
 }

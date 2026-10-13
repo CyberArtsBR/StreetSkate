@@ -305,8 +305,16 @@ export class StreetPhysics {
       this.bailVelocity ||= new THREE.Vector3();
       this.bailVelocity.y -= PHYSICS.gravity * dt;
       const next = this.position.clone().addScaledVector(this.bailVelocity, dt);
-      const support = this.surface.ground(this.position, 0.3, Math.max(0.4, this.position.y - next.y + 0.2));
-      if (support && next.y <= support.point.y + 0.015) {
+      const hitPoint = new THREE.Vector3(), hitNormal = new THREE.Vector3();
+      const crossed = this.surface.sweepRideable(this.position, next, hitPoint, hitNormal);
+      if (crossed) {
+        next.copy(hitPoint).addScaledVector(hitNormal, .018);
+        const into = this.bailVelocity.dot(hitNormal);
+        if (into < 0) this.bailVelocity.addScaledVector(hitNormal, -into);
+        this.bailVelocity.multiplyScalar(Math.exp(-5 * dt));
+      }
+      const support = this.surface.ground(next, 0.3, Math.max(0.4, this.position.y - next.y + 0.2));
+      if (!crossed && support && next.y <= support.point.y + 0.015) {
         next.y = support.point.y + 0.015; this.bailVelocity.y = 0;
         this.bailVelocity.x *= Math.exp(-5 * dt); this.bailVelocity.z *= Math.exp(-5 * dt);
       }
