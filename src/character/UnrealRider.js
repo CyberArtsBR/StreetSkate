@@ -1,7 +1,7 @@
 import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
-import { applyGhostRiderPresentation, isCustomRiderUpload } from './GhostRiderMaterials.js';
+import { applyGhostRiderPresentation, shouldApplyGhostRiderPresentation } from './GhostRiderMaterials.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion, pushMotion } from './TrickMotion.js';
 import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, skatingArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
@@ -106,9 +106,9 @@ export class UnrealRider {
   configureModel(model) {
     this.model = model;
     calibrateRiderMaterials(this.model,this.url);
-    // Only user-uploaded GLB blob URLs receive the opt-in custom ghost look.
-    // Native riders and their PBR materials remain exactly as authored.
-    if (isCustomRiderUpload(this.url)) applyGhostRiderPresentation(this.model);
+    // Spectral shader only for user-uploaded GLBs tagged in their scene/mesh
+    // extras (e.g. Teddy_Ghost.glb). Other custom riders remain unchanged.
+    if (shouldApplyGhostRiderPresentation(this.url, this.model)) applyGhostRiderPresentation(this.model);
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {

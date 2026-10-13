@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { deckEmissionForGlow, DECK_BASE_EMISSION, DECK_MAX_EMISSION } from '../src/skateboard/BoardGlow.js';
-import { applyGhostRiderPresentation, isCustomRiderUpload } from '../src/character/GhostRiderMaterials.js';
+import { applyGhostRiderPresentation, isCustomRiderUpload, isTaggedGhostRider, shouldApplyGhostRiderPresentation } from '../src/character/GhostRiderMaterials.js';
 
 test('shape goes from 0.75 to 0.95 with smoothed speed boost and clamps safely',()=>{
  assert.equal(DECK_BASE_EMISSION,0.75);
@@ -17,6 +17,17 @@ test('only uploaded blob GLBs receive the ghost look, not default rider assets',
  assert.equal(isCustomRiderUpload('blob:https://portals.to/uuid'),true);
  assert.equal(isCustomRiderUpload('/assets/rider/TuxR.glb'),false);
  assert.equal(isCustomRiderUpload('https://example.com/The_Heretic.glb'),false);
+});
+test('only tagged Teddy custom GLBs enable the additional Fresnel shader',()=>{
+ const root=new THREE.Group();
+ const mesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial());
+ root.add(mesh);
+ assert.equal(isTaggedGhostRider(root),false);
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/123',root),false);
+ mesh.userData.streetskateGhost=true;
+ assert.equal(shouldApplyGhostRiderPresentation('blob:https://portals.to/123',root),true);
+ assert.equal(shouldApplyGhostRiderPresentation('/assets/rider/The_Heretic.glb',root),false);
+ mesh.geometry.dispose();mesh.material.dispose();
 });
 test('ghost material copies textures and keeps rigged mesh geometry without creating a fake silhouette mesh',()=>{
  const root=new THREE.Group();

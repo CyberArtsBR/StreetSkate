@@ -13,6 +13,21 @@ export function isCustomRiderUpload(url) {
   return typeof url === 'string' && url.startsWith('blob:');
 }
 
+/** GLB scene/mesh extras survive a browser blob upload where the filename does not. */
+export function isTaggedGhostRider(root) {
+  if (!root?.traverse) return false;
+  if (root.userData?.streetskateGhost === true) return true;
+  let found = false;
+  root.traverse(object => {
+    if (object.isMesh && object.userData?.streetskateGhost === true) found = true;
+  });
+  return found;
+}
+
+export function shouldApplyGhostRiderPresentation(url, root) {
+  return isCustomRiderUpload(url) && isTaggedGhostRider(root);
+}
+
 /**
  * Decorate materials, not geometry or bones. Existing skinned meshes, IK,
  * morph targets, proportions and imported texture maps remain unchanged.
