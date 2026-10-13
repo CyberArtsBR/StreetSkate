@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
-const GHOST_COLOR = new THREE.Color('#68efff');
+const GHOST_COLOR = new THREE.Color('#00ff39');
 const GHOST_RIM_CODE = `
-  // View-dependent cyan edge: genuine Fresnel-like ghost rim emitted in HDR.
+  // Green spectral edge: bloom concentrates at the silhouette, not the body.
   float streetGhostFacing = abs(dot(normalize(normal), normalize(vViewPosition)));
-  float streetGhostRim = pow(1.0 - clamp(streetGhostFacing, 0.0, 1.0), 2.15);
-  totalEmissiveRadiance += vec3(0.28, 0.86, 1.0) * streetGhostRim * 2.65;
+  float streetGhostRim = pow(1.0 - clamp(streetGhostFacing, 0.0, 1.0), 2.0);
+  totalEmissiveRadiance += vec3(0.015, 0.80, 0.09) * streetGhostRim * 1.65;
 `;
 
 /** Only the explicit Teddy.glb uploaded from the custom-rider menu glows.
@@ -16,7 +16,7 @@ export function isCustomRiderUpload(url) {
 }
 
 export function isTeddyUploadFilename(filename) {
-  return typeof filename === 'string' && /^teddy(?:_ghost)?\.glb$/i.test(filename.trim());
+  return typeof filename === 'string' && /^teddy(?:_ghost)?(?:\s*\(\d+\))?\.glb$/i.test(filename.trim());
 }
 
 export function isTaggedGhostRider(root) {
@@ -56,17 +56,18 @@ export function applyGhostRiderPresentation(root) {
         side: source.side ?? THREE.FrontSide,
       });
     material.name = (source.name || 'Custom') + ' / spectral glow';
-    material.color.lerp(new THREE.Color('#e6fcff'), 0.42);
+    // Respect authored green/yellow-green Teddy textures; no cyan or white wash.
+    // The base material provides silhouette and facial detail; rim supplies glow.
+    material.color.lerp(new THREE.Color('#24da49'), 0.10);
     material.emissive.copy(GHOST_COLOR);
-    // Keep the extra high-dynamic-range emission authored in Teddy_Ghost.glb.
-    // Imported KHR_materials_emissive_strength must not be replaced by a dim
-    // generic custom-avatar default: the rim alone is not the whole ghost.
-    material.emissiveIntensity = Math.max(1.35,
-      Math.min(3.2, Number(source.emissiveIntensity) || 0));
-    material.roughness = Math.max(0.48, material.roughness ?? 0.48);
-    material.metalness = Math.min(0.12, material.metalness ?? 0);
+    // Clamp imported emissive strength: extreme HDR intensity desaturates to white.
+    // Use the separate green Fresnel term for a strong outer bloom instead.
+    material.emissiveIntensity = THREE.MathUtils.clamp(
+      Number(source.emissiveIntensity) || 0.68, 0.45, 0.78);
+    material.roughness = Math.max(0.58, material.roughness ?? 0.58);
+    material.metalness = Math.min(0.06, material.metalness ?? 0);
     material.transparent = true;
-    material.opacity = Math.min(0.80, Number.isFinite(source.opacity) ? source.opacity : 1);
+    material.opacity = Math.min(0.90, Number.isFinite(source.opacity) ? source.opacity : 1);
     material.depthWrite = false;
     material.depthTest = true;
     material.blending = THREE.NormalBlending;
@@ -78,7 +79,7 @@ export function applyGhostRiderPresentation(root) {
         '#include <emissivemap_fragment>\n' + GHOST_RIM_CODE,
       );
     };
-    material.customProgramCacheKey = () => 'streetskate-custom-ghost-fresnel-v1';
+    material.customProgramCacheKey = () => 'streetskate-custom-ghost-green-fresnel-v2';
     material.needsUpdate = true;
     owned.set(source, material);
     affected++;
