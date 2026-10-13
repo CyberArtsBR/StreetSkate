@@ -171,12 +171,23 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
     const impact = contact.landingImpact;
     if (support && this.land(support)) return;
     if (impact && !this.grounded && !this.grind && !this.wallRide) {
-      // A failed trick/partial edge catch is still a collision. Keep the body
-      // above the swept surface instead of falling into the ramp shell.
-      this.position.copy(impact.position);
+      // The outer coping layer must receive the unmodified swept trajectory.
+      // Clamping/projecting here first removed its re-entry crossing and left
+      // the rider airborne with no downhill momentum on the transition.
+      if (this.transitionAir && this.bailTime <= 0) return;
+      // Generic ramps also need a contact basis aligned to the actual face,
+      // rather than the world-UP wheel rig used for the initial air sweep.
+      const touchdown = impact.position.clone();
+      const contactNormal = impact.normal.clone();
+      if (this.bailTime <= 0) {
+        const aligned = contact.solveGround(touchdown, before, this.heading, contactNormal, false);
+        if (aligned.supported && this.land(aligned)) return;
+      }
+      // A failed trick/partial edge catch still collides with the terrain.
+      this.position.copy(touchdown);
       const motion = this.bailTime > 0 ? this.bailVelocity : this.velocity;
-      const into = motion.dot(impact.normal);
-      if (into < 0) motion.addScaledVector(impact.normal, -into);
+      const into = motion.dot(contactNormal);
+      if (into < 0) motion.addScaledVector(contactNormal, -into);
     }
   }
 
