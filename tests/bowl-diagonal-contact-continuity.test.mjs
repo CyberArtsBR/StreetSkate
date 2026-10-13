@@ -37,6 +37,7 @@ test('bowl contact retries reject a disconnected lower surface even with matchin
  const surface={
   sweepRideable(){return null},
   probeRideable(expected,n,rise,drop,point,normal){
+   if(n.y>0.70)return null;
    point.copy(expected).addScaledVector(bowlNormal,-0.65);
    normal.copy(bowlNormal);
    return {distance:0.65,fraction:1};
@@ -47,7 +48,7 @@ test('bowl contact retries reject a disconnected lower surface even with matchin
 });
 test('airborne or no-history board contact cannot acquire synthetic bowl support',()=>{
  const surface={sweepRideable(){return null},probeRideable(expected,n,r,d,p,normal){
-  if(n.y>=0.98)return null; p.copy(expected);normal.copy(bowlNormal);return {distance:0,fraction:1};
+  if(n.y>0.70)return null; p.copy(expected);normal.copy(bowlNormal);return {distance:0,fraction:1};
  }};
  const rig=readyRig(surface);
  // With no swept ground tracking, no special per-wheel fallback runs.
