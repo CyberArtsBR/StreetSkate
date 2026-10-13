@@ -16,7 +16,7 @@ export function isCustomRiderUpload(url) {
 }
 
 export function isTeddyUploadFilename(filename) {
-  return typeof filename === 'string' && /^teddy\.glb$/i.test(filename.trim());
+  return typeof filename === 'string' && /^teddy(?:_ghost)?\.glb$/i.test(filename.trim());
 }
 
 export function shouldApplyGhostRiderPresentation(url, uploadFilename) {
