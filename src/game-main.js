@@ -493,7 +493,7 @@ function refreshLocationUi() {
     spotNav.append(button);
   }
   spotNav.hidden = !manifest.spots?.length;
-  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / SKYLINE ROOFTOP',
+  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / IRON DISTRICT',
     'orbit': 'MAP 2 / ORBIT',
     'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;

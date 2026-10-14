@@ -1,7 +1,7 @@
 import { gameAssetUrl } from '../game/AssetPaths.js';
 /** Stable park identifiers; public map numbers are independent of saved IDs. */
 export const PARK_DEFINITIONS = Object.freeze([
-  Object.freeze({ id: 'rooftop', number:1, name: 'SKYLINE ROOFTOP', subtitle: 'Sunset clouds / rooftop lines', available: true, selectable: true }),
+  Object.freeze({ id: 'rooftop', number:1, name: 'IRON DISTRICT', subtitle: 'Abandoned steelworks / freight yard', available: true, selectable: true }),
   Object.freeze({ id: 'orbit', number:2, name: 'ORBIT', subtitle: 'Neon lines / orbital skate terminal', available: true, selectable: true }),
   Object.freeze({ id: 'grand-warehouse', number:3, name: 'GRAND WAREHOUSE', subtitle: 'Your custom-built indoor wooden skatepark', available: true, selectable: true }),
   Object.freeze({ id: 'legacy', name: 'LEGACY PARK', subtitle: 'Expanded classic skatepark', available: true, selectable: false }),
@@ -15,12 +15,12 @@ export const PARK_DEFINITIONS = Object.freeze([
  */
 const ROUTE_GUIDES = Object.freeze({
   rooftop: [
-    { id: 'technical', name: 'Rooftop street technique', category: 'technical',
-      spots: ['street', 'rail'], rails: ['Street flat rail', 'Manual pad edge', 'Solar express continuous return rail'] },
-    { id: 'flow', name: 'Halfpipe to pool', category: 'flow',
-      spots: ['street', 'flow', 'bowl'], rails: ['Orbit pool coping'] },
-    { id: 'showcase', name: 'Skyline showcase', category: 'showcase',
-      spots: ['street', 'mega', 'flow'], rails: ['Solar express continuous return rail'] },
+    { id: 'technical', name: 'Plaza to freight terminal', category: 'technical',
+      spots: ['street', 'freight'], railMatches: ['GRIND_A_', 'GRIND_C_'] },
+    { id: 'flow', name: 'Steel Flow Yard and transfers', category: 'flow',
+      spots: ['street', 'flow', 'pipework'], railMatches: ['COPING_B_'] },
+    { id: 'showcase', name: 'Iron District circuit', category: 'showcase',
+      spots: ['street', 'mega', 'freight'], railMatches: ['COPING_E_', 'GRIND_C_'] },
   ],
   orbit: [
     { id: 'technical', name: 'Ion runway technique', category: 'technical',
@@ -187,15 +187,10 @@ function assertNotAborted(signal) {
 }
 
 async function loadRooftop({ scope, signal }) {
-  const [{ createSolarDockPark }, { surfaceTexturesReady }] = await Promise.all([
-    import('./SolarDockPark.js'), import('./SurfaceMaterials.js'),
-  ]);
+  const { createIronDistrict } = await import('./IronDistrict.js');
   assertNotAborted(signal);
-  const world = createSolarDockPark();
-  // SurfaceMaterials caches photo textures globally. Dispose local geometry and
-  // materials, but deliberately retain shared photo textures for the next load.
-  scope.trackWorld(world, { disposeTextures: false });
-  await surfaceTexturesReady();
+  const world = await createIronDistrict();
+  scope.trackWorld(world, { disposeTextures: true });
   assertNotAborted(signal);
   return world;
 }
