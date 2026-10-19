@@ -1,3 +1,5 @@
+import { FlatlandMotion, flatlandDeckPose } from '../character/FlatlandMotion.js';
+import { FlipWind } from './FlipWind.js';
 import { installHalfPipeFinish } from './HalfPipeFinish.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -12,6 +14,8 @@ export class StreetBoard {
     this.url = url;
     this.root = new THREE.Group();
     this.root.name = 'street-board';
+    this.wind = new FlipWind(this.root);
+    this.flatlandMotion = new FlatlandMotion();
     this._rotation = new THREE.Euler();
     this._poseQuaternion = new THREE.Quaternion();
     this.poseReady = false;
@@ -187,6 +191,9 @@ export class StreetBoard {
   }
 
   resetPresentation() {
+    this.wind.reset();
+    this.flatlandMotion.reset();
+    this.manualSupport = false;
     this.poseReady = false;
     this._yawHold = 0;
     this._wasFlipping = false;
@@ -232,9 +239,10 @@ export class StreetBoard {
     } else if (airborne && !grabState && !bail) {
       x += popMotion(presentation?.popProgress ?? 1);
     }
-    // Readable nose/tail lift while respecting short-deck ground clearance.
-    if (manual === 'manual') x -= 0.225 + clamp(manualBalance, -1, 1) * 0.018;
-    if (manual === 'noseManual') x += 0.225 - clamp(manualBalance, -1, 1) * 0.018;
+    // Keep the approved flatland support angle while raising the plain manual.
+    const flatlandWeight = Object.values(this.flatlandMotion.weights).reduce((sum, weight) => sum + weight, 0);
+    if (manual === 'manual') x -= 0.30 - 0.14 * flatlandWeight + clamp(manualBalance, -1, 1) * 0.035;
+    if (manual === 'noseManual') x += 0.30 - clamp(manualBalance, -1, 1) * 0.035;
     if (grindPose) {
       x += grindPose.pitch || 0;
       y += grindPose.yaw || 0;
@@ -243,21 +251,12 @@ export class StreetBoard {
     }
     if (wallRide) z += 0.12;
 
-    if (flatland) {
-      const wave = Math.sin(time * 7) * 0.08;
-      switch (flatland) {
-        case 'Pogo': x -= 0.48; break;
-        case 'Wrap Around': y += wave * 2.4; break;
-        case 'Handstand': x += 0.11; break;
-        case 'Casper': z += Math.PI; x -= 0.12; break;
-        case 'Truck Stand': y += Math.PI * 0.5; x -= 0.2; break;
-        case 'Anti Casper': z += Math.PI; x += 0.12; break;
-        case 'To Rail': y -= Math.PI * 0.5; break;
-        case 'Switch Foot Pogo': x += 0.48; break;
-        case 'One Foot Manual': x += stance > 0 ? -0.18 : 0.18; break;
-        default: break;
-      }
-    }
+    this.flatlandMotion.update(bail || airborne ? null : flatland, dt);
+    const flatPose = flatlandDeckPose(this.flatlandMotion);
+    x += flatPose.pitch;
+    y += flatPose.yaw;
+    z += flatPose.roll;
+    this.root.position.y += flatPose.lift;
 
     if (bail) {
       const p = clamp(bailProgress, 0, 1);
@@ -276,5 +275,20 @@ export class StreetBoard {
     if (flipState || bail || !this.poseReady) this.root.quaternion.copy(this._poseQuaternion);
     else this.root.quaternion.slerp(this._poseQuaternion, 1 - Math.exp(-22 * Math.max(0, dt)));
     this.poseReady = true;
+    if (manual) this.manualSupport = true;
+    if (airborne || bail || grind || wallRide || flatland) this.manualSupport = false;
+    if (this.manualSupport) {
+      // Lift around the supporting truck rather than sinking the lower wheels
+      // through the ground when increasing the presentation angle.
+      const pitch = this.root.rotation.x;
+      const supportZ = pitch < 0 ? this.contactRig.frontTruckZ : this.contactRig.rearTruckZ;
+      this.root.position.y += Math.abs(Math.sin(pitch)) * Math.abs(supportZ)
+        + (Math.cos(pitch) - 1) * this.deckHeight;
+      // Keep support during the return to level instead of dropping the board
+      // immediately while its rotation is still blending out of the manual.
+      if (!manual && Math.abs(pitch) < 0.0001) this.manualSupport = false;
+    }
+    this.wind.update(flipState, airborne, bail, dt);
+
   }
 }

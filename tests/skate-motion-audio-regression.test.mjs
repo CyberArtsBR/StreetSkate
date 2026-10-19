@@ -30,7 +30,7 @@ test('shipping skater keeps pushing cosmetic motion disabled while preserving ac
 });
 
 for (const name of ['TheanchoURi','The_Heretic','TuxR']) {
-  test(`${name}: remada keeps the leading foot planted and releases the trailing foot`, async () => {
+  test(`${name}: disabled push animation keeps both feet planted`, async () => {
     const rider = new UnrealRider(name).configureModel(await loadGeometry(`public/assets/rider/${name}.glb`));
     const board = new StreetBoard('/unused');
     board.deckHeight = 0.12;
@@ -45,7 +45,7 @@ for (const name of ['TheanchoURi','The_Heretic','TuxR']) {
       const trailing = rider.bones[`foot_${rear}`].getWorldPosition(new THREE.Vector3());
       for (let i=0;i<35;i++) rider.update({ ...options, pushWeight: 1, pushPhase: 0.5 });
       assert.ok(rider.bones[`foot_${front}`].getWorldPosition(new THREE.Vector3()).distanceTo(leading) < 0.015);
-      assert.ok(rider.bones[`foot_${rear}`].getWorldPosition(new THREE.Vector3()).distanceTo(trailing) > 0.06);
+      assert.ok(rider.bones[`foot_${rear}`].getWorldPosition(new THREE.Vector3()).distanceTo(trailing) < 0.015);
       assert.ok([...rider.rest.keys()].every(bone => bone.quaternion.toArray().every(Number.isFinite)));
     }
     rider.dispose();

@@ -96,15 +96,8 @@ export const DOUBLE_GRIND_TRICKS = Object.freeze({
 });
 
 export const FLATLAND_TRICKS = Object.freeze({
-  'grind+grind': { name: 'Pogo', points: 200, instability: 0.34 },
-  'flip+flip': { name: 'Wrap Around', points: 225, instability: 0.30 },
   'grab+grab': { name: 'Handstand', points: 300, instability: 0.48 },
   'flip+grind': { name: 'Casper', points: 250, instability: 0.40 },
-  'grind+flip': { name: 'Truck Stand', points: 300, instability: 0.46 },
-  'flip+grab': { name: 'Anti Casper', points: 275, instability: 0.42 },
-  'grab+flip': { name: 'To Rail', points: 250, instability: 0.38 },
-  'grind+grab': { name: 'Switch Foot Pogo', points: 325, instability: 0.52 },
-  'grab+grind': { name: 'One Foot Manual', points: 325, instability: 0.50 },
 });
 
 export const MANUALS = Object.freeze({
