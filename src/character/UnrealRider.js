@@ -1,3 +1,4 @@
+import { updateApprovedBalancePose, handstandTarget } from './ApprovedBalancePose.js';
 import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
@@ -267,6 +268,8 @@ export class UnrealRider {
 
   boardPoint(board, x, y, z) { return board?.pointWorld?.(x, y, z, V()) || null; }
 
+  handstandTarget(side, board) { return handstandTarget.call(this, side, board); }
+
   grabTarget(name, side, stance, board) {
     const sign = this.outward[side] || (side === 'l' ? -1 : 1);
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
@@ -302,6 +305,11 @@ export class UnrealRider {
       return;
     }
     if (!bail && this.ragdoll.active) this.resetPresentation();
+    const balanceResidual = this.w(PRESENTATION_STATES.FLATLAND);
+    if (!bail && !flipState && !grabState && !grindType && !wallRide && !airborne
+      && (flatland || (balanceResidual > 0.001 && !['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state)))) {
+      return updateApprovedBalancePose.call(this, arguments[0]);
+    }
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
     this.model.position.copy(this.basePos);
     this.model.quaternion.copy(this.baseQ);
@@ -317,8 +325,7 @@ export class UnrealRider {
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
-    const push = pushWeight > .005 && !flipState && !grab && !bail && !flatland
-      ? pushMotion(pushPhase) : null;
+    const push = null; // User disabled the pushing animation; propulsion stays in physics.
     const pushAmount = push ? C(pushWeight, 0, 1) : 0;
     const supportShift = (push?.weightShift || 0) * pushAmount;
     const balance = C(springStep(this.scalar.balance,
