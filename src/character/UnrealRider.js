@@ -175,6 +175,10 @@ export class UnrealRider {
     if (restAnkles.length && this.bones.pelvis) {
       const hipY = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V())).y;
       this.poseCalibration = avatarPoseCalibration(hipY - Math.min(...restAnkles));
+      // Tux's broad body needs a little more clearance than his short leg
+      // proportions alone predict. Keep sole targets and bone scale intact.
+      if (String(this.url).split('?')[0].endsWith('/assets/rider/TuxR.glb'))
+        this.poseCalibration.pelvisClearance = Math.max(.35, this.poseCalibration.pelvisClearance);
     }
     // Imported character axes can be mirrored by the +90 degree GLB rotation.
     // Infer leg sides from the actual positioned feet, never side labels alone.
