@@ -85,6 +85,11 @@ sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.07;
 sun.shadow.radius = 2;
 scene.add(sun);
+// Broad reflected skylight keeps costumes legible without making them glow.
+// One non-shadowed fill is shared by all maps; the key retains the 1024 atlas.
+const fill = new THREE.DirectionalLight('#bfd8ff', .4);
+fill.name = 'Map skylight fill';
+scene.add(fill, fill.target, sun.target);
 
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(2000, 2000),
@@ -246,6 +251,11 @@ function applyLighting() {
   ambient.color.set(settings.ambientSky);
   ambient.groundColor.set(settings.ambientGround);
   ambient.intensity = dusk ? 0.4 : settings.ambientIntensity;
+  fill.color.set(settings.fillColor || '#bfd8ff');
+  fill.intensity = (settings.fillIntensity || 0) * (dusk ? .55 : 1);
+  fill.position.set(...(settings.fillPosition || [35, 25, -45]));
+  fill.target.position.set(...settings.center);
+  fill.target.updateMatrixWorld();
   renderer.toneMappingExposure = settings.exposure * (graphicsPipeline.settings?.exposureMultiplier || 1);
   scene.environment = currentWorld.environment || sky?.environment?.texture || environment.texture;
   scene.environmentIntensity = (dusk ? 0.22 : settings.environmentIntensity) *
@@ -787,7 +797,7 @@ renderer.setAnimationLoop(() => {
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,
   // rather than running HDR and bloom behind an opaque title/options screen.
   if(gameShell.phase!=='select'&&(gameShell.active||(gameShell.phase==='highlights'&&document.hasFocus())||mode==='explore'||sceneNeedsRender)){
-    graphicsPipeline.render();sceneNeedsRender=false;
+    graphicsPipeline.render({ contactSource: gameShell.phase === 'highlights' ? null : skater });sceneNeedsRender=false;
     if(import.meta.env.DEV&&artCaptureMap&&!document.getElementById('art-thumbnail')){
       // Bake a compact WebP directly from the rendered canvas, after this frame.
       const thumbnail=document.createElement('canvas');thumbnail.width=768;thumbnail.height=432;

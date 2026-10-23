@@ -6,6 +6,8 @@ import { CoreSkateController } from './core/CoreSkateController.js';
 import { SkateboardContactRig } from './SkateboardContactRig.js';
 import { sharedSurfaceTextures, surfaceTexturesReady } from '../park/SurfaceMaterials.js';
 import { buildParkRouteMetadata, validateParkManifest } from '../park/ParkRegistry.js';
+import { resolveMapLook } from '../graphics/MapLook.js';
+import { refineMapSurfaces } from '../graphics/SurfaceFinish.js';
 
 // Location-specific presentation only; universal skate physics stays unchanged.
 export const PARK_REGISTRY = Object.freeze({
@@ -105,7 +107,9 @@ export async function createParkWorld(id, onProgress = () => {}) {
       world.manifest.routes = buildParkRouteMetadata(world.manifest, id);
     validateParkWorld(world);
     world.id = id;
-    world.presentation = { ...entry.presentation, ...world.manifest.environment, ...world.presentation };
+    world.presentation = resolveMapLook(id,
+      { ...entry.presentation, ...world.manifest.environment, ...world.presentation });
+    refineMapSurfaces(world.park, id);
     world.manifest.locationId = id;
     world.cameraRoof = [];
     world.park.traverse(object => { if (object.userData.cameraRoof) world.cameraRoof.push(object); });

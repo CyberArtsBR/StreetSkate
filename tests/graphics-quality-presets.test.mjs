@@ -77,7 +77,7 @@ test('integration maintains scene-specific exposure and uses shared post FX comp
   const fx = readFileSync(new URL('../src/graphics/GraphicsPipeline.js',import.meta.url),'utf8');
   assert.match(main,/sun\.shadow\.mapSize\.set\(1024, 1024\)/);
   assert.match(main,/renderer\.toneMappingExposure = settings\.exposure \*/);
-  assert.match(main,/graphicsPipeline\.render\(\)/);
+  assert.match(main,/graphicsPipeline\.render\(\{ contactSource: gameShell\.phase === 'highlights' \? null : skater \}\)/);
   assert.match(main,/graphicsPipeline\.setWorld\(park\)/);
   assert.match(shell,/graphicsSet/);
   assert.match(shell,/graphicsMenu/);
