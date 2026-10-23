@@ -1,0 +1,82 @@
+name: Package StreetSkate for itch.io
+
+on:
+  push:
+    branches:
+      - itchio/html5-package
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  html5-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out StreetSkate
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Build for itch.io subdirectory hosting
+        run: npm run build -- --base=./
+
+      - name: Validate and ZIP HTML5 game
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          import sys
+
+          root = Path("dist")
+          index = root / "index.html"
+          if not index.is_file():
+              sys.exit("ERROR: dist/index.html is missing")
+          files = [p for p in root.rglob("*") if p.is_file()]
+          if len(files) > 1000:
+              sys.exit(f"ERROR: {len(files)} files exceeds itch.io's 1000-file limit")
+          total = sum(p.stat().st_size for p in files)
+          if total > 500_000_000:
+              sys.exit(f"ERROR: {total:,} unpacked bytes exceeds itch.io's 500MB limit")
+          for path in files:
+              relative = path.relative_to(root).as_posix()
+              if len(relative.encode("utf-8")) > 240:
+                  sys.exit(f"ERROR: filename too long: {relative}")
+              if path.stat().st_size > 200_000_000:
+                  sys.exit(f"ERROR: file exceeds 200MB: {relative}")
+          html = index.read_text(encoding="utf-8")
+          if 'type="module"' not in html:
+              sys.exit("ERROR: built index.html lacks a module script")
+          out = Path("StreetSkate-itchio-HTML5.zip")
+          with ZipFile(out, "w", compression=ZIP_DEFLATED, compresslevel=6) as z:
+              for path in sorted(files):
+                  z.write(path, path.relative_to(root).as_posix())
+          with ZipFile(out) as z:
+              if "index.html" not in z.namelist():
+                  sys.exit("ERROR: ZIP missing root index.html")
+              bad = z.testzip()
+              if bad:
+                  sys.exit(f"ERROR: ZIP CRC failed: {bad}")
+          print(f"SUCCESS: {out} ({out.stat().st_size:,} compressed bytes)")
+          print(f"HTML5 bundle: {len(files)} files, {total:,} unpacked bytes")
+          PY
+
+      - name: Upload ready-to-publish itch.io ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreetSkate-itchio-HTML5
+          path: StreetSkate-itchio-HTML5.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
