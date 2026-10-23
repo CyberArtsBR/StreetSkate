@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - itchio/html5-package
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
