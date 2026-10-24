@@ -141,10 +141,26 @@ export class GameShell {
     return `<div class="audio-volume-control" role="group" aria-label="${label} volume">
       <span>${label} <strong>${Math.round(value*100)}%</strong></span>
       <button data-menu data-action="${channel}Down" aria-label="Decrease ${label.toLowerCase()} volume">−</button>
-      <button data-menu data-action="${channel}Up" aria-label="Increase ${label.toLowerCase()} volume">+</button></div>`;
+      <button data-menu data-action="${channel}Up" aria-label="Increase ${label.toLowerCase()} volume">+</button>
+      <span class="audio-meter" aria-hidden="true" style="--volume:${Math.round(value*100)}%"></span></div>`;
   }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
   locationName(){return LOCATIONS[this.locationIndex]?.name||'';}
+  renderMenuFrame(title, body){
+    const hero=this.heroes[this.heroIndex];
+    const spot=LOCATIONS[this.locationIndex];
+    const captions={pause:'Take a breath. Your next line is waiting.',options:'Your setup. Your sound. Your session.',graphics:'Set the look. Find your flow.'};
+    return `<div class="menu-stage">
+      <aside class="menu-session-art" data-location="${safe(spot.id)}" aria-label="Session preview">
+        <span class="menu-art-kicker">CHIMP HAWK / UNDERGROUND</span>
+        <div class="menu-art-title" aria-hidden="true">${this.phase==='pause'?'STAY<br>IN FLOW.':'MAKE<br>IT YOURS.'}</div>
+        <span class="menu-rider" style="--rider-accent:${hero.accent}" data-portrait-url="${safe(hero.url)}" data-preview-state="loading"></span>
+        <div class="menu-art-caption"><span>YOUR SESSION</span><strong>${safe(hero.name)}</strong><small>${safe(spot.name)}</small></div>
+        <span class="menu-art-stamp" aria-hidden="true">SKATE / REPEAT</span><div class="menu-music-slot"></div>
+      </aside>
+      <div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><header class="menu-card-heading"><small>THE SESSION LAB</small><h2>${safe(title)}</h2><p>${captions[this.phase]||''}</p></header>${body}</div>
+    </div>`;
+  }
   render(){
     // Keep the music panel alive while replacing menu contents; selection
     // screens give it a layout slot so it never covers their heading/cards.
@@ -169,11 +185,11 @@ export class GameShell {
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
-      body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB</small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
+      body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
         <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
-        <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}">
+        <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}"><span class="rider-stage-number" aria-hidden="true">${String(this.heroIndex+1).padStart(2,'0')}</span>
           <span class="rider-portrait" data-portrait-url="${safe(this.heroes[this.heroIndex].url)}" data-preview-state="loading"><span class="preview-status">Loading preview…</span></span>
           <div class="selected-rider-copy"><span>${this.heroConfirmed?'YOUR RIDER':'MEET THE CREW'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong><small>${safe(this.heroes[this.heroIndex].subtitle)}</small></div>
         </div><div class="loadout-roster">${cards}</div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
@@ -181,19 +197,19 @@ export class GameShell {
         <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
         <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">THREE PARKS. YOUR LINE.</span></div>
         <div class="loadout-locations">${spots}</div><div class="selection-note"><span>SESSION LOCATION</span><strong>MAP ${LOCATIONS[this.locationIndex].number} / ${safe(LOCATIONS[this.locationIndex].name)}</strong></div></section></div>
-        <footer>${this.button('← BACK','back')}<span class="loadout-recap">${safe(this.heroes[this.heroIndex].name)} <i>/</i> ${safe(BOARD_CHOICES[this.boardIndex].label)} <i>/</i> MAP ${LOCATIONS[this.locationIndex].number}</span>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <footer>${this.button('← BACK','back')}<div class="loadout-recap"><span class="loadout-checks"><span class="${this.heroConfirmed?'complete':''}">${this.heroConfirmed?'✓':'01'} RIDER</span><span class="${this.boardConfirmed?'complete':''}">${this.boardConfirmed?'✓':'02'} DECK</span><span class="complete">✓ SPOT</span></span><span>${safe(this.heroes[this.heroIndex].name)} <i>/</i> ${safe(BOARD_CHOICES[this.boardIndex].label)} <i>/</i> MAP ${LOCATIONS[this.locationIndex].number}</span></div>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
         <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
         this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
-      title='OPTIONS';body=this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
-        +this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
-        +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')
-        +this.volumeControl('music','MUSIC',this.music.musicVolume)
+      title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
+        +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
+        +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div></div>'
+        +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
         +this.volumeControl('effects','EFFECTS',this.effectsVolume)
-        +this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
-        +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')
+        +'<div class="menu-setting-pair">'+this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
+        +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')+'</div></div>'
         +this.button('BACK','back');
     } else if(this.phase==='graphics') {
       const key=GRAPHICS_PRESET_ORDER[this.graphicsIndex];
@@ -217,8 +233,9 @@ export class GameShell {
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=['title','tutorial','select','timeup','results','highlights'].includes(this.phase)?body:`<div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><small>CHIMP HAWK / UNDERGROUND</small><h2>${safe(title)}</h2>${body}</div>`;
+    this.content.innerHTML=['title','tutorial','select','timeup','results','highlights'].includes(this.phase)?body:this.renderMenuFrame(title,body);
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
+    else this.content.querySelector('.menu-music-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
       button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
       // Pointer hover must NOT call focus(): it steals controller/keyboard focus,
@@ -231,6 +248,7 @@ export class GameShell {
        };
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
+    else if(['pause','options','graphics'].includes(this.phase))this.loadPortraits();
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
       const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
