@@ -122,3 +122,5 @@
   #game-shell.loadout-screen *,#game-shell.loadout-screen *::before,
   #game-shell.loadout-screen *::after{scroll-behavior:auto!important;transition:none!important}
 }
+
+#game-shell.loadout-screen [data-location='skate-paradise'] .location-art{background:linear-gradient(0deg,#25252666,#15151900),url('/assets/menu/skate-paradise.webp') center/cover}

@@ -506,7 +506,7 @@ function refreshLocationUi() {
     spotNav.append(button);
   }
   spotNav.hidden = !manifest.spots?.length;
-  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / IRON DISTRICT',
+  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'IRON DISTRICT', 'skate-paradise':'MAP 1 / SKATE PARADISE',
     'orbit': 'MAP 2 / ORBIT',
     'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
@@ -600,7 +600,7 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
 async function loadGame() {
   let initialWorld;
   try {
-    initialWorld = await createParkWorld(legacyPark ? 'legacy' : 'rooftop', message => {
+    initialWorld = await createParkWorld(legacyPark ? 'legacy' : 'skate-paradise', message => {
       document.querySelector('#load-progress').textContent = message;
     });
     prepareWorldVisuals(initialWorld);
@@ -660,7 +660,7 @@ async function loadGame() {
     // Local art-director capture route; Vite removes this block from production.
     if(import.meta.env.DEV){
       const captureMap=new URLSearchParams(location.search).get('art-capture');
-      if(['rooftop','orbit','grand-warehouse'].includes(captureMap)){
+      if(['skate-paradise','rooftop','orbit','grand-warehouse'].includes(captureMap)){
         if(captureMap!==currentWorld.id)await selectLocation(captureMap);
         setMode('explore');setExploreView('overview',true);
         const center=currentWorld.presentation.center;

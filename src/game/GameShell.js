@@ -186,7 +186,7 @@ export class GameShell {
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading Iron District…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}</div><p class="title-status" role="status">${this.ready?'':this.loadError?'Unable to load the park. Reload to retry.':'Loading Skate Paradise…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -196,7 +196,7 @@ export class GameShell {
         style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-thumb" data-board-preview="${i}"><span class="deck-preview"></span></span><b>${safe(board.label)}</b><span class="deck-swatch" aria-hidden="true"></span></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
-        <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
+        <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='skate-paradise'?'SUNSET / SKATEPARK':spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
         <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">

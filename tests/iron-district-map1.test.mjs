@@ -19,9 +19,9 @@ const worldPromise = createIronDistrict({
   fetcher: async url => ({ ok: true, json: () => json(url.split('/').at(-1)) }),
 });
 
-test('Map 1 selects the user edited GLB with a preserved source digest', async () => {
+test('archived Iron District retains the edited GLB with a preserved source digest', async () => {
   const world = await worldPromise;
-  assert.equal(PARK_DEFINITIONS.find(park => park.number === 1).name, 'IRON DISTRICT');
+  assert.equal(PARK_DEFINITIONS.find(park => park.id === 'rooftop').selectable, false);
   assert.equal(PARK_REGISTRY.rooftop.name, 'Iron District');
   assert.deepEqual(requests, [IRON_DISTRICT_ASSET]);
   const receipt = await json('integration-receipt.json');

@@ -11,6 +11,11 @@ import { refineMapSurfaces } from '../graphics/SurfaceFinish.js';
 
 // Location-specific presentation only; universal skate physics stays unchanged.
 export const PARK_REGISTRY = Object.freeze({
+  'skate-paradise': {
+    name:'Skate Paradise',
+    create:async()=>(await import('../park/SkateParadise.js')).createSkateParadise(),
+    presentation:{},
+  },
   rooftop: {
     name: 'Iron District',
     create: async () => (await import('../park/IronDistrict.js')).createIronDistrict(),
