@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { batchWarehouseVisuals } from './WarehouseVariants.js';
 import { warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
+import { createOrbitVisualPass } from '../graphics/OrbitVisualPass.js';
 
 const authoredName = warehouseObjectName;
 
@@ -237,5 +238,7 @@ export async function createOrbitPark() {
   manifest.statistics = { ...manifest.statistics, visualTriangles: world.visualTriangles,
     collisionMeshes: world.collision.children.length, rails: world.rails.length,
     authoredRouteCount: manifest.routes.length };
-  return { ...world, manifest, environment: sky };
+  const result={ ...world, manifest, environment: sky };
+  result.surfaceDetail=createOrbitVisualPass(result);
+  return result;
 }

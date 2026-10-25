@@ -1,0 +1,189 @@
+import * as THREE from 'three';
+
+const finite = v => v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+const clamp = THREE.MathUtils.clamp;
+
+const VERTEX = `
+attribute float particleSize;
+attribute float opacity;
+attribute vec3 tint;
+attribute vec3 motion;
+attribute float streak;
+uniform float viewportHeight;
+varying vec3 vTint;
+varying float vOpacity;
+varying float vStreak;
+varying float vAngle;
+void main() {
+  vec4 p=modelViewMatrix*vec4(position,1.0);
+  vec3 travel=mat3(modelViewMatrix)*motion;
+  vAngle=atan(travel.y,travel.x);
+  vTint=tint;vOpacity=opacity;vStreak=streak;
+  gl_PointSize=clamp(particleSize*viewportHeight/max(1.0,-p.z),1.0,72.0);
+  gl_Position=projectionMatrix*p;
+}`;
+const FRAGMENT = `
+varying vec3 vTint;
+varying float vOpacity;
+varying float vStreak;
+varying float vAngle;
+void main() {
+  vec2 p=gl_PointCoord*2.0-1.0;
+  float c=cos(vAngle),s=sin(vAngle);
+  vec2 q=vec2(c*p.x+s*p.y,-s*p.x+c*p.y);
+  float radius=mix(length(p),length(q*vec2(.95,4.8)),vStreak);
+  float edge=1.0-smoothstep(.0,1.0,radius);
+  float alpha=edge*edge*vOpacity;
+  if(alpha<.004)discard;
+  gl_FragColor=vec4(vTint,alpha);
+  #include <colorspace_fragment>
+}`;
+
+function makePool(name,count,additive) {
+  const geometry=new THREE.BufferGeometry();
+  const arrays={position:new Float32Array(count*3),motion:new Float32Array(count*3),tint:new Float32Array(count*3),
+    particleSize:new Float32Array(count),opacity:new Float32Array(count),streak:new Float32Array(count)};
+  for(const key of Object.keys(arrays))geometry.setAttribute(key,new THREE.BufferAttribute(arrays[key],
+    ['position','motion','tint'].includes(key)?3:1).setUsage(THREE.DynamicDrawUsage));
+  const material=new THREE.ShaderMaterial({name,vertexShader:VERTEX,fragmentShader:FRAGMENT,
+    uniforms:{viewportHeight:{value:720}},transparent:true,depthWrite:false,depthTest:true,
+    blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,toneMapped:false});
+  const points=new THREE.Points(geometry,material);points.name=name;points.frustumCulled=false;points.visible=false;
+  return {points,arrays,count,cursor:0,age:new Float32Array(count),duration:new Float32Array(count),
+    initialSize:new Float32Array(count),initialOpacity:new Float32Array(count),gravity:new Float32Array(count)};
+}
+
+/** Presentation-only skating particles. Two fixed draw calls, no textures,
+ * physics probes or per-update buffer/object allocation. Hide root during the
+ * selective bloom pass: these fine details belong to the normal scene pass.
+ */
+export class SkateEffects {
+  constructor(scene=null) {
+    this.root=new THREE.Group();this.root.name='Skating contact effects';this.root.userData.skateEffects=true;
+    this.dust=makePool('Soft landing dust',48,false);
+    this.glints=makePool('Grind sparks and trick traces',96,true);
+    this.root.add(this.dust.points,this.glints.points);scene?.add(this.root);
+    this.previousPosition=new THREE.Vector3();this.previousVelocity=new THREE.Vector3();
+    this.origin=new THREE.Vector3();this.forward=new THREE.Vector3();this.normal=new THREE.Vector3();
+    this.initialized=false;this.previousGrounded=true;this.previousSerial=0;this.airDuration=0;
+    this.grindBudget=0;this.traceBudget=0;this.landingLatch=false;this.scale=1;this.performance=false;
+  }
+
+  setQuality(settings) {
+    this.scale=clamp(Number(settings?.vfxScale)||1,.25,1.5);
+    this.performance=settings?.name==='performance';
+    if(this.performance){this.clearPool(this.glints);this.grindBudget=0;this.traceBudget=0;}
+  }
+
+  setSize(height,pixelRatio=1) {
+    const pixels=Math.max(1,Number(height)||720)*clamp(Number(pixelRatio)||1,1,2.25);
+    this.dust.points.material.uniforms.viewportHeight.value=pixels;
+    this.glints.points.material.uniforms.viewportHeight.value=pixels;
+  }
+
+  clearPool(pool) {
+    pool.age.fill(0);pool.duration.fill(0);pool.arrays.opacity.fill(0);pool.cursor=0;
+    pool.points.geometry.attributes.opacity.needsUpdate=true;pool.points.visible=false;
+  }
+
+  reset(skater=null) {
+    this.clearPool(this.dust);this.clearPool(this.glints);
+    this.grindBudget=0;this.traceBudget=0;this.airDuration=0;this.landingLatch=false;
+    this.initialized=finite(skater?.position);
+    if(this.initialized)this.remember(skater);
+  }
+
+  remember(skater) {
+    this.previousPosition.copy(skater.position);
+    if(finite(skater.velocity))this.previousVelocity.copy(skater.velocity);else this.previousVelocity.set(0,0,0);
+    this.previousGrounded=Boolean(skater.grounded);
+    this.previousSerial=skater.respawnSerial||0;
+    this.landingLatch=Boolean(skater.justLanded);
+  }
+
+  emit(pool,x,y,z,vx,vy,vz,size,life,opacity,r,g,b,streak,gravity) {
+    const i=pool.cursor;pool.cursor=(i+1)%pool.count;const k=i*3;
+    pool.arrays.position[k]=x;pool.arrays.position[k+1]=y;pool.arrays.position[k+2]=z;
+    pool.arrays.motion[k]=vx;pool.arrays.motion[k+1]=vy;pool.arrays.motion[k+2]=vz;
+    pool.arrays.tint[k]=r;pool.arrays.tint[k+1]=g;pool.arrays.tint[k+2]=b;
+    pool.arrays.streak[i]=streak;pool.initialSize[i]=size;pool.initialOpacity[i]=opacity;
+    pool.arrays.particleSize[i]=size;pool.arrays.opacity[i]=opacity;
+    pool.age[i]=0;pool.duration[i]=life;pool.gravity[i]=gravity;
+    pool.points.visible=true;
+  }
+
+  stepPool(pool,dt,dust) {
+    let visible=false;const a=pool.arrays;
+    for(let i=0;i<pool.count;i++) {
+      if(pool.duration[i]===0)continue;
+      const age=pool.age[i]+dt;pool.age[i]=age;
+      if(age>=pool.duration[i]){pool.duration[i]=0;a.opacity[i]=0;continue;}
+      visible=true;const k=i*3,t=age/pool.duration[i];
+      a.motion[k+1]-=pool.gravity[i]*dt;
+      a.position[k]+=a.motion[k]*dt;a.position[k+1]+=a.motion[k+1]*dt;a.position[k+2]+=a.motion[k+2]*dt;
+      a.opacity[i]=pool.initialOpacity[i]*(1-t)*(1-t);
+      a.particleSize[i]=pool.initialSize[i]*(dust?1+t*1.8:1-t*.35);
+    }
+    pool.points.visible=visible;
+    for(const key in pool.points.geometry.attributes)pool.points.geometry.attributes[key].needsUpdate=true;
+  }
+
+  landing(skater,impact) {
+    const n=this.normal;const p=this.origin;const f=this.forward;
+    const severity=clamp(impact/9,.15,1);
+    const count=Math.round((5+severity*10)*this.scale*(this.performance ? .45 : 1));
+    for(let i=0;i<count;i++) {
+      const angle=Math.random()*Math.PI*2,spread=.25+Math.random()*.55;
+      const side=(i%2?1:-1)*.11,along=(i%4<2?1:-1)*.22;
+      const x=p.x+f.x*along+f.z*side,y=p.y+n.y*.025,z=p.z+f.z*along-f.x*side;
+      this.emit(this.dust,x,y,z,Math.cos(angle)*spread+n.x*.25,.10+n.y*.12,Math.sin(angle)*spread+n.z*.25,
+        .18+severity*.14,.28+Math.random()*.22,.12+severity*.10,.64,.59,.49,0,-.12);
+    }
+  }
+
+  update(delta,skater) {
+    const dt=clamp(Number(delta)||0,0,.05);
+    if(!finite(skater?.position)||dt<=0)return;
+    // A location switch, replay seek or respawn is not a physical landing.
+    if(!this.initialized||(skater.respawnSerial||0)!==this.previousSerial
+      ||this.previousPosition.distanceToSquared(skater.position)>36){this.reset(skater);return;}
+    this.stepPool(this.dust,dt,true);this.stepPool(this.glints,dt,false);
+    if(skater.bailTime>0){this.airDuration=0;this.grindBudget=0;this.traceBudget=0;this.remember(skater);return;}
+    this.origin.copy(skater.position);
+    this.normal.copy(finite(skater.normal)?skater.normal:THREE.Object3D.DEFAULT_UP);
+    this.forward.copy(finite(skater.forward)?skater.forward:THREE.Object3D.DEFAULT_UP);
+    const speed=Math.abs(Number(skater.speed)||0);
+    const grounded=Boolean(skater.grounded);
+    const landed=grounded&&(!this.previousGrounded||(skater.justLanded&&!this.landingLatch));
+    const impact=Math.max(0,-this.previousVelocity.dot(this.normal));
+    if(landed&&this.airDuration>.08&&impact>1.1&&!skater.grind&&!skater.wallRide)this.landing(skater,impact);
+    if(grounded||skater.grind||skater.wallRide)this.airDuration=0;else this.airDuration+=dt;
+    if(!this.performance&&skater.grind&&speed>2) {
+      this.grindBudget+=dt*(12+Math.min(speed,20)*1.2)*this.scale;
+      while(this.grindBudget>=1) {
+        this.grindBudget--;
+        const side=(Math.random()-.5)*1.8;
+        this.emit(this.glints,this.origin.x,this.origin.y+.045,this.origin.z,
+          -this.forward.x*(.8+Math.random()*1.8)+this.forward.z*side,.3+Math.random()*1.2,
+          -this.forward.z*(.8+Math.random()*1.8)-this.forward.x*side,
+          .09+Math.random()*.05,.16+Math.random()*.18,.8,1,.58+Math.random()*.3,.16,1,7);
+      }
+    } else this.grindBudget=0;
+    // Short, faint board-edge traces only during fast, active airborne tricks.
+    if(!this.performance&&!grounded&&!skater.grind&&speed>11&&(skater.flipState||skater.grabState)) {
+      this.traceBudget+=dt*20*this.scale;
+      while(this.traceBudget>=1) {
+        this.traceBudget--;const side=(this.glints.cursor%2?1:-1)*.105;
+        this.emit(this.glints,this.origin.x+this.forward.z*side,this.origin.y+.04,this.origin.z-this.forward.x*side,
+          -this.forward.x*.6,0,-this.forward.z*.6,.11,.14,.14,.56,.77,1,1,0);
+      }
+    } else this.traceBudget=0;
+    this.remember(skater);
+  }
+
+  dispose() {
+    this.root.removeFromParent();
+    this.dust.points.geometry.dispose();this.dust.points.material.dispose();
+    this.glints.points.geometry.dispose();this.glints.points.material.dispose();
+  }
+}
