@@ -12,6 +12,24 @@ const PRESENTATION_NUMBERS = Object.freeze({ exposure:[.25,2], ambientIntensity:
 const PRESENTATION_COLORS = new Set(['ambientSky','ambientGround','keyColor','fillColor','fogColor','background']);
 const PRESENTATION_VECTORS = new Set(['center','keyPosition','fillPosition']);
 const MAX_MAP_LIGHTS = 12;
+const TRANSITION_TYPES=new Set(['BOWL','VERT','MINI','QUARTER','BANK','KICKER','HIP','SPINE']);
+
+export function readTestMapTransition(source) {
+  if(source===undefined)return undefined;
+  if(!source||typeof source!=='object'||Array.isArray(source)
+    ||typeof source.id!=='string'||!/^[a-z0-9][a-z0-9-]{0,79}$/.test(source.id)
+    ||!TRANSITION_TYPES.has(source.type)||!['LINEAR','RADIAL'].includes(source.axisMode))
+    throw new Error('Invalid test map ramp transition.');
+  const result={id:source.id,type:source.type,axisMode:source.axisMode};
+  for(const key of ['supportsVert','supportsTransfer','supportsPump','supportsLipTricks']) {
+    if(typeof source[key]!=='boolean')throw new Error('Invalid test map ramp capability.');
+    result[key]=source[key];
+  }
+  if(source.geometryRole!==undefined&&!['LIP','AREA_ANCHOR'].includes(source.geometryRole))throw new Error('Invalid test map ramp role.');
+  result.geometryRole=source.geometryRole||(result.supportsVert?'LIP':'AREA_ANCHOR');
+  result.cameraHint=source.type;
+  return result;
+}
 
 export function readTestMapPresentation(source) {
   if(source === undefined) return {};
@@ -134,9 +152,15 @@ export function readTestMapManifest(park) {
   for(const r of data.playableRegions) if(!['minX','maxX','minZ','maxZ'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<10000)
     || r.minX>=r.maxX || r.minZ>=r.maxZ) throw new Error('Invalid test map boundary.');
   if(data.spawnHeading!==undefined&&!Number.isFinite(data.spawnHeading))throw new Error('Invalid spawn heading.');
+  const transitionIds=new Set();
+  const rails=data.rails.map(r=>{
+    const transition=readTestMapTransition(r.transition);
+    if(transition){if(transitionIds.has(transition.id))throw new Error('Duplicate test map ramp transition.');transitionIds.add(transition.id);}
+    return {name:r.name,points:r.points,radius:r.radius,...(transition?{transition}:{})};
+  });
   const presentation=readTestMapPresentation(data.presentation);
   return { name:String(data.name||'Uploaded test map').slice(0,80), spawn:data.spawn, spawnHeading:data.spawnHeading||0,
-    transitionScale:1, rails:data.rails.map(r=>({name:r.name,points:r.points,radius:r.radius})),
+    transitionScale:1, rails,
     playableRegions:data.playableRegions.map(r=>({minX:r.minX,maxX:r.maxX,minZ:r.minZ,maxZ:r.maxZ})), spots:[], routes:[], presentation };
 }
 

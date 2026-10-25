@@ -14,6 +14,19 @@ function bytes(changes={}) {
   b.fill(32,20);b.set(new TextEncoder().encode(text),20);return b.buffer;
 }
 const manifest=()=>({version:1,name:'Test park',spawn:[0,.04,0],rails:[{name:'Test rail',points:[[-2,1,-2],[2,1,-2]],radius:.055}],playableRegions:[{minX:-10,maxX:10,minZ:-10,maxZ:10}]});
+test('uploaded coping retains authorized ramp transitions and rejects ambiguous authoring',()=>{
+  const root=park(),data=manifest();
+  data.rails[0].transition={id:'uploaded-quarter',type:'QUARTER',axisMode:'LINEAR',supportsVert:true,supportsTransfer:true,supportsPump:true,supportsLipTricks:true};
+  root.userData.streetSkateMap=data;
+  const world=assembleTestMap(root),runtime=prepareParkRuntime(world);
+  assert.equal(world.manifest.rails[0].transition.id,'uploaded-quarter');
+  assert.equal(runtime.coreController.transitions.transitions[0].id,'uploaded-quarter');
+  disposeParkWorld(world);
+  data.rails.push({...data.rails[0],name:'Duplicate'});
+  assert.throws(()=>readTestMapManifest(root),/Duplicate/);
+  data.rails.pop();data.rails[0].transition.supportsVert='true';
+  assert.throws(()=>readTestMapManifest(root),/capability/);
+});
 function park(authored=true) {
   const root=new THREE.Group();if(authored)root.userData.streetSkateMap=JSON.stringify(manifest());
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,20).rotateX(-Math.PI/2),new THREE.MeshStandardMaterial());root.add(floor);

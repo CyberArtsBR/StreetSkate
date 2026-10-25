@@ -4,6 +4,18 @@ import * as THREE from 'three';
 import { resolveGroundStepStart } from '../src/game/core/GroundStepResult.js';
 import { TRANSITION_INTENT } from '../src/game/transitions/TransitionIntent.js';
 
+test('tiny downhill reversal escapes sign memory on a ramp while flat jitter stays filtered',()=>{
+  const forward=new THREE.Vector3(0,.8,-.6);
+  for(const sign of [1,-1]) {
+    const deck=forward.clone().multiplyScalar(sign);
+    const velocity=forward.clone().multiplyScalar(-.08);
+    const slope=resolveGroundStepStart({velocity,forward:deck,rollingSign:sign,normalY:.6});
+    assert.equal(Math.sign(slope.speedState.speed),-sign);
+  }
+  const velocity=new THREE.Vector3(0,0,.04),flat=new THREE.Vector3(0,0,-1);
+  assert.ok(resolveGroundStepStart({velocity,forward:flat,rollingSign:1,normalY:1}).speedState.speed>0);
+});
+
 test('ground step start decays runtime timers without mutating inputs', () => {
   const velocity = new THREE.Vector3(0, 2, -6);
   const forward = new THREE.Vector3(0, 0, -1);
