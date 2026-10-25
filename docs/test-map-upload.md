@@ -101,3 +101,22 @@ This edition passes 46 targeted tests and the production build. Its geometry
 checks retain the same sample counts listed above. The headless geometry
 verifier strips images and disables sky reflections in its temporary copy;
 browser verification loads the original textures and environment.
+
+## Recording-driven repairs
+
+The separate `G:/Streetskate/artifacts/skate-paradise-fixes/` edition addresses
+the supplied desktop recording:
+
+- Extend the east small quarter's right boundary by 0.507 m to close a narrow
+  channel beside the neighboring structure. Visual geometry, collision and the
+  affected coping endpoint move together; the arched route stays open.
+- Replace the raised funbox's 26 intersecting faces with a closed 12-face hull.
+- Close the thirty-stair collision entrance's 75 mm gap and bridge its landing.
+- Use a double-sided depth-writing bloom blocker so reverse-wound imported
+  skins occlude neon instead of leaking glow through their backs.
+
+`tools/verify-map-repairs.mjs` compares the old and repaired assets. The old
+quarter seam fails all 26 support probes; the repaired seam passes all 26. The
+funbox's non-manifold edge count falls from four to zero. Four-wheel support
+passes 101 entrance probes; 44 rails, spawn and the 150% scale are retained.
+The full map geometry and neon-occlusion regression checks also pass.

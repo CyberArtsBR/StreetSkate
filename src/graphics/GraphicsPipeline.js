@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WheelContactShadows } from './WheelContactShadows.js';
+import { createBloomOccluderMaterial } from './BloomOccluderMaterial.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
@@ -99,7 +100,7 @@ export class GraphicsPipeline {
     this.bloomComposer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1,1), .25, .24, .88);
     this.bloomComposer.addPass(this.bloom);
-    this.blackoutMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.blackoutMaterial = createBloomOccluderMaterial();
     this.glowRoot = null;
     this.bloomSceneMeshes = null;
     this.bloomEnvironmentEmissives = [];

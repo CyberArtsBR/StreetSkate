@@ -26,7 +26,8 @@ const str=JSON.stringify(json),length=Math.ceil(Buffer.byteLength(str)/4)*4,j=Bu
 const b=Buffer.alloc(28+length+bin.length);b.writeUInt32LE(0x46546c67);b.writeUInt32LE(2,4);b.writeUInt32LE(b.length,8);b.writeUInt32LE(length,12);b.writeUInt32LE(0x4e4f534a,16);j.copy(b,20);b.writeUInt32LE(bin.length,20+length);b.writeUInt32LE(0x004e4942,24+length);bin.copy(b,28+length);
 const gltf=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
 const metadata=json.nodes.find(n=>n.extras?.streetSkateMap)?.extras.streetSkateMap;
-const scale=metadata?JSON.parse(metadata).authoringScale||1:1;
+const authoredMetadata=metadata?JSON.parse(metadata):{};
+const scale=authoredMetadata.authoringScale||1;
 const world=assembleTestMap(gltf.scene);
 if(process.env.MAP_FIND_SPAWN){
  const surface=new ParkCollision(world.collision),rig=new SkateboardContactRig(surface),hits=[];
@@ -40,7 +41,8 @@ const p=new THREE.Vector3(),n=new THREE.Vector3(),down=new THREE.Vector3(0,-1,0)
 const metal=[];world.park.traverse(o=>{if(o.isMesh&&/brushed stainless/.test(o.material?.name||''))metal.push(o);});
 const metalTrees=metal.map(m=>new MeshBVH(m.geometry.clone().applyMatrix4(m.matrixWorld)));
 report.railAlignmentFailures=[];
-for(const stair of [{x:82.095,y0:37.994,y1:46.375,z0:7.767,z1:2.757},{x:80.365,y0:65.088,y1:74.420,z0:7.687,z1:.267}])for(let i=1;i<100;i++) {
+for(const stair of [{x:82.095,y0:37.994,y1:46.375,z0:7.767,z1:2.757},
+  {x:80.365,y0:authoredMetadata.collisionRevision>=2?65.038:65.088,y1:74.420,z0:7.687,z1:.267}])for(let i=1;i<100;i++) {
   const t=i/100,position=new THREE.Vector3(stair.x,stair.z0+(stair.z1-stair.z0)*t,-(stair.y0+(stair.y1-stair.y0)*t)).multiplyScalar(scale);
   const hit=surface.rayRideable(position.clone().add(new THREE.Vector3(0,.1,0)),down,.2,p,n);
   report.stairSamples++;if(!hit||Math.abs(p.y-position.y)>.005)report.stairFailures.push({t,position:position.toArray()});
