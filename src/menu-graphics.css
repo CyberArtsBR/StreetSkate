@@ -198,3 +198,5 @@ body[data-screen='graphics'] #game-shell .menu-art-caption {bottom:35px}
 @media(prefers-reduced-motion:reduce) {
   #game-shell.loadout-screen *,#game-shell.menu-screen * {animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
+/* Local map testing belongs to Options; the title composition is unchanged. */
+.test-map-note { margin: 4px 2px 8px; font-size: 11px; line-height: 1.4; color: #bfcbd1; overflow-wrap: anywhere; }

@@ -43,6 +43,7 @@ export class GameShell {
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=this.finishIndex;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
+    this.mapUploadGeneration=0;this.mapUploadBusy=false;this.mapUploadStatus='';this.testMapName=null;
     this.runSummary=null;this.timeupEndsAt=0;this.replayDisplayKey='';
     this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
@@ -96,6 +97,14 @@ export class GameShell {
       this.selectError='Avatar ready · select this rider with A / Enter / Click before continuing.';
       this.render();
     });
+    this.mapInput=document.createElement('input');
+    this.mapInput.type='file';this.mapInput.accept='.glb,model/gltf-binary';this.mapInput.hidden=true;
+    this.mapInput.setAttribute('aria-label','Choose a test map GLB');
+    document.body.append(this.mapInput);
+    this.mapInput.addEventListener('change',()=>{
+      const file=this.mapInput.files?.[0];this.mapInput.value='';
+      if(file)this.uploadTestMap(file);
+    });
     window.addEventListener('keydown',e=>this.key(e),true);
     this.render();
   }
@@ -103,6 +112,9 @@ export class GameShell {
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
   setScreen(phase){
+    if(this.phase==='options'&&phase!=='options'&&this.mapUploadBusy){
+      this.mapUploadGeneration++;this.mapUploadBusy=false;this.mapUploadStatus='';this.actions.cancelLoadout?.();
+    }
     if(this.phase==='highlights'&&phase!=='highlights')this.actions.stopHighlights?.();
     // Leaving the selector invalidates any pending rider swap's UI completion.
     // A previously started loader may still resolve, but must never reopen a
@@ -145,7 +157,7 @@ export class GameShell {
       <span class="audio-meter" aria-hidden="true" style="--volume:${Math.round(value*100)}%"></span></div>`;
   }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
-  locationName(){return LOCATIONS[this.locationIndex]?.name||'';}
+  locationName(){return this.testMapName||LOCATIONS[this.locationIndex]?.name||'';}
   renderMenuFrame(title, body){
     const hero=this.heroes[this.heroIndex];
     const spot=LOCATIONS[this.locationIndex];
@@ -155,7 +167,7 @@ export class GameShell {
         <span class="menu-art-kicker">CHIMP HAWK / UNDERGROUND</span>
         <div class="menu-art-title" aria-hidden="true">${this.phase==='pause'?'STAY<br>IN FLOW.':'MAKE<br>IT YOURS.'}</div>
         <span class="menu-rider" style="--rider-accent:${hero.accent}" data-portrait-url="${safe(hero.url)}" data-preview-state="loading"></span>
-        <div class="menu-art-caption"><span>YOUR SESSION</span><strong>${safe(hero.name)}</strong><small>${safe(spot.name)}</small></div>
+        <div class="menu-art-caption"><span>YOUR SESSION</span><strong>${safe(hero.name)}</strong><small>${safe(this.locationName())}</small></div>
         <span class="menu-art-stamp" aria-hidden="true">SKATE / REPEAT</span><div class="menu-music-slot"></div>
       </aside>
       <div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><header class="menu-card-heading"><small>THE SESSION LAB</small><h2>${safe(title)}</h2><p>${captions[this.phase]||''}</p></header>${body}</div>
@@ -204,6 +216,8 @@ export class GameShell {
         this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
+        +this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
+        +`<p class="test-map-note" role="status" aria-live="polite">${safe(this.mapUploadStatus||'Local GLB · random rider & deck · unlimited practice')}</p>`
         +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div></div>'
         +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
@@ -352,7 +366,26 @@ export class GameShell {
       }
     }).catch(()=>{});
   }
-  setLocation(id){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.root.dataset.location=id;}
+  setLocation(id,testMapName=null){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.testMapName=testMapName;this.root.dataset.location=id;}
+  async uploadTestMap(file){
+    if(this.phase!=='options'||!this.ready||this.mapUploadBusy)return;
+    const generation=++this.mapUploadGeneration;
+    const hero=DEFAULT_CHARACTERS[Math.floor(Math.random()*DEFAULT_CHARACTERS.length)];
+    const board=BOARD_CHOICES[Math.floor(Math.random()*BOARD_CHOICES.length)];
+    this.mapUploadBusy=true;this.mapUploadStatus='READING LOCAL MAP…';this.render();
+    try{
+      const result=await this.actions.testMap({file,hero,board,onProgress:message=>{
+        if(generation===this.mapUploadGeneration&&this.phase==='options'){this.mapUploadStatus=message;this.render();}
+      }});
+      if(!result||generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      this.heroIndex=this.heroes.findIndex(h=>h.id===hero.id);this.boardIndex=board.finishIndex;this.finishIndex=board.finishIndex;
+      this.mapUploadBusy=false;this.mapUploadStatus='';this.pendingMode=null;this.tutorialSeen=true;
+      this.start(true);
+    }catch(error){
+      if(generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      this.mapUploadBusy=false;this.mapUploadStatus=error?.message||'Could not load this map.';this.render();
+    }
+  }
   async confirmLoadout(){
     if(this.selectBusy||this.phase!=='select')return;
     const hero=this.heroes[this.heroIndex];
@@ -410,6 +443,7 @@ export class GameShell {
       case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
+      case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;

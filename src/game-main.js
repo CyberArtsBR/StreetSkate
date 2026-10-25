@@ -8,6 +8,7 @@ import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.j
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
 import { createParkWorld, prepareParkRuntime, bindParkRuntime, disposeParkWorld } from './game/ParkRegistry.js';
+import { createTestMapWorld } from './game/TestMapLoader.js';
 import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
@@ -194,6 +195,7 @@ const gameShell = new GameShell({
   effectsVolume: value => skateAudio.setEffectsVolume(value),
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
+  testMap: ({file,hero,board,onProgress}) => selectLocation('test-map', {file,hero,finish:board.finishIndex,onProgress}),
 });
 
 // Observe the existing score banks without changing scoring or simulation rules.
@@ -509,7 +511,7 @@ function refreshLocationUi() {
     'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
   document.querySelector('.edition').textContent = locationTitle;
-  gameShell.setLocation(currentWorld.id);
+  gameShell.setLocation(currentWorld.id, currentWorld.id === 'test-map' ? manifest.name : null);
   transitionDebug?.dispose();
   transitionDebug = null;
   if (new URLSearchParams(window.location.search).get('debug') === '1') {
@@ -556,7 +558,7 @@ function commitWorld(world, runtime) {
   if (previousWorld && previousWorld !== world) disposeParkWorld(previousWorld, world);
 }
 
-async function selectLocation(id, { hero, finish } = {}) {
+async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
   if (!loaded || !skater) throw new Error('Wait for the game to finish loading.');
   if (switchingWorld) throw new Error('A location is already loading.');
   switchingWorld = true;
@@ -564,12 +566,13 @@ async function selectLocation(id, { hero, finish } = {}) {
   setPaused(true);
   let nextWorld;
   const progress = message => {
+    onProgress?.(message);
     gameShell.selectError = message;
     if (gameShell.phase === 'select') gameShell.render();
   };
   try {
-    if (id !== currentWorld.id) {
-      nextWorld = await createParkWorld(id, progress);
+    if (file || id !== currentWorld.id) {
+      nextWorld = file ? await createTestMapWorld(file, progress) : await createParkWorld(id, progress);
       prepareWorldVisuals(nextWorld);
       await ensureWorldEnvironment(nextWorld);
     }
