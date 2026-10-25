@@ -17,8 +17,9 @@ export const GRAPHICS_DESCRIPTIONS = Object.freeze({
   cinematic: 'Highest detail · prioritizes image quality',
 });
 // SSR on moving imported meshes creates ghost silhouettes and disappearing geometry at Ultra/Cinematic.\n// Use stable PBR environment reflections on all tiers; preserve high-tier AA, bloom, HDR and 1024 shadows.\n// The 1024 shadow-map size is intentional on ALL tiers: no hidden 2K/4K override.
+const SURFACE_DETAIL = Object.freeze({performance:0,'high-refresh':.45,balanced:.6,high:.85,ultra:1,cinematic:1});
 export const GRAPHICS_PRESETS = Object.freeze(Object.fromEntries(
-  Object.entries(PRESETS).map(([key,value])=>[key,Object.freeze({ ...value, shadowResolution:1024 })])
+  Object.entries(PRESETS).map(([key,value])=>[key,Object.freeze({ ...value, shadowResolution:1024, surfaceDetailScale:SURFACE_DETAIL[key] })])
 ));
 export const DEFAULT_GRAPHICS_PRESET = 'cinematic';
 export const GRAPHICS_STORAGE_KEY = 'streetskate.graphicsPreset.v1';

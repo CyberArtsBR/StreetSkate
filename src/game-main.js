@@ -21,6 +21,7 @@ import { graffitiToneForTrick } from './game/GraffitiTypography.js';
 import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
 import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
+import { SkateEffects } from './graphics/SkateEffects.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
 import './style.css';
 import './game-shell.css';
@@ -103,6 +104,9 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 const graphicsPipeline = new GraphicsPipeline(renderer, scene, camera);
+const skateEffects = new SkateEffects(scene);
+graphicsPipeline.setEffectsTarget(skateEffects.root);
+let effectsWereActive = false;
 const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
 let graphicsPreset = loadGraphicsPreset(graphicsStorage);
 
@@ -235,9 +239,12 @@ function applyGraphicsPreset(name) {
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
   }, { bloomEnabled: gameShell.bloomEnabled });
+  skateEffects.setQuality(graphicsPipeline.settings);
+  skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
   storeGraphicsPreset(graphicsStorage, graphicsPreset);
   if (currentWorld) {
+    currentWorld.surfaceDetail?.setQuality(graphicsPipeline.settings);
     graphicsPipeline.setWorld(currentWorld.park);
     applyLighting();
   }
@@ -473,6 +480,7 @@ async function ensureWorldEnvironment(world) {
 }
 
 function prepareWorldVisuals(world) {
+  world.surfaceDetail?.setQuality(graphicsPipeline.settings);
   const anisotropy = graphicsPipeline.settings?.anisotropy || Math.min(8, renderer.capabilities.getMaxAnisotropy());
   world.park.traverse(object => {
     if (!object.isMesh) return;
@@ -534,6 +542,7 @@ function commitWorld(world, runtime) {
   const previousPosition = skater.position.clone(), previousHeading = skater.heading, previousScore = skater.score;
   try {
     bindParkRuntime(skater, runtime);
+    skateEffects.reset(skater);
     currentWorld = world;
     ({ park, collision, manifest } = world);
     scene.add(park);
@@ -720,6 +729,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   graphicsPipeline.resize(innerWidth, innerHeight);
+  skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   scheduleTrickHudFit();
 });
 function suspendSkating() {
@@ -771,6 +781,7 @@ renderer.setAnimationLoop(() => {
         pendingReplayMoments.length = 0;
       }
       if (skater.respawnSerial !== respawn) followCamera.snap(skater);
+      skateEffects.update(dt,skater);
       followCamera.update(skater, dt, state);
       if (state.reset) followCamera.snap(skater);
     }
@@ -796,6 +807,10 @@ renderer.setAnimationLoop(() => {
   });
   transitionDebug?.update(skater);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
+  const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
+  if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
+  skateEffects.root.visible = Boolean(effectsActive);
+  effectsWereActive = Boolean(effectsActive);
   updateWorldVisibility();
   // Session menus use the supplied sunset artwork and need no hidden park render.
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,

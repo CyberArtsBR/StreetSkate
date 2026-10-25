@@ -53,7 +53,19 @@ export function refineMapSurfaces(root, id) {
     for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
       if (!m?.isMeshStandardMaterial || touched.has(m)) continue;
       touched.add(m);
-      if (id === 'rooftop') {
+      if (id === 'skate-paradise') {
+        if (/Paradise \/ scanned concrete/.test(m.name)) {
+          m.metalness = 0;
+          m.roughness = Math.max(m.roughness, .82);
+          addSurfaceVariation(m, { tone: .13, roughness: .09, scale: .23 });
+        } else if (/Paradise \/ scanned asphalt/.test(m.name)) {
+          m.metalness = 0;
+          m.roughness = Math.max(m.roughness, .9);
+          addSurfaceVariation(m, { tone: .10, roughness: .06, scale: .15 });
+        } else if (/Paradise \/ oiled laminated timber/.test(m.name)) {
+          addSurfaceVariation(m, { tone: .06, roughness: .09, scale: .48 });
+        }
+      } else if (id === 'rooftop') {
         if (['Concrete', 'Asphalt', 'Brick', 'RampPanel'].includes(m.name)) {
           m.metalness = 0;
           m.roughness = Math.max(m.roughness, m.name === 'RampPanel' ? .64 : .82);

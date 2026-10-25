@@ -102,6 +102,7 @@ export class GraphicsPipeline {
     this.bloomComposer.addPass(this.bloom);
     this.blackoutMaterial = createBloomOccluderMaterial();
     this.glowRoot = null;
+    this.effectsRoot = null;
     this.bloomSceneMeshes = null;
     this.bloomEnvironmentEmissives = [];
     this.bloomSceneChildCount = -1;
@@ -173,6 +174,10 @@ export class GraphicsPipeline {
   setGlowTarget(root) {
     this.glowRoot = root;
     this.bloomSceneMeshes = null;
+  }
+
+  setEffectsTarget(root) {
+    this.effectsRoot = root;
   }
 
   refreshBloomSceneCache() {
@@ -260,6 +265,7 @@ export class GraphicsPipeline {
     const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
     const contactMesh = this.wheelContactShadows?.mesh;
     const contactVisible = contactMesh?.visible;
+    const effectsVisible = this.effectsRoot?.visible;
     try {
       // Reuse the preceding shadow atlas; do not recalculate costly maps twice
       // per frame merely to produce a small actor-only glow mask.
@@ -270,6 +276,9 @@ export class GraphicsPipeline {
       // Contact patches darken receivers only. Their quad must not become an
       // opaque depth-writing square when the bloom mask blacks out the scene.
       if (contactMesh) contactMesh.visible = false;
+      // Dust and spark Points are already shaded in the base pass. Keeping them
+      // out of the glow pass prevents additive halos around ordinary wheel dust.
+      if (this.effectsRoot) this.effectsRoot.visible = false;
       // Dark geometry still writes depth: rider bloom cannot appear through walls.
       for (const object of this.bloomSceneMeshes) {
         if (allowed.has(object)) continue;
@@ -286,6 +295,7 @@ export class GraphicsPipeline {
       this.scene.overrideMaterial = originalOverride;
       this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
       if (contactMesh) contactMesh.visible = contactVisible;
+      if (this.effectsRoot) this.effectsRoot.visible = effectsVisible;
     }
   }
 

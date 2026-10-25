@@ -1,6 +1,13 @@
 // Art direction is independent of quality: presets change sampling, not the
 // identity of each location. Imported manifest defaults are overridden here.
 export const MAP_LOOKS = Object.freeze({
+  'skate-paradise': Object.freeze({
+    exposure: 1.02, ambientSky: '#b9cbe5', ambientGround: '#62545b', ambientIntensity: .66,
+    keyColor: '#ffd0a0', keyIntensity: 2.5, keyPosition: [-45, 55, -25],
+    environmentIntensity: .58,
+    fillColor: '#a5bce9', fillIntensity: .42, fillPosition: [155, 40, -155],
+    fogColor: '#a29aaa', fogDensity: .00065,
+  }),
   rooftop: Object.freeze({
     exposure: 1.02, ambientSky: '#b9d7ef', ambientGround: '#665044', ambientIntensity: .56,
     keyColor: '#ffdbb1', keyIntensity: 2.35, keyPosition: [-55, 70, 35],

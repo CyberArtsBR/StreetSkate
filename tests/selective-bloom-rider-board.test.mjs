@@ -37,6 +37,7 @@ function fixture(shouldThrow = false) {
       assert.equal(windowMesh.material,darkMaterial,'glass cannot glow');
       assert.equal(rider.material,darkMaterial,'ordinary costume highlights must not contribute to bloom');
       assert.equal(board.material,deckMaterial,'deck must contribute to bloom');
+      if(pipeline.effectsRoot)assert.equal(pipeline.effectsRoot.visible,false,'dust and sparks stay out of the glow buffer');
       if(shouldThrow) throw new Error('simulated WebGL failure');
     },
   };
@@ -64,6 +65,16 @@ test('renderer errors never leave warehouse materials black or clear the sky',()
   assert.equal(scene.overrideMaterial,override);
   assert.equal(pipeline.renderer.shadowMap.autoUpdate,true);
   meshes.forEach((m,i)=>assert.equal(m.material,materials[i]));
+});
+
+test('particle visibility restores after the bloom pass, including a renderer failure',()=>{
+  for(const fail of [false,true])for(const visible of [false,true]) {
+    const {pipeline}=fixture(fail);
+    const effects={visible};pipeline.setEffectsTarget(effects);
+    if(fail)assert.throws(()=>pipeline.renderSelectiveBloom(),/WebGL/);
+    else assert.equal(pipeline.renderSelectiveBloom(),true);
+    assert.equal(effects.visible,visible);
+  }
 });
 
 test('no bloom work is attempted until rider and board are in the scene',()=>{

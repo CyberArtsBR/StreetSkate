@@ -1,5 +1,6 @@
 import { gameAssetUrl } from '../game/AssetPaths.js';
 import { createTestMapWorld } from '../game/TestMapLoader.js';
+import { createParadiseSurfaceDetail } from '../graphics/ParadiseSurfaceDetail.js';
 
 export const SKATE_PARADISE_ASSET='/assets/park/skate-paradise.glb';
 
@@ -27,5 +28,6 @@ export function configureSkateParadise(world) {
     street:{position:[45,18,-52],target:[40,1,-80],caption:'Plaza and street lines',index:'03'},
     top:{position:[x,200,z+.01],target:[x,y,z],caption:'Skate Paradise · all areas',index:'—'},
   };
+  world.surfaceDetail ||= createParadiseSurfaceDetail(world);
   return world;
 }

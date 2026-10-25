@@ -46,6 +46,8 @@ export const THPS_CAMERA = Object.freeze({
   positionFollowRate: 7.5,
   targetFollowRate: 8.5,
   verticalFollowRate: 8.5,
+  landingSettleDuration: 0.24,
+  landingVerticalFollowRate: 5.5,
   vertVerticalFollowRate: 13,
   maximumFollowLag: 1.4,
   classicVertDistance: 3.6,
@@ -172,6 +174,8 @@ export class FollowCamera {
     this.zoom = 1;
     this.lookAhead = 0;
     this.aimTarget = null;
+    this.airborneTime = 0;
+    this.landingSettle = 0;
   }
 
   setMode(mode, player = null) {
@@ -194,6 +198,8 @@ export class FollowCamera {
     this.trickZoomActive = false; this.zoom = 1;
     this.lookAhead = 0;
     this.aimTarget = null;
+    this.airborneTime = 0;
+    this.landingSettle = 0;
     this.update(player, 1, {});
   }
 
@@ -207,6 +213,16 @@ export class FollowCamera {
     const classic = this.mode !== 'fixed';
     const highFollow = this.mode === 'follow';
     const returning = state.transitionReturning;
+    this.landingSettle = Math.max(0, this.landingSettle - dt);
+    if (!state.grounded && !state.grindActive && !state.bailing) this.airborneTime += dt;
+    else {
+      // Ignore one-frame wheel-contact flicker. A real landing settles the
+      // lens height and boom gently without adding camera shake or yaw.
+      if (state.grounded && this.airborneTime >= .1 && !state.bailing)
+        this.landingSettle = THPS_CAMERA.landingSettleDuration;
+      this.airborneTime = 0;
+    }
+    const landingBlend = this.landingSettle / THPS_CAMERA.landingSettleDuration;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
       if (returning && !this.wasReturning) {
@@ -248,12 +264,18 @@ export class FollowCamera {
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
       const highFrame = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }) : null;
-      const distance = highFollow ? highFrame.distance
+      let distance = highFollow ? highFrame.distance
         : returning ? THPS_CAMERA.classicVertDistance
         : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
-      const height = highFollow ? highFrame.height
+      let height = highFollow ? highFrame.height
         : returning ? THPS_CAMERA.classicVertHeight
         : state.grounded || state.grindActive ? THPS_CAMERA.height : THPS_CAMERA.airHeight;
+      if (landingBlend > 0 && state.grounded && !returning && !state.grindActive) {
+        const airFrame = highFollow ? highFollowFraming({ ...state, grounded: false })
+          : { distance: THPS_CAMERA.airDistance, height: THPS_CAMERA.airHeight };
+        distance = THREE.MathUtils.lerp(distance, airFrame.distance, landingBlend);
+        height = THREE.MathUtils.lerp(height, airFrame.height, landingBlend);
+      }
       const blend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
       this.distance = THREE.MathUtils.lerp(this.distance, distance * this.zoom, blend);
       this.height = THREE.MathUtils.lerp(this.height, height, blend);
@@ -285,8 +307,10 @@ export class FollowCamera {
         state.horizontalSpeed * THPS_CAMERA.highSpeedFollowGain,
       );
       const horizontal = 1 - Math.exp(-followRate * dt);
-      const vertical = 1 - Math.exp(-(returning
-        ? THPS_CAMERA.vertVerticalFollowRate : THPS_CAMERA.verticalFollowRate) * dt);
+      const verticalRate = returning ? THPS_CAMERA.vertVerticalFollowRate
+        : classic && landingBlend > 0 ? THREE.MathUtils.lerp(THPS_CAMERA.verticalFollowRate,
+          THPS_CAMERA.landingVerticalFollowRate, landingBlend) : THPS_CAMERA.verticalFollowRate;
+      const vertical = 1 - Math.exp(-verticalRate * dt);
       this.followCenter.x = THREE.MathUtils.lerp(this.followCenter.x, state.position.x, horizontal);
       this.followCenter.z = THREE.MathUtils.lerp(this.followCenter.z, state.position.z, horizontal);
       this.followCenter.y = THREE.MathUtils.lerp(this.followCenter.y, state.position.y, vertical);
