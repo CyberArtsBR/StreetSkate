@@ -8,6 +8,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { resolveGraphicsSettings } from './GraphicsSettings.js';
+import { MapContactDepthPass } from './MapContactDepthPass.js';
 
 // Five-tap contrast-adaptive sharpening: edge-adaptive, avoids amplifying
 // flat-area noise, and is deliberately cheaper than a full extra AA algorithm.
@@ -89,6 +90,7 @@ export class GraphicsPipeline {
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.ssr = null; // Heavy pass is allocated only on an SSR-enabled preset.
+    this.contactDepth = null;
 
     // A separate HDR composer isolates actor glow and ORBIT's emissive fixtures.
     // Other geometry stays black in this pass while preserving occlusion.
@@ -163,6 +165,7 @@ export class GraphicsPipeline {
     this.world = world;
     this.bloomSceneMeshes = null;
     this.shadowAnchor = null;
+    this.configureContactDepth();
     this.configureBloom();
     this.refreshSSRTargets();
     this.updateMaterials();
@@ -178,6 +181,21 @@ export class GraphicsPipeline {
 
   setEffectsTarget(root) {
     this.effectsRoot = root;
+  }
+
+  configureContactDepth() {
+    const enabled=this.world?.userData?.contactDepth===true&&this.settings?.contactDepth===true;
+    if(!enabled&&this.contactDepth) {
+      this.composer.removePass(this.contactDepth);this.contactDepth.dispose();this.contactDepth=null;
+    } else if(enabled&&!this.contactDepth) {
+      this.contactDepth=new MapContactDepthPass(this.scene,this.camera);
+      this.composer.insertPass(this.contactDepth,1);
+    }
+    if(this.contactDepth) {
+      this.contactDepth.resolutionScale=this.settings.name==='cinematic'?.65:.5;
+      this.contactDepth.setSize(this.width*this.settings.pixelRatio,this.height*this.settings.pixelRatio);
+      this.contactDepth.exclusionsAge=120;
+    }
   }
 
   refreshBloomSceneCache() {
@@ -309,8 +327,11 @@ export class GraphicsPipeline {
       for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
         if (!m || touched.has(m)) continue;
         touched.add(m);
-        for (const key of ['map','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap','emissiveMap','alphaMap']) {
-          const map = m[key];
+        const maps=['map','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap','emissiveMap','alphaMap','warehouseGrainMap'].map(key=>m[key]);
+        // World-projected detail layers own their textures through uniforms.
+        // Apply the same quality cap as ordinary PBR maps when tiers change.
+        for(const uniform of Object.values(m.uniforms||{}))if(uniform?.value?.isTexture)maps.push(uniform.value);
+        for (const map of maps) {
           if (!map?.isTexture || textures.has(map)) continue;
           textures.add(map);
           if (map.anisotropy !== this.settings.anisotropy) {
@@ -366,6 +387,7 @@ export class GraphicsPipeline {
     }
     this.configureBloom();
     this.cas.enabled = settings.sharpen > 0;
+    this.configureContactDepth();
     this.cas.uniforms.strength.value = settings.sharpen;
     this.shadowAnchor = null;
     this.updateMaterials();
@@ -378,6 +400,7 @@ export class GraphicsPipeline {
     return { ...this.settings,
       bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
+      contactDepthEnabled: !this.faulted&&Boolean(this.contactDepth?.enabled),
       renderWidth: Math.round(this.width * this.settings.pixelRatio),
       renderHeight: Math.round(this.height * this.settings.pixelRatio),
     };
@@ -411,8 +434,14 @@ export class GraphicsPipeline {
     const sw = Math.max(1, Math.round(this.width * this.settings.pixelRatio));
     const sh = Math.max(1, Math.round(this.height * this.settings.pixelRatio));
     const samples = this.settings.msaaSamples;
-    this.composer.renderTarget1.samples = samples;
-    this.composer.renderTarget2.samples = samples;
+    for(const target of [this.composer.renderTarget1,this.composer.renderTarget2]) {
+      if(target.samples!==samples) {
+        target.samples=samples;
+        // Existing framebuffer storage must be rebuilt when sample count
+        // changes, even if a 1× DPR display keeps the same dimensions.
+        target.dispose();
+      }
+    }
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
   }
 
@@ -448,6 +477,7 @@ export class GraphicsPipeline {
   dispose() {
     this.wheelContactShadows?.dispose();
     this.ssr?.dispose();
+    this.contactDepth?.dispose();
     this.bloom.dispose();
     this.bloomComposite.dispose();
     this.bloomComposer.dispose();

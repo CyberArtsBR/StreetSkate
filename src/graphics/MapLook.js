@@ -15,16 +15,16 @@ export const MAP_LOOKS = Object.freeze({
     fillColor: '#c4dfff', fillIntensity: .38, fillPosition: [45, 26, -60],
   }),
   orbit: Object.freeze({
-    exposure: 1.03, ambientSky: '#b8d5f2', ambientGround: '#26334b', ambientIntensity: .94,
-    keyColor: '#d2edff', keyIntensity: 2.45, keyPosition: [-32, 52, 26],
-    environmentIntensity: .32,
-    fillColor: '#b9bfff', fillIntensity: .72, fillPosition: [38, 24, -45],
+    exposure: 1.02, ambientSky: '#bed7ee', ambientGround: '#29243d', ambientIntensity: .65,
+    keyColor: '#d8e8ff', keyIntensity: 2.65, keyPosition: [-32, 52, 26],
+    environmentIntensity: .34,
+    fillColor: '#a6b8ff', fillIntensity: .55, fillPosition: [38, 24, -45],
   }),
   'grand-warehouse': Object.freeze({
-    exposure: 1.04, ambientSky: '#c8d7ef', ambientGround: '#4b3e32', ambientIntensity: .82,
-    keyColor: '#ffe1b5', keyIntensity: 2.85, keyPosition: [-35, 42, 16],
-    environmentIntensity: .32,
-    fillColor: '#bfd8ff', fillIntensity: .5, fillPosition: [38, 22, -42],
+    exposure: 1.02, ambientSky: '#c7d8ed', ambientGround: '#554537', ambientIntensity: .64,
+    keyColor: '#ffdcad', keyIntensity: 2.75, keyPosition: [-35, 42, 16],
+    environmentIntensity: .28,
+    fillColor: '#b8d6ff', fillIntensity: .5, fillPosition: [38, 22, -42],
   }),
 });
 

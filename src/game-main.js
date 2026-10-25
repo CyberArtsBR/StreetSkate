@@ -671,6 +671,11 @@ async function loadGame() {
       const captureMap=new URLSearchParams(location.search).get('art-capture');
       if(['skate-paradise','rooftop','orbit','grand-warehouse'].includes(captureMap)){
         if(captureMap!==currentWorld.id)await selectLocation(captureMap);
+        // Reproducible art reviews use the requested tier, independent of a
+        // previous session's saved settings. This route is development-only.
+        const captureTier=normalizedGraphicsPreset(new URLSearchParams(location.search).get('art-quality')||'cinematic');
+        applyGraphicsPreset(captureTier);
+        document.title+=` · ${captureTier.toUpperCase()}${graphicsPipeline.getStatus().contactDepthEnabled?' · contact shading':''}`;
         setMode('explore');setExploreView('overview',true);
         const center=currentWorld.presentation.center;
         camera.position.set(center[0]+88,center[1]+55,center[2]+100);

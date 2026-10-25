@@ -5,8 +5,8 @@ const PRESETS = {
   'high-refresh': { label:'High refresh', pixelRatioCap:1, anisotropy:8, environmentQuality:'High', environmentIntensity:.84, environmentBlur:.05, metalReflectionStrength:2.4, exposureMultiplier:1, fogDensity:.0042, vfxScale:1, bloomScale:.4, bloomStrength:.2, ssr:false, ssrScale:0, sharpen:.12, msaaSamples:2, shadowCoverageRadius:36, shadowNormalBias:.028, ssrTargetLimit:0 },
   balanced: { label:'Balanced', pixelRatioCap:1.3, anisotropy:4, environmentQuality:'Medium', environmentIntensity:.79, environmentBlur:.075, metalReflectionStrength:2.0, exposureMultiplier:.99, fogDensity:.0040, vfxScale:.82, bloomScale:.55, bloomStrength:.18, ssr:false, ssrScale:0, sharpen:.19, msaaSamples:2, shadowCoverageRadius:40, shadowNormalBias:.032, ssrTargetLimit:0 },
   high: { label:'High', pixelRatioCap:1.6, anisotropy:8, environmentQuality:'High', environmentIntensity:.84, environmentBlur:.05, metalReflectionStrength:2.4, exposureMultiplier:1, fogDensity:.0042, vfxScale:1, bloomScale:.58, bloomStrength:.25, ssr:false, ssrScale:0, sharpen:.23, msaaSamples:2, shadowCoverageRadius:36, shadowNormalBias:.028, ssrTargetLimit:0 },
-  ultra: { label:'Ultra', pixelRatioCap:2, anisotropy:16, environmentQuality:'Ultra', environmentIntensity:.88, environmentBlur:.035, metalReflectionStrength:2.8, exposureMultiplier:1.02, fogDensity:.0043, vfxScale:1.15, bloomScale:.7, bloomStrength:.32, ssr:false, ssrScale:0, sharpen:.26, msaaSamples:2, shadowCoverageRadius:33, shadowNormalBias:.026, ssrTargetLimit:0 },
-  cinematic: { label:'Cinematic', pixelRatioCap:2.25, anisotropy:16, environmentQuality:'Cinematic', environmentIntensity:1.15, environmentBlur:.025, metalReflectionStrength:3.4, exposureMultiplier:1, fogDensity:.0032, vfxScale:1.25, bloomScale:.75, bloomStrength:.38, ssr:false, ssrScale:0, sharpen:.3, msaaSamples:2, shadowCoverageRadius:32, shadowNormalBias:.025, ssrTargetLimit:0 },
+  ultra: { label:'Ultra', pixelRatioCap:2, anisotropy:16, environmentQuality:'Ultra', environmentIntensity:.88, environmentBlur:.035, metalReflectionStrength:2.8, exposureMultiplier:1.02, fogDensity:.0043, vfxScale:1.15, bloomScale:.7, bloomStrength:.32, ssr:false, ssrScale:0, sharpen:.26, msaaSamples:4, shadowCoverageRadius:33, shadowNormalBias:.026, ssrTargetLimit:0 },
+  cinematic: { label:'Cinematic', pixelRatioCap:2.25, anisotropy:16, environmentQuality:'Cinematic', environmentIntensity:1.15, environmentBlur:.025, metalReflectionStrength:3.4, exposureMultiplier:1, fogDensity:.0032, vfxScale:1.25, bloomScale:.75, bloomStrength:.38, ssr:false, ssrScale:0, sharpen:.3, msaaSamples:4, shadowCoverageRadius:32, shadowNormalBias:.025, ssrTargetLimit:0 },
 };
 export const GRAPHICS_DESCRIPTIONS = Object.freeze({
   performance: 'Maximum headroom · glow and post effects off',
@@ -19,7 +19,7 @@ export const GRAPHICS_DESCRIPTIONS = Object.freeze({
 // SSR on moving imported meshes creates ghost silhouettes and disappearing geometry at Ultra/Cinematic.\n// Use stable PBR environment reflections on all tiers; preserve high-tier AA, bloom, HDR and 1024 shadows.\n// The 1024 shadow-map size is intentional on ALL tiers: no hidden 2K/4K override.
 const SURFACE_DETAIL = Object.freeze({performance:0,'high-refresh':.45,balanced:.6,high:.85,ultra:1,cinematic:1});
 export const GRAPHICS_PRESETS = Object.freeze(Object.fromEntries(
-  Object.entries(PRESETS).map(([key,value])=>[key,Object.freeze({ ...value, shadowResolution:1024, surfaceDetailScale:SURFACE_DETAIL[key] })])
+  Object.entries(PRESETS).map(([key,value])=>[key,Object.freeze({ ...value, shadowResolution:1024, surfaceDetailScale:SURFACE_DETAIL[key], contactDepth:['ultra','cinematic'].includes(key) })])
 ));
 export const DEFAULT_GRAPHICS_PRESET = 'cinematic';
 export const GRAPHICS_STORAGE_KEY = 'streetskate.graphicsPreset.v1';
