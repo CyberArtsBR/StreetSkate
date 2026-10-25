@@ -3,7 +3,7 @@ import { OnlineMapLoadQueue } from './OnlineMapLoadQueue.js';
 import { chooseOnlinePartyEntry } from './OnlinePartyEntry.js';
 import './portals-online.css';
 
-const MAPS=[{id:'rooftop',name:'Skyline Rooftop'},{id:'orbit',name:'ORBIT'},{id:'grand-warehouse',name:'Grand Warehouse'}];
+const MAPS=[{id:'skate-paradise',name:'Skate Paradise'},{id:'orbit',name:'ORBIT'},{id:'grand-warehouse',name:'Grand Warehouse'}];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nice=s=>Number(s||0).toLocaleString('en-US');
 const channelFor=code=>code.startsWith('CH')?'global:ch-online-private-'+code.toLowerCase():'global:ch-online-public-'+code;

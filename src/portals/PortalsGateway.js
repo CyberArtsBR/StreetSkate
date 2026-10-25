@@ -1,11 +1,11 @@
 export const PORTALS_MODES = Object.freeze({
-  rooftop: 'rooftop-90s',
+  'skate-paradise': 'paradise-90s',
   orbit: 'orbit-90s',
   'grand-warehouse': 'warehouse-90s',
 });
 
 export const PORTALS_MAPS = Object.freeze([
-  { id: 'rooftop', label: 'Skyline Rooftop', mode: PORTALS_MODES.rooftop },
+  { id: 'skate-paradise', label: 'Skate Paradise', mode: PORTALS_MODES['skate-paradise'] },
   { id: 'orbit', label: 'ORBIT', mode: PORTALS_MODES.orbit },
   { id: 'grand-warehouse', label: 'Grand Warehouse', mode: PORTALS_MODES['grand-warehouse'] },
 ]);

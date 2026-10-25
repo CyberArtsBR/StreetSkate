@@ -272,7 +272,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     }
 
     const measuredSign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
-    const sign = Number.isFinite(this.rollingSign) && this.rollingSign !== 0
+    const downhillReversal = this.normal.y < .95 && this.velocity.y < -.01;
+    const sign = !downhillReversal && Number.isFinite(this.rollingSign) && this.rollingSign !== 0
       ? (this.rollingSign < 0 ? -1 : 1)
       : measuredSign;
     const speed = this.velocity.length() * sign;

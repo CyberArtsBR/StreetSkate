@@ -2,6 +2,7 @@ import { updateApprovedBalancePose, handstandTarget } from './ApprovedBalancePos
 import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
+import { applyGhostRiderPresentation, shouldApplyGhostRiderPresentation } from './GhostRiderMaterials.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { flipMotion, pushMotion } from './TrickMotion.js';
 import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, skatingArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
@@ -74,8 +75,10 @@ function limb(upper, lower, end, target, pole, maximumFlex = 2.55) {
 }
 
 export class UnrealRider {
-  constructor(url) {
+  constructor(url, { uploadFilename = '' } = {}) {
     this.url = url;
+    this.uploadFilename = uploadFilename;
+    this.ghostRider = shouldApplyGhostRiderPresentation(url, uploadFilename);
     this.root = new THREE.Group();
     this.root.name = 'street-rider';
     this.rest = new Map();
@@ -106,6 +109,11 @@ export class UnrealRider {
   configureModel(model) {
     this.model = model;
     calibrateRiderMaterials(this.model,this.url);
+    // The prepared Teddy_Ghost.glb carries its spectral marker in mesh extras;
+    // this also works for cached portrait loads where the filename is unknown.
+    this.ghostRider = this.ghostRider ||
+      shouldApplyGhostRiderPresentation(this.url, this.uploadFilename, this.model);
+    if (this.ghostRider) applyGhostRiderPresentation(this.model);
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
@@ -120,8 +128,8 @@ export class UnrealRider {
     this.root.add(this.model);
     this.model.traverse(object => {
       if (object.isMesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
+        object.castShadow = !this.ghostRider;
+        object.receiveShadow = !this.ghostRider;
         object.frustumCulled = false;
       }
       if (object.isBone) this.rest.set(object, object.quaternion.clone());
@@ -167,6 +175,10 @@ export class UnrealRider {
     if (restAnkles.length && this.bones.pelvis) {
       const hipY = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V())).y;
       this.poseCalibration = avatarPoseCalibration(hipY - Math.min(...restAnkles));
+      // Tux's broad body needs a little more clearance than his short leg
+      // proportions alone predict. Keep sole targets and bone scale intact.
+      if (String(this.url).split('?')[0].endsWith('/assets/rider/TuxR.glb'))
+        this.poseCalibration.pelvisClearance = Math.max(.35, this.poseCalibration.pelvisClearance);
     }
     // Imported character axes can be mirrored by the +90 degree GLB rotation.
     // Infer leg sides from the actual positioned feet, never side labels alone.

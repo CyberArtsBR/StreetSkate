@@ -17,7 +17,7 @@ export class PortalsPhase1 {
     this.loadingBoard = false;
     this.entries = [];
     this.status = 'Ready to skate.';
-    this.mapId = 'rooftop';
+    this.mapId = 'skate-paradise';
     this.pending = null;
     this.cloudLoaded = false;
     this.restored = false;
@@ -181,7 +181,7 @@ export class PortalsPhase1 {
   }
   open(mapId) {
     if (!this.available) return;
-    this.mapId = PORTALS_MODES[mapId] ? mapId : (LOCATIONS[this.shell.locationIndex]?.id || 'rooftop');
+    this.mapId = PORTALS_MODES[mapId] ? mapId : (LOCATIONS[this.shell.locationIndex]?.id || 'skate-paradise');
     this.opened = true; this.overlay.hidden = false;
     this.render(); void this.refreshBoard();
   }

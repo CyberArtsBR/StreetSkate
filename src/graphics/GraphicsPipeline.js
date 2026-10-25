@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { WheelContactShadows } from './WheelContactShadows.js';
+import { createBloomOccluderMaterial } from './BloomOccluderMaterial.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
@@ -98,7 +100,7 @@ export class GraphicsPipeline {
     this.bloomComposer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1,1), .25, .24, .88);
     this.bloomComposer.addPass(this.bloom);
-    this.blackoutMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.blackoutMaterial = createBloomOccluderMaterial();
     this.glowRoot = null;
     this.bloomSceneMeshes = null;
     this.bloomEnvironmentEmissives = [];
@@ -107,6 +109,8 @@ export class GraphicsPipeline {
     this.bloomCacheAge = 0;
     this.shadowAnchor = null;
     this.shadowWorldPosition = new THREE.Vector3();
+    this.wheelContactShadows = new WheelContactShadows();
+    scene.add(this.wheelContactShadows.mesh);
 
     this.bloomComposite = new ShaderPass(SELECTIVE_BLOOM_COMPOSITE);
     this.bloomComposite.enabled = false;
@@ -254,6 +258,8 @@ export class GraphicsPipeline {
     const originalFog = this.scene.fog;
     const originalOverride = this.scene.overrideMaterial;
     const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
+    const contactMesh = this.wheelContactShadows?.mesh;
+    const contactVisible = contactMesh?.visible;
     try {
       // Reuse the preceding shadow atlas; do not recalculate costly maps twice
       // per frame merely to produce a small actor-only glow mask.
@@ -261,6 +267,9 @@ export class GraphicsPipeline {
       this.scene.background = null;
       this.scene.fog = null;
       this.scene.overrideMaterial = null;
+      // Contact patches darken receivers only. Their quad must not become an
+      // opaque depth-writing square when the bloom mask blacks out the scene.
+      if (contactMesh) contactMesh.visible = false;
       // Dark geometry still writes depth: rider bloom cannot appear through walls.
       for (const object of this.bloomSceneMeshes) {
         if (allowed.has(object)) continue;
@@ -276,6 +285,7 @@ export class GraphicsPipeline {
       this.scene.fog = originalFog;
       this.scene.overrideMaterial = originalOverride;
       this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+      if (contactMesh) contactMesh.visible = contactVisible;
     }
   }
 
@@ -284,6 +294,8 @@ export class GraphicsPipeline {
     const touched = new Set(), textures = new Set();
     this.world.traverse(object => {
       if (!object.isMesh) return;
+      if (object.userData.visualPassCaster)
+        object.castShadow = this.settings.name !== 'performance';
       for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
         if (!m || touched.has(m)) continue;
         touched.add(m);
@@ -394,7 +406,8 @@ export class GraphicsPipeline {
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
   }
 
-  render() {
+  render({ contactSource = null } = {}) {
+    this.wheelContactShadows?.update(contactSource);
     if (!this.settings || this.faulted) {
       this.renderer.render(this.scene, this.camera);
       return;
@@ -423,6 +436,7 @@ export class GraphicsPipeline {
   }
 
   dispose() {
+    this.wheelContactShadows?.dispose();
     this.ssr?.dispose();
     this.bloom.dispose();
     this.bloomComposite.dispose();

@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
 import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
 import { DEFAULT_BOARD_FINISH, SKATEBOARD_FINISHES } from './BoardFinishes.js';
+import { deckEmissionForGlow } from './BoardGlow.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -25,6 +26,7 @@ export class StreetBoard {
     this._lastFlipYaw = 0;
     this._lastFlipProgress = 0;
     this.contactRig = { ...PRODUCTION_BOARD_CONTACT_RIG };
+    this.deckGlowMaterials = new Set();
   }
 
   deriveContactRig() {
@@ -131,6 +133,7 @@ export class StreetBoard {
     this.finishIndex = ((Math.trunc(index) % SKATEBOARD_FINISHES.length) + SKATEBOARD_FINISHES.length) % SKATEBOARD_FINISHES.length;
     const finish = SKATEBOARD_FINISHES[this.finishIndex];
     if (!this.model) return;
+    this.deckGlowMaterials.clear();
     this.root.updateWorldMatrix(true, true);
     const inverse = this.root.matrixWorld.clone().invert();
     this.model.traverse(mesh => {
@@ -176,7 +179,8 @@ export class StreetBoard {
         // Keep the full-gradient deck opaque in every preset. Emission follows
         // the selected finish; its contrast remains visible even without bloom.
         material.emissive.setHex(finish.stops[1]);
-        material.emissiveIntensity = 0.42;
+        material.emissiveIntensity = deckEmissionForGlow(this.wheelGlowAmount);
+        this.deckGlowMaterials.add(material);
         material.transparent = false; material.opacity = 1;
         material.depthWrite = true; material.side = THREE.DoubleSide;
         material.needsUpdate = true;
@@ -211,6 +215,10 @@ export class StreetBoard {
       entry.material.emissive.copy(entry.base).lerp(glowColor, this.wheelGlowAmount);
       entry.material.emissiveIntensity = entry.intensity + 2.4 * this.wheelGlowAmount;
     }
+    // The same smoothed speed envelope brightens the opaque deck without
+    // touching the wheel effect or the board's collision representation.
+    const deckGlow = deckEmissionForGlow(this.wheelGlowAmount);
+    for (const material of this.deckGlowMaterials) material.emissiveIntensity = deckGlow;
     const grindPose = grind?.profile?.presentation;
     this.root.position.set(0,
       this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);

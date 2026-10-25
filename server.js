@@ -1,5 +1,5 @@
 // Portals server-side room referee. Client movement/scores remain casual.
-const MAPS=['rooftop','orbit','grand-warehouse'], ready=new Set(),scores=new Map(),names=new Map(),banned=new Set(),last=new Set();
+const MAPS=['skate-paradise','orbit','grand-warehouse'], ready=new Set(),scores=new Map(),names=new Map(),banned=new Set(),last=new Set();
 let host=null,mode='free',map='grand-warehouse',phase='free',round=0,deadline=0,lastDeadline=0,pending=null;
 const players=()=>server.players().slice(0,4),has=id=>players().some(p=>p.id===id);
 function ensureHost(){if(!has(host))host=players()[0]?.id||null}

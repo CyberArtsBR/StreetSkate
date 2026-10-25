@@ -120,13 +120,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   }
 
   /** Hot-swap a rigged GLB without resetting physics, collision, or the skateboard. */
-  async setRiderModel(url) {
+  async setRiderModel(url, { uploadFilename = '' } = {}) {
     if (!url || typeof url !== 'string') throw new Error('Choose a character GLB.');
     // A slow previous GLB is never allowed to replace a newer user selection.
     const request = (this._riderSwapGeneration || 0) + 1;
     this._riderSwapGeneration = request;
     if (this.rider?.url === url) return this.rider;
-    const candidate = await new UnrealRider(url).load();
+    const candidate = await new UnrealRider(url, { uploadFilename }).load();
     if (request !== this._riderSwapGeneration) {
       candidate.dispose();
       return this.rider;

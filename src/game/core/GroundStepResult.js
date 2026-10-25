@@ -44,10 +44,16 @@ export function resolveGroundStepStart({
     verticalSpeed,
   });
 
+  // Sign memory filters tiny flat-ground contact jitter. On a ramp, gravity's
+  // first downhill step can be smaller than that filter: reflecting it back
+  // uphill every tick pins an underpowered rider in place indefinitely.
+  const projection = velocity?.dot?.(forward);
+  const downhillReversal = normalY < .95 && velocity?.y < -.01
+    && Number.isFinite(projection) && projection * rollingSign < 0;
   const speedState = signedGroundSpeed({
     velocity,
     forward,
-    rollingSign,
+    rollingSign: downhillReversal ? Math.sign(projection) : rollingSign,
   });
 
   return Object.freeze({

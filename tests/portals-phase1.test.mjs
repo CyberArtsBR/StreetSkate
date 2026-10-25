@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { PORTALS_MAPS, PORTALS_MODES, guestName, scoreForPortals, safePreferences, PortalsGateway } from '../src/portals/PortalsGateway.js';
 
 test('three valid separate ranking modes', () => {
-  assert.deepEqual(Object.values(PORTALS_MODES), ['rooftop-90s','orbit-90s','warehouse-90s']);
+  assert.deepEqual(Object.values(PORTALS_MODES), ['paradise-90s','orbit-90s','warehouse-90s']);
   assert.equal(new Set(PORTALS_MAPS.map(x => x.mode)).size, 3);
   for (const { mode } of PORTALS_MAPS) assert.match(mode, /^[a-z0-9-]{1,32}$/);
 });
@@ -38,11 +38,11 @@ test('guest uses nickname; separate board retrieves the top ten', async () => {
   };
   const gateway = new PortalsGateway(sdk);
   assert.equal(await gateway.connect(),true);
-  await assert.rejects(gateway.submit(200,'rooftop'),/nickname/i);
+  await assert.rejects(gateway.submit(200,'skate-paradise'),/nickname/i);
   await gateway.submit(240.6,'orbit','SK8');
   assert.deepEqual(calls[0],['score',[241,'orbit-90s',{name:'SK8'}]]);
-  assert.equal((await gateway.leaderboard('rooftop'))[0].displayName,'SK8');
-  assert.deepEqual(calls[1],['read',{mode:'rooftop-90s',limit:10}]);
+  assert.equal((await gateway.leaderboard('skate-paradise'))[0].displayName,'SK8');
+  assert.deepEqual(calls[1],['read',{mode:'paradise-90s',limit:10}]);
   gateway.dispose();
 });
 test('signed-in account has cloud storage, player change and direct login', async () => {

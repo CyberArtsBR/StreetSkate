@@ -54,8 +54,8 @@ function prepareOrbitMaterials(object) {
       material.roughnessMap = null;
       material.metalnessMap = null;
       material.color.set('#52677b');
-      material.roughness = .19;
-      material.metalness = .55;
+      material.roughness = .48;
+      material.metalness = .12;
     }
     // Preserve neon color and shape without saturating the ramps around it.
     if (/^(LED|Grind) \/ /.test(material.name)) {
@@ -227,7 +227,8 @@ export async function createOrbitPark() {
   sky.colorSpace = THREE.SRGBColorSpace;
   sky.mapping = THREE.EquirectangularReflectionMapping;
   const backdrop = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24),
-    new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, depthWrite: false, fog: false }));
+    // Dim the decorative galaxy separately from its environment reflections.
+    new THREE.MeshBasicMaterial({ map: sky, color: '#a6b2c5', side: THREE.BackSide, depthWrite: false, fog: false }));
   backdrop.userData.castShadow = false;
   world.park.add(backdrop);
   manifest.visualTriangles = world.visualTriangles;

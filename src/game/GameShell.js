@@ -43,6 +43,7 @@ export class GameShell {
     this.heroes=[...DEFAULT_CHARACTERS];this.heroIndex=0;this.boardIndex=this.finishIndex;this.locationIndex=0;
     this.selectBusy=false;this.selectError='';this.avatarUrl=null;this.pendingMode=null;
     this.loadoutGeneration=0;this.avatarUploadGeneration=0;
+    this.mapUploadGeneration=0;this.mapUploadBusy=false;this.mapUploadStatus='';this.testMapName=null;
     this.runSummary=null;this.timeupEndsAt=0;this.replayDisplayKey='';
     this.heroConfirmed=false;this.boardConfirmed=false;this.focusHint=null;
     this.root=document.createElement('section');this.root.id='game-shell';this.root.setAttribute('aria-label','Game menu');
@@ -90,11 +91,19 @@ export class GameShell {
       }
       this.avatarUrl=next;
       this.heroes=this.heroes.filter(h=>h.id!=='custom');
-      this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,accent:'#ffc469'});
+      this.heroes.push({id:'custom',name:file.name.replace(/\.glb$/i,''),subtitle:'YOUR UPLOADED RIDER',url:next,uploadFilename:file.name,accent:'#ffc469'});
       this.heroIndex=this.heroes.length-1;this.heroConfirmed=false;
       this.focusHint={action:'hero',index:this.heroIndex};
       this.selectError='Avatar ready · select this rider with A / Enter / Click before continuing.';
       this.render();
+    });
+    this.mapInput=document.createElement('input');
+    this.mapInput.type='file';this.mapInput.accept='.glb,model/gltf-binary';this.mapInput.hidden=true;
+    this.mapInput.setAttribute('aria-label','Choose a test map GLB');
+    document.body.append(this.mapInput);
+    this.mapInput.addEventListener('change',()=>{
+      const file=this.mapInput.files?.[0];this.mapInput.value='';
+      if(file)this.uploadTestMap(file);
     });
     window.addEventListener('keydown',e=>this.key(e),true);
     this.render();
@@ -103,6 +112,9 @@ export class GameShell {
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
   setScreen(phase){
+    if(this.phase==='options'&&phase!=='options'&&this.mapUploadBusy){
+      this.mapUploadGeneration++;this.mapUploadBusy=false;this.mapUploadStatus='';this.actions.cancelLoadout?.();
+    }
     if(this.phase==='highlights'&&phase!=='highlights')this.actions.stopHighlights?.();
     // Leaving the selector invalidates any pending rider swap's UI completion.
     // A previously started loader may still resolve, but must never reopen a
@@ -145,7 +157,7 @@ export class GameShell {
       <span class="audio-meter" aria-hidden="true" style="--volume:${Math.round(value*100)}%"></span></div>`;
   }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
-  locationName(){return LOCATIONS[this.locationIndex]?.name||'';}
+  locationName(){return this.testMapName||LOCATIONS[this.locationIndex]?.name||'';}
   renderMenuFrame(title, body){
     const hero=this.heroes[this.heroIndex];
     const spot=LOCATIONS[this.locationIndex];
@@ -155,7 +167,7 @@ export class GameShell {
         <span class="menu-art-kicker">CHIMP HAWK / UNDERGROUND</span>
         <div class="menu-art-title" aria-hidden="true">${this.phase==='pause'?'STAY<br>IN FLOW.':'MAKE<br>IT YOURS.'}</div>
         <span class="menu-rider" style="--rider-accent:${hero.accent}" data-portrait-url="${safe(hero.url)}" data-preview-state="loading"></span>
-        <div class="menu-art-caption"><span>YOUR SESSION</span><strong>${safe(hero.name)}</strong><small>${safe(spot.name)}</small></div>
+        <div class="menu-art-caption"><span>YOUR SESSION</span><strong>${safe(hero.name)}</strong><small>${safe(this.locationName())}</small></div>
         <span class="menu-art-stamp" aria-hidden="true">SKATE / REPEAT</span><div class="menu-music-slot"></div>
       </aside>
       <div class="menu-card ${this.phase==='graphics'?'graphics-card':''}"><header class="menu-card-heading"><small>THE SESSION LAB</small><h2>${safe(title)}</h2><p>${captions[this.phase]||''}</p></header>${body}</div>
@@ -174,7 +186,7 @@ export class GameShell {
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}${this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading Iron District…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS / PRACTICE','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}${this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading Skate Paradise…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -184,7 +196,7 @@ export class GameShell {
         style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-thumb" data-board-preview="${i}"><span class="deck-preview"></span></span><b>${safe(board.label)}</b><span class="deck-swatch" aria-hidden="true"></span></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
-        <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
+        <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='skate-paradise'?'SUNSET / SKATEPARK':spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
         <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
@@ -204,6 +216,8 @@ export class GameShell {
         this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
+        +this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
+        +`<p class="test-map-note" role="status" aria-live="polite">${safe(this.mapUploadStatus||'Local GLB · random rider & deck · unlimited practice')}</p>`
         +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div></div>'
         +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
@@ -354,7 +368,26 @@ export class GameShell {
       }
     }).catch(()=>{});
   }
-  setLocation(id){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.root.dataset.location=id;}
+  setLocation(id,testMapName=null){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.testMapName=testMapName;this.root.dataset.location=id;}
+  async uploadTestMap(file){
+    if(this.phase!=='options'||!this.ready||this.mapUploadBusy)return;
+    const generation=++this.mapUploadGeneration;
+    const hero=DEFAULT_CHARACTERS[Math.floor(Math.random()*DEFAULT_CHARACTERS.length)];
+    const board=BOARD_CHOICES[Math.floor(Math.random()*BOARD_CHOICES.length)];
+    this.mapUploadBusy=true;this.mapUploadStatus='READING LOCAL MAP…';this.render();
+    try{
+      const result=await this.actions.testMap({file,hero,board,onProgress:message=>{
+        if(generation===this.mapUploadGeneration&&this.phase==='options'){this.mapUploadStatus=message;this.render();}
+      }});
+      if(!result||generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      this.heroIndex=this.heroes.findIndex(h=>h.id===hero.id);this.boardIndex=board.finishIndex;this.finishIndex=board.finishIndex;
+      this.mapUploadBusy=false;this.mapUploadStatus='';this.pendingMode=null;this.tutorialSeen=true;
+      this.start(true);
+    }catch(error){
+      if(generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      this.mapUploadBusy=false;this.mapUploadStatus=error?.message||'Could not load this map.';this.render();
+    }
+  }
   async confirmLoadout(){
     if(this.selectBusy||this.phase!=='select')return;
     const hero=this.heroes[this.heroIndex];
@@ -414,6 +447,7 @@ export class GameShell {
       case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
+      case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
