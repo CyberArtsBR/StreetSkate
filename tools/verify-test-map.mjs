@@ -14,6 +14,14 @@ const source=fs.readFileSync(file),{json,triangles}=inspectTestMap(source);
 const offset=20+source.readUInt32LE(12),bin=source.subarray(offset+8);
 json.materials=(json.materials||[]).map(m=>({name:m.name,pbrMetallicRoughness:{metallicFactor:0}}));
 delete json.images;delete json.textures;delete json.samplers;
+// Reflections require browser image decoding, covered by the original-file
+// desktop check. This copy validates geometry with the fallback environment.
+for(const node of json.nodes||[]) if(node.extras?.streetSkateMap) {
+  const string=typeof node.extras.streetSkateMap==='string';
+  const metadata=string?JSON.parse(node.extras.streetSkateMap):node.extras.streetSkateMap;
+  if(metadata.presentation?.environmentFromSky) metadata.presentation.environmentFromSky=false;
+  node.extras.streetSkateMap=string?JSON.stringify(metadata):metadata;
+}
 const str=JSON.stringify(json),length=Math.ceil(Buffer.byteLength(str)/4)*4,j=Buffer.alloc(length,32);j.write(str);
 const b=Buffer.alloc(28+length+bin.length);b.writeUInt32LE(0x46546c67);b.writeUInt32LE(2,4);b.writeUInt32LE(b.length,8);b.writeUInt32LE(length,12);b.writeUInt32LE(0x4e4f534a,16);j.copy(b,20);b.writeUInt32LE(bin.length,20+length);b.writeUInt32LE(0x004e4942,24+length);bin.copy(b,28+length);
 const gltf=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');

@@ -168,8 +168,10 @@ export function disposeParkWorld(world, retainedWorld = null) {
   });
   gather(retainedWorld?.park, protectedGeometry, protectedMaterials, protectedTextures);
   gather(retainedWorld?.collision, protectedGeometry, protectedMaterials, protectedTextures);
+  if(retainedWorld?.environment?.isTexture) protectedTextures.add(retainedWorld.environment);
   gather(world.park, geometries, materials, textures);
   gather(world.collision, geometries, materials, textures);
+  if(world.environment?.isTexture) textures.add(world.environment);
   world.park?.removeFromParent();
   world.collision?.removeFromParent();
   for (const geometry of geometries) if (!protectedGeometry.has(geometry)) {

@@ -40,6 +40,30 @@ visual geometry does not become additional collision. Collision nodes accept
 `cameraTransparent: true`. Sky nodes are excluded from collision and bounds.
 Export collision meshes normally: the loader hides them at runtime.
 
+An optional `presentation` object in `streetSkateMap` carries the authored look.
+Allowed numeric settings are `exposure` (0.25–2), `ambientIntensity` (0–3),
+`keyIntensity` (0–8), `environmentIntensity` (0–2), `fillIntensity` (0–3), and
+`fogDensity` (0–0.01). `ambientSky`, `ambientGround`, `keyColor`, `fillColor`,
+`fogColor` and `background` require full `#RRGGBB` colors. `center`, `keyPosition`
+and `fillPosition` are world-space xyz arrays with finite coordinates below
+10,000 metres in magnitude. Unknown settings are rejected. Existing maps keep
+the original lighting defaults when this object is absent.
+
+`presentation.environmentFromSky: true` uses the embedded sky dome's texture for
+environment reflections as well. The loader creates an independent equirectangular
+texture so metal reflections match the sky without changing the dome's UVs. The
+reflection image is capped at 2048 pixels wide while the visible sky keeps its
+full resolution. If canvas conversion is unavailable, a large reflection image
+falls back to the game's standard environment instead of allocating an oversized
+reflection map.
+
+Embedded `KHR_lights_punctual` point/spot lights supply local illumination. At
+most 12 are active, intensity is capped at 5,000, range at 80 metres, and imported
+lights never create dynamic shadow maps. Authored vertex colors or textures can
+carry baked indirect light. Emissive materials named `LED / …` or `Grind / …`
+participate in the game's existing neon glow pass. Decorative surroundings count
+toward geometry totals but do not affect gameplay bounds or collision.
+
 ## Skate Paradise test edition
 
 The supplied park remains a separate artifact, outside shipped game assets and
@@ -61,3 +85,19 @@ every trick or approach. No phone testing was performed.
 ```sh
 node tools/verify-test-map.mjs /path/to/skate_paradise_test.glb /path/to/report.json
 ```
+
+## After Hours visual edition
+
+The separate `G:/Streetskate/artifacts/skate-paradise-cinematic/` delivery adds
+scanned 4K concrete/asphalt PBR maps, a photographic 8K sunset, baked vertex AO,
+cyan/amber bowl ribbons, warm local lights, a landscaped promenade, palms and
+illuminated signage. Its sky is exported as an unlit material and normalized to
+an unlit texture in the importer, keeping PBR lighting and neon quality settings
+from altering the panorama. All 25,996 source collision triangles, spawn, 44
+rails, boundaries and 150% scale are preserved. The file remains outside the
+game's regular catalog.
+
+This edition passes 46 targeted tests and the production build. Its geometry
+checks retain the same sample counts listed above. The headless geometry
+verifier strips images and disables sky reflections in its temporary copy;
+browser verification loads the original textures and environment.

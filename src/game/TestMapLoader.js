@@ -7,6 +7,65 @@ import { validateParkWorld, disposeParkWorld } from './ParkRegistry.js';
 export const TEST_MAP_LIMITS = Object.freeze({ ...GLB_LIMITS, bytes:80*1024*1024, nodes:2048, meshes:1024 });
 const MAX_TRIANGLES = 350000;
 const finiteVector = v => Array.isArray(v) && v.length === 3 && v.every(n => Number.isFinite(n) && Math.abs(n) < 10000);
+const PRESENTATION_NUMBERS = Object.freeze({ exposure:[.25,2], ambientIntensity:[0,3], keyIntensity:[0,8],
+  environmentIntensity:[0,2], fillIntensity:[0,3], fogDensity:[0,.01] });
+const PRESENTATION_COLORS = new Set(['ambientSky','ambientGround','keyColor','fillColor','fogColor','background']);
+const PRESENTATION_VECTORS = new Set(['center','keyPosition','fillPosition']);
+const MAX_MAP_LIGHTS = 12;
+
+export function readTestMapPresentation(source) {
+  if(source === undefined) return {};
+  if(!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('Invalid test map lighting description.');
+  const presentation={};
+  for(const [key,value] of Object.entries(source)) {
+    if(Object.hasOwn(PRESENTATION_NUMBERS,key)) {
+      const [min,max]=PRESENTATION_NUMBERS[key];
+      if(!Number.isFinite(value) || value<min || value>max) throw new Error(`Invalid test map lighting value: ${key}.`);
+      presentation[key]=value;
+    } else if(PRESENTATION_COLORS.has(key)) {
+      if(typeof value!=='string' || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`Invalid test map lighting color: ${key}.`);
+      presentation[key]=value;
+    } else if(PRESENTATION_VECTORS.has(key)) {
+      if(!finiteVector(value)) throw new Error(`Invalid test map lighting position: ${key}.`);
+      presentation[key]=[...value];
+    } else if(key==='environmentFromSky') {
+      if(typeof value!=='boolean') throw new Error('Invalid test map lighting setting: environmentFromSky.');
+      presentation[key]=value;
+    } else throw new Error(`Unsupported test map lighting setting: ${key}.`);
+  }
+  return presentation;
+}
+
+export function createTestMapEnvironment(skyTexture) {
+  const image=skyTexture.image;
+  const resize=Number.isFinite(image?.width)&&image.width>2048;
+  const imageBitmap=typeof ImageBitmap==='function'&&image instanceof ImageBitmap;
+  let reflectionImage=null;
+  if(resize || imageBitmap) {
+    const width=Math.min(2048,image.width),height=Math.max(1,Math.round(image.height*width/image.width));
+    try {
+      const canvas=typeof OffscreenCanvas==='function'?new OffscreenCanvas(width,height):
+        typeof document!=='undefined'&&typeof document.createElement==='function'?document.createElement('canvas'):null;
+      if(!canvas) return null;
+      canvas.width=width;canvas.height=height;
+      const context=canvas.getContext('2d',{alpha:false});
+      if(!context) return null;
+      context.drawImage(image,0,0,width,height);
+      reflectionImage=canvas;
+    } catch { return null; }
+  }
+  const environment=skyTexture.clone();
+  // Texture.clone shares its Source. Assign a new Source for the downsampled
+  // image, so replacing it cannot shrink or flip the visible sky dome.
+  if(reflectionImage) environment.source=new THREE.Source(reflectionImage);
+  environment.mapping=THREE.EquirectangularReflectionMapping;
+  environment.flipY=true;
+  environment.offset.set(0,0);environment.repeat.set(1,1);
+  environment.center.set(0,0);environment.rotation=0;
+  environment.matrix.identity();environment.matrixAutoUpdate=false;
+  environment.needsUpdate=true;
+  return environment;
+}
 
 // Validate before GLTFLoader creates images, meshes or requests resources.
 export function inspectTestMap(buffer) {
@@ -15,6 +74,21 @@ export function inspectTestMap(buffer) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20,20+view.getUint32(12,true))).trimEnd());
   if (json.skins?.length || json.animations?.length) throw new Error('Test maps must be static scenes, without character rigs or animations.');
+  const lights=json.extensions?.KHR_lights_punctual?.lights;
+  if(lights!==undefined) {
+    if(!Array.isArray(lights) || lights.length>128) throw new Error('Invalid test map lights.');
+    for(const light of lights) if(!light || !['point','spot'].includes(light.type)
+      || (light.intensity!==undefined && (!Number.isFinite(light.intensity) || light.intensity<0))
+      || (light.range!==undefined && (!Number.isFinite(light.range) || light.range<=0))
+      || (light.color!==undefined && (!Array.isArray(light.color) || light.color.length!==3
+        || !light.color.every(v=>Number.isFinite(v)&&v>=0&&v<=1)))
+      || (light.type==='spot' && light.spot!==undefined && (!light.spot || typeof light.spot!=='object' || Array.isArray(light.spot)
+        || (light.spot.innerConeAngle!==undefined && (!Number.isFinite(light.spot.innerConeAngle) || light.spot.innerConeAngle<0))
+        || (light.spot.outerConeAngle!==undefined && (!Number.isFinite(light.spot.outerConeAngle) || light.spot.outerConeAngle<=0
+          || light.spot.outerConeAngle>Math.PI/2))
+        || (light.spot.innerConeAngle??0)>(light.spot.outerConeAngle??Math.PI/4))))
+      throw new Error('Test maps support finite point and spot lights only.');
+  }
   let triangles = 0;
   for (const mesh of json.meshes || []) for (const p of mesh.primitives || []) {
     if (p.mode !== undefined && p.mode !== 4) throw new Error('Map geometry must use triangles.');
@@ -60,9 +134,10 @@ export function readTestMapManifest(park) {
   for(const r of data.playableRegions) if(!['minX','maxX','minZ','maxZ'].every(k=>Number.isFinite(r[k])&&Math.abs(r[k])<10000)
     || r.minX>=r.maxX || r.minZ>=r.maxZ) throw new Error('Invalid test map boundary.');
   if(data.spawnHeading!==undefined&&!Number.isFinite(data.spawnHeading))throw new Error('Invalid spawn heading.');
+  const presentation=readTestMapPresentation(data.presentation);
   return { name:String(data.name||'Uploaded test map').slice(0,80), spawn:data.spawn, spawnHeading:data.spawnHeading||0,
     transitionScale:1, rails:data.rails.map(r=>({name:r.name,points:r.points,radius:r.radius})),
-    playableRegions:data.playableRegions.map(r=>({minX:r.minX,maxX:r.maxX,minZ:r.minZ,maxZ:r.maxZ})), spots:[], routes:[] };
+    playableRegions:data.playableRegions.map(r=>({minX:r.minX,maxX:r.maxX,minZ:r.minZ,maxZ:r.maxZ})), spots:[], routes:[], presentation };
 }
 
 function nodeFlag(node, key) {
@@ -75,22 +150,50 @@ export function assembleTestMap(park, filename='Uploaded map.glb') {
     const authored=readTestMapManifest(park), bounds=new THREE.Box3();
     const material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
     park.updateMatrixWorld(true);
-    let triangles=0, collisionCount=0;
+    let triangles=0, collisionCount=0, lightCount=0, skyTexture=null;
+    const retiredSkyMaterials=new Set();
     park.traverse(node=>{
+      if(node.isLight) {
+        // Keep embedded fill/neon lights bounded. The game owns the single sun
+        // shadow map; authored bounce light comes from materials/vertex colors.
+        node.castShadow=false;
+        if((node.isPointLight || node.isSpotLight) && lightCount++<MAX_MAP_LIGHTS) {
+          node.intensity=Number.isFinite(node.intensity)?THREE.MathUtils.clamp(node.intensity,0,5000):0;
+          node.distance=Number.isFinite(node.distance)&&node.distance>0?Math.min(node.distance,80):80;
+          node.decay=2;
+        } else node.intensity=0;
+        return;
+      }
       if(!node.isMesh)return;
       const role=nodeFlag(node,'streetSkateRole');
       if(role==='sky') {
-        node.userData.castShadow=false;
-        for(const m of Array.isArray(node.material)?node.material:[node.material]) {m.fog=false;m.depthWrite=false;m.toneMapped=false;}
+        node.userData.castShadow=false;node.castShadow=false;
+        const unlit=(Array.isArray(node.material)?node.material:[node.material]).map(material=>{
+          const map=material?.map?.isTexture?material.map:material?.emissiveMap?.isTexture?material.emissiveMap:null;
+          if(!skyTexture) skyTexture=map;
+          if(material) retiredSkyMaterials.add(material);
+          // A Blender emission shader can export as a metallic standard material.
+          // Normalize to unlit so scene reflections and quality-dependent emissive
+          // scaling can never wash out the photographic panorama.
+          return new THREE.MeshBasicMaterial({name:`${material?.name||'Test map sky'} / unlit`,map,
+            color:0xffffff,side:THREE.DoubleSide,fog:false,depthWrite:false,toneMapped:false});
+        });
+        node.material=Array.isArray(node.material)?unlit:unlit[0];
         node.renderOrder=-10;
         return;
       }
+      if((Array.isArray(node.material)?node.material:[node.material]).some(m=>
+        /^(LED|Grind) \/ /.test(m?.name||'') && m.emissive?.getHex?.()>0 && m.emissiveIntensity>0))
+        park.userData.environmentBloom=true;
       const p=node.geometry?.attributes.position;
       if(!p)throw new Error('Map contains a mesh without positions.');
       for(let i=0;i<p.count;i++) if(![p.getX(i),p.getY(i),p.getZ(i)].every(Number.isFinite))throw new Error('Map contains invalid vertices.');
       const box=new THREE.Box3().setFromObject(node);
       if(![...box.min.toArray(),...box.max.toArray()].every(n=>Number.isFinite(n)&&Math.abs(n)<10000))throw new Error('Map is too large or has invalid coordinates.');
-      if(role!=='collision') {bounds.union(box);triangles+=(node.geometry.index?.count||p.count)/3;}
+      if(role!=='collision') {
+        if(role!=='decoration') bounds.union(box);
+        triangles+=(node.geometry.index?.count||p.count)/3;
+      }
       if(authored ? role!=='collision' : role==='decoration') return;
       const geometry=node.geometry.clone().applyMatrix4(node.matrixWorld);
       const mesh=new THREE.Mesh(geometry,material);
@@ -102,6 +205,19 @@ export function assembleTestMap(park, filename='Uploaded map.glb') {
       world.collision.add(mesh);collisionCount++;
       if(role==='collision')node.visible=false;
     });
+    if(retiredSkyMaterials.size) {
+      const retainedMaterials=new Set(),retainedTextures=new Set();
+      park.traverse(node=>{
+        for(const material of Array.isArray(node.material)?node.material:[node.material]) if(material) {
+          retainedMaterials.add(material);
+          for(const value of Object.values(material)) if(value?.isTexture) retainedTextures.add(value);
+        }
+      });
+      for(const material of retiredSkyMaterials) if(!retainedMaterials.has(material)) {
+        for(const value of Object.values(material)) if(value?.isTexture&&!retainedTextures.has(value)) value.dispose();
+        material.dispose();
+      }
+    }
     if(!collisionCount) {material.dispose();throw new Error('Map has no collision surfaces.');}
     if(bounds.isEmpty())throw new Error('Map has no visible skating geometry.');
     const size=bounds.getSize(new THREE.Vector3()), center=bounds.getCenter(new THREE.Vector3());
@@ -129,6 +245,13 @@ export function assembleTestMap(park, filename='Uploaded map.glb') {
     world.presentation={center:[center.x,0,center.z],sky:false,background:'#afc8d2',fogColor:'#c3d7dc',fogDensity:.00025,
       exposure:1.03,ambientSky:'#c5e3ff',ambientGround:'#827567',ambientIntensity:1.15,keyColor:'#fff0d3',keyIntensity:2.6,
       keyPosition:[center.x-45,85,center.z+30],shadowExtent:Math.max(size.x,size.z)*.6,environmentIntensity:.4,fillIntensity:.25};
+    for(const key of Object.keys(authored?.presentation||{})) world.presentation[key]=authored.presentation[key];
+    if(world.presentation.environmentFromSky) {
+      if(!skyTexture) throw new Error('Sky reflections require an embedded textured sky dome.');
+      // Reflect the same sky seen by the player without changing the dome's
+      // glTF UV mapping or the material's flip convention.
+      world.environment=createTestMapEnvironment(skyTexture);
+    }
     validateParkWorld(world);
     return world;
   } catch(error) {disposeParkWorld(world);throw error;}
