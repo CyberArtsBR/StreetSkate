@@ -332,7 +332,7 @@ export class ParkCollision {
           if (ignoreRail && triangle.railId === ignoreRail) continue;
           const face = triangle.faceNormal.dot(this._moveNormal.copy(this._movePreviousCenter).sub(triangle.a)) < 0
             ? new THREE.Triangle(triangle.c, triangle.b, triangle.a) : triangle;
-          const hit = this.blocks.triangleCapsuleIntersect(this.capsule, face);
+          const hit = this.blocks.triangleCapsuleIntersect(this.capsule, face, Boolean(triangle.railId));
           if (!hit || hit.depth < 0.00001 || (deepest && hit.depth <= deepest.depth)) continue;
           deepest = { ...hit, railId: triangle.railId };
         }
