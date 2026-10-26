@@ -174,7 +174,10 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       // The outer coping layer must receive the unmodified swept trajectory.
       // Clamping/projecting here first removed its re-entry crossing and left
       // the rider airborne with no downhill momentum on the transition.
-      if (this.transitionAir && this.bailTime <= 0) return;
+      // Only a same-wall return has a second sweep in the outer coping layer.
+      // Deck transfers skip that path, so deferring their impacts here lets a
+      // partial truck catch pass through the deck and even the floor below it.
+      if (this.deferTransitionImpact?.(impact) && this.bailTime <= 0) return;
       // Generic ramps also need a contact basis aligned to the actual face,
       // rather than the world-UP wheel rig used for the initial air sweep.
       const touchdown = impact.position.clone();
@@ -188,6 +191,13 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       const motion = this.bailTime > 0 ? this.bailVelocity : this.velocity;
       const into = motion.dot(contactNormal);
       if (into < 0) motion.addScaledVector(contactNormal, -into);
+      // A rejected descent has still struck real terrain. Finish it as ordinary
+      // air contact instead of letting an obsolete ramp/deck target drive the
+      // rider through an unrelated surface on the next frame.
+      if (this.transitionAir && this.transitionAir.apexPassed && this.bailTime <= 0) {
+        this.transitionAir = null;
+        this.setMovementState(MOVEMENT_STATE.AIR);
+      }
     }
   }
 

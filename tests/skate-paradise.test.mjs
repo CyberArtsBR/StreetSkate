@@ -25,7 +25,7 @@ test('bundled Map 1 has a playable plaza spawn and preserves authored ramp trans
     assert.equal(world.manifest.name,'Skate Paradise');
     assert.deepEqual(runtime.spawn.toArray(),[27,.4605,-75]);
     assert.equal(runtime.railNetwork.rails.length,44);
-    assert.equal(runtime.coreController.transitions.transitions.length,24);
+    assert.equal(runtime.coreController.transitions.transitions.length,25);
     assert.equal(LOCATIONS[0].id,'skate-paradise');
     assert.equal(LOCATIONS[0].number,1);
     assert.equal(world.manifest.spots[0].id,'entrance');

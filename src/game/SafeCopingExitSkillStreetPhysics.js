@@ -136,12 +136,20 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
   /** Contact alignment is intentionally inert: only player input may change yaw. */
   autoAlignOriginalTransition() {}
 
+  deferTransitionImpact(impact) {
+    const air = this.transitionAir;
+    return Boolean(air && !air.transferring
+      && supportMatchesOriginalTransition(impact, air));
+  }
+
   land(support) {
     const air = this.transitionAir;
+    // A transfer can brush the departing ramp before clearing its lip. Resolve
+    // that impact without calling it a new landing and immediately relaunching.
+    if (air && !air.apexPassed && this.velocity.y > 0.05) return false;
     if (air && !air.transferring) {
       // Wheel probes can still see the coping while the rider is leaving it.
       // That is departure contact, not another touchdown/takeoff cycle.
-      if (!air.apexPassed && this.velocity.y > 0.05) return false;
       const nearLip = support?.position && air.frame?.lipPoint
         && support.position.y > air.frame.lipPoint.y - 0.25;
       if (nearLip && Math.abs(support.normal?.y ?? 1) > 0.985) return false;
