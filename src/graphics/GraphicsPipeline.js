@@ -7,7 +7,7 @@ import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { resolveGraphicsSettings } from './GraphicsSettings.js';
+import { resolveGraphicsSettings, resolveRenderPixelRatio } from './GraphicsSettings.js';
 import { MapContactDepthPass } from './MapContactDepthPass.js';
 
 // Five-tap contrast-adaptive sharpening: edge-adaptive, avoids amplifying
@@ -352,7 +352,8 @@ export class GraphicsPipeline {
   }
 
   setQuality(key, capabilities, overrides) {
-    const settings = resolveGraphicsSettings(key, capabilities, overrides);
+    this.capabilities = capabilities;
+    const settings = resolveGraphicsSettings(key, { ...capabilities, width:this.width, height:this.height }, overrides);
     this.settings = settings;
     this.renderer.setPixelRatio(settings.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
@@ -400,6 +401,7 @@ export class GraphicsPipeline {
     return { ...this.settings,
       bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
+      postProcessingEnabled: !this.faulted && this.settings.postProcessing,
       contactDepthEnabled: !this.faulted&&Boolean(this.contactDepth?.enabled),
       renderWidth: Math.round(this.width * this.settings.pixelRatio),
       renderHeight: Math.round(this.height * this.settings.pixelRatio),
@@ -423,8 +425,13 @@ export class GraphicsPipeline {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     if (!this.settings) return;
-    this.composer.setPixelRatio(this.settings.pixelRatio);
-    this.composer.setSize(this.width, this.height);
+    this.settings.pixelRatio = resolveRenderPixelRatio(this.settings,
+      { ...this.capabilities, width:this.width, height:this.height });
+    this.renderer.setPixelRatio(this.settings.pixelRatio);
+    this.renderer.setSize(this.width, this.height, false);
+    const postProcessing = this.settings.postProcessing;
+    this.composer.setPixelRatio(postProcessing ? this.settings.pixelRatio : 1);
+    this.composer.setSize(postProcessing ? this.width : 1, postProcessing ? this.height : 1);
     // Performance runs without bloom: shrink its HDR buffers to 1px rather
     // than retaining offscreen textures at full display resolution.
     const bloomEnabled = this.settings.bloomStrength > 0;
@@ -453,9 +460,9 @@ export class GraphicsPipeline {
     }
     try {
       this.updateContactShadows();
-      // Skip both HDR composer targets and all fullscreen post effects on the
-      // lowest tier. Three's direct renderer retains ACES/output color-space.
-      if (this.settings.name === 'performance') {
+      // The 144 FPS and Performance profiles use one scene pass. The canvas
+      // retains hardware AA, ACES tone mapping and output color conversion.
+      if (!this.settings.postProcessing) {
         this.renderer.render(this.scene, this.camera);
         return;
       }

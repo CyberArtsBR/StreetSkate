@@ -24,7 +24,7 @@
 #game-shell.loadout-screen .loadout-shell header{padding-right:360px;min-height:96px}
 #game-shell.loadout-screen .loadout-shell header h2{font-size:clamp(35px,4.2cqw,60px)}
 @media(max-width:1050px){.music-menu-slot{width:280px}.music-menu-slot #now-playing{padding:11px;gap:10px}.music-menu-slot .song-emblem{flex-basis:34px;height:34px}.music-menu-slot #now-playing .song-title{font-size:17px}#game-shell.loadout-screen .loadout-shell header{padding-right:298px}#game-shell.loadout-screen .loadout-shell header h2{font-size:32px}}
-@media(max-width:720px){#now-playing{top:12px;left:12px;padding:10px 12px;gap:9px;max-width:calc(100vw - 130px);border-radius:14px}.song-emblem{flex-basis:30px;height:34px;border-radius:9px}.song-emblem svg{width:21px;height:21px}#now-playing .song-title{font-size:17px}#now-playing .song-label{font-size:8px}#now-playing .song-skip{font-size:10px}#run-timer{top:12px;right:12px;min-width:86px;font-size:34px;padding:12px 13px;border-radius:14px}.skate-hud{left:12px;bottom:15px!important;padding:12px 15px;border-radius:14px}.skate-hud .speed>span{font-size:44px}.skate-hud .speed small{font-size:10px}.music-menu-slot{position:static;width:100%;margin-top:17px}.music-menu-slot #now-playing{max-width:none;padding:12px 14px}.music-menu-slot .song-emblem{flex-basis:38px;height:38px}.music-menu-slot #now-playing .song-title{font-size:20px}#game-shell.loadout-screen .loadout-shell header{padding-right:6px;min-height:0}#game-shell.loadout-screen .loadout-shell header h2{font-size:clamp(28px,7.7vw,52px)}}
+
 @media(max-height:500px) and (min-width:721px){#now-playing{top:10px;left:14px;padding:10px 12px;width:330px}#run-timer{top:10px;right:14px;font-size:34px;padding:10px 15px}.song-emblem{flex-basis:37px;height:37px}#now-playing .song-title{font-size:18px}}
 
 /* Agent 08: make earned points visible without hiding the existing speed gauge. */
@@ -82,19 +82,7 @@ body[data-screen='playing'] .skate-hud,body[data-screen='playing'] #run-timer{ba
    max-content box, clipping the left score digits on long gold/fire combos. */
 #trick-feedback::after{content:none!important}
 #run-timer,#now-playing,.skate-hud{font-variant-numeric:tabular-nums}
-@media(max-width:720px){
-  .skate-hud{gap:11px;max-width:calc(100vw - 24px);padding:10px 12px}
-  .skate-hud .session-score{min-width:74px;padding-right:10px}
-  .skate-hud .session-score strong{font-size:24px}
-  .skate-hud .session-score small{font-size:8px}
-  .skate-hud .speed>span{font-size:38px}
-  .skate-hud .ride-state{min-width:55px}
-  .skate-hud .ride-state>span{font-size:8px}
-  .skate-hud .charge{width:55px}
-  body[data-screen='playing'] #now-playing{top:12px;left:12px}
-  #trick-feedback:not(:empty){padding:0;max-width:95vw}
-  #trick-feedback .graffiti-art{gap:2px 5px;justify-content:center}
-}
+
 @media(max-height:480px){
   #now-playing{max-width:245px}
   #run-timer{padding:8px 12px}
@@ -120,7 +108,7 @@ body[data-screen='graphics'] #game-shell .graphics-card{width:100%;max-width:100
 .graphics-advanced summary{cursor:pointer;padding:7px 0;color:#93dce5}
 .graphics-advanced summary:focus-visible{outline:2px solid #ffdf90;outline-offset:3px}
 .graphics-advanced p{margin:0 0 8px}
-@media(max-width:720px){#game-shell.menu-screen .graphics-card{padding:18px}.skate-hud .session-score{min-width:60px}.skate-hud{gap:9px}}
+
 
 #trick-feedback .combo-caption{display:block;flex-basis:100%;font:800 11px/1.4 'DM Sans',Arial,sans-serif;
   letter-spacing:.12em;color:#f6efdc;-webkit-text-fill-color:currentColor;-webkit-text-stroke:0;

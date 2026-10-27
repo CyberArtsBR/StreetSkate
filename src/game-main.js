@@ -58,8 +58,8 @@ scene.background = new THREE.Color('#25363d');
 scene.fog = new THREE.FogExp2('#25363d', 0.005);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
-renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight, false);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -704,6 +704,7 @@ async function loadGame() {
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       currentLocation: currentWorld.id, selectLocation,
+      graphicsStatus: () => graphicsPipeline.getStatus(),
       setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2',
       rampTuning: { factor: manifest.transitionScale, baked: true },
       captureState: () => captureGameplayState(skater),
@@ -785,7 +786,6 @@ window.addEventListener('resize', () => {
   sceneNeedsRender=true;
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
   graphicsPipeline.resize(innerWidth, innerHeight);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   scheduleTrickHudFit();

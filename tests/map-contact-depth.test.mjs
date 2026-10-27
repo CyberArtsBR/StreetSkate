@@ -33,7 +33,8 @@ test('MSAA framebuffer storage refreshes on tier changes without redundant dispo
   let disposed=0;for(const t of targets)t.addEventListener('dispose',()=>disposed++);
   const noop=()=>{};
   const pipeline=Object.create(GraphicsPipeline.prototype);
-  pipeline.settings={pixelRatio:1,bloomStrength:0,bloomScale:1,msaaSamples:4};
+  pipeline.settings=resolveGraphicsSettings('cinematic',{maxSamples:4});
+  pipeline.renderer={setPixelRatio:noop,setSize:noop};
   pipeline.composer={setPixelRatio:noop,setSize:noop,renderTarget1:targets[0],renderTarget2:targets[1]};
   pipeline.bloomComposer={setPixelRatio:noop,setSize:noop};
   pipeline.cas={uniforms:{pixelStep:{value:new THREE.Vector2()}}};

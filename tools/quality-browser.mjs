@@ -10,7 +10,7 @@ try{
  await page.waitForFunction(()=>window.streetSkate?.ready,{timeout:90000});
  await page.locator('[data-action="tutorial"]').click();
  await page.locator('[data-action="next"]').click();
- const sizes=[[1280,720],[1920,1080],[390,844],[844,390]];const layouts=[];
+ const sizes=[[1280,720],[1920,1080],[2560,1440],[1280,600]];const layouts=[];
  for(const [width,height] of sizes){
   await page.setViewportSize({width,height});
   await page.screenshot({path:`${out}/tutorial-${width}x${height}.png`});

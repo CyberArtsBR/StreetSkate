@@ -1,5 +1,5 @@
 // Deterministic menu navigation independent of viewport, DOM order and scroll position.
-// Loadout regions are logical columns on desktop and stacked sections on mobile.
+// Loadout regions are logical columns navigated with a keyboard or gamepad.
 const GROUPS = { hero: 0, upload: 0, board: 1, location: 2, back: 3, confirmLoadout: 3 };
 const groupOf = node => Object.hasOwn(GROUPS, node?.dataset?.action) ? GROUPS[node.dataset.action] : null;
 const rect = node => {

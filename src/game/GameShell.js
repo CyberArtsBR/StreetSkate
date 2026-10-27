@@ -134,7 +134,7 @@ export class GameShell {
     buttons.forEach((b,i)=>b.classList.toggle('selected',i===this.selection));
     const target=buttons[this.selection];
     target?.focus({preventScroll:true});
-    // Controller focus may be below the fold in the stacked/mobile loadout.
+    // Controller focus may be below the fold in the scrollable loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
     if(reveal&&['select','pause','options','graphics','results'].includes(this.phase))
       target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});

@@ -52,12 +52,12 @@ test('unstable SSR is disabled across all tiers while preserving high preset blo
   assert.ok(GRAPHICS_PRESETS.high.bloomStrength>0);
 });
 
-test('Cinematic is default while previously selected valid tiers remain respected', () => {
-  assert.equal(DEFAULT_GRAPHICS_PRESET,'cinematic');
+test('144 FPS is default while previously selected v2 tiers remain respected', () => {
+  assert.equal(DEFAULT_GRAPHICS_PRESET,'high-refresh');
   const saved = { getItem() { return 'ultra'; } };
   assert.equal(loadGraphicsPreset(saved),'ultra');
   const empty = { getItem() { return null; } };
-  assert.equal(loadGraphicsPreset(empty),'cinematic');
+  assert.equal(loadGraphicsPreset(empty),'high-refresh');
 });
 
 test('preset storage is versioned and resistant to disabled local storage', () => {
@@ -71,6 +71,29 @@ test('preset storage is versioned and resistant to disabled local storage', () =
   const forbidden = {getItem(){throw Error('denied')},setItem(){throw Error('denied')}};
   assert.equal(loadGraphicsPreset(forbidden),DEFAULT_GRAPHICS_PRESET);
   assert.doesNotThrow(()=>storeGraphicsPreset(forbidden,'ultra'));
+});
+
+test('144 FPS is the new default while subsequent explicit quality choices persist', () => {
+  const values = new Map([['streetskate.graphicsPreset.v1','cinematic']]);
+  const storage = {getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)};
+  assert.equal(DEFAULT_GRAPHICS_PRESET,'high-refresh');
+  assert.equal(loadGraphicsPreset(storage),'high-refresh');
+  storeGraphicsPreset(storage,'high');
+  assert.equal(loadGraphicsPreset(storage),'high');
+});
+
+test('144 FPS bounds render pixels on high-DPI and 4K displays without changing aspect ratio', () => {
+  for (const [width,height,dpr] of [[1280,720,2],[1920,1080,2],[2560,1440,1],[3840,2160,2],[3440,1440,1]]) {
+    const fast=resolveGraphicsSettings('high-refresh',{width,height,devicePixelRatio:dpr});
+    assert.ok(width*height*fast.pixelRatio**2<=1920*1080+1);
+    assert.ok(fast.pixelRatio<=1);
+    assert.equal(fast.postProcessing,false);
+    assert.equal(fast.bloomStrength,0);
+    assert.equal(fast.contactDepth,false);
+    assert.equal(fast.targetFrameRate,144);
+  }
+  assert.equal(resolveGraphicsSettings('high-refresh',{width:3840,height:2160}).pixelRatio,.5);
+  assert.equal(resolveGraphicsSettings('high-refresh',{width:1280,height:720}).pixelRatio,1);
 });
 
 test('linear fog maintains near plane and adjusts far distance relative to the map', () => {
