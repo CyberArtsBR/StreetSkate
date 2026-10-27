@@ -35,7 +35,6 @@ export class MusicPlayer {
     this.audio.addEventListener('error', this._error);
     window.addEventListener('pointerdown', this.unlock, { passive: true });
     window.addEventListener('keydown', this.unlock, { passive: true });
-    window.addEventListener('touchstart', this.unlock, { passive: true });
     document.addEventListener('visibilitychange', this._visibility);
     this.next();
   }
@@ -131,7 +130,6 @@ export class MusicPlayer {
     this.audio.removeEventListener('error', this._error);
     window.removeEventListener('pointerdown', this.unlock);
     window.removeEventListener('keydown', this.unlock);
-    window.removeEventListener('touchstart', this.unlock);
     document.removeEventListener('visibilitychange', this._visibility);
     this.audio.removeAttribute?.('src');
     this.audio.load?.();

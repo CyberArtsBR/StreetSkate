@@ -29,7 +29,7 @@ body:not([data-screen='playing']) .skate-hud,body:not([data-screen='playing']) #
 .tutorial-frame header small{font-size:1.05cqw;letter-spacing:.12em;color:#9a386b}.tutorial-frame h2{font-size:3.4cqw;line-height:1;margin:.5cqw 0}.tutorial-frame header p{font-size:1.3cqw;margin:.6cqw 0 0}
 .tutorial-body{min-height:0;overflow:auto}.tutorial-body table{width:100%;border-collapse:collapse;font-size:1.25cqw}.tutorial-body th{text-align:left;background:#203c40;color:#fff}.tutorial-body td,.tutorial-body th{padding:.65cqw .8cqw;border-bottom:1px solid #8b9e9e55}.tutorial-body tbody tr:nth-child(even){background:#e6e5d8}.tutorial-body p{font-size:1.23cqw;line-height:1.45;margin:.9cqw 0 0;padding:.65cqw;background:#f6d77577}
 .tutorial-frame footer{display:flex;align-items:center;justify-content:space-between;gap:1cqw}.tutorial-frame footer span{font-size:.9cqw;font-weight:700}.tutorial-frame footer button{font-size:1.2cqw!important;padding:.8cqw 1.1cqw!important}
-@media(max-width:700px){#now-playing{font-size:8px;left:6px;top:6px;padding:5px;max-width:68vw}#run-timer{font-size:26px;right:12px;top:10px;padding:8px}.menu-card{padding:18px;gap:7px}.menu-card h2{font-size:32px}.title-menu{right:4%;width:38%;border-radius:5px}.title-menu button{padding:7px 10px!important}.menu-footnote{font-size:7px;bottom:3px}.skate-hud{bottom:15px!important}}
+
 /* Hit targets follow the baked artwork. No duplicated button labels. */
 #game-shell button.art-hit{position:absolute;background:transparent;border:2px solid transparent;border-radius:7px;padding:0;transform:none;box-shadow:none}
 #game-shell button.art-hit.selected,#game-shell button.art-hit:hover{background:transparent;border-color:#ffe395;box-shadow:0 0 26px #ff3fa999,inset 0 0 15px #fff3;transform:none}
@@ -80,7 +80,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 #game-shell .loadout-shell footer [data-action="confirmLoadout"]{background:#cffb65;color:#112731}
 .loadout-status{min-height:1.2cqw;font-size:1cqw;color:#ffd27a;margin:0}
 @media(max-height:680px){.loadout-shell{justify-content:flex-start}.rider-portrait{height:9cqw}.loadout-shell header h2{font-size:4.5cqw}}
-@media(max-width:650px){.loadout-screen .shell-content{width:100vw;aspect-ratio:auto;height:100dvh;border-radius:0}.loadout-shell{padding:18px;gap:10px}.loadout-shell header h2{font-size:32px}.loadout-shell header small,.loadout-shell header p,.loadout-heading span{font-size:9px}.loadout-heading>b{font-size:15px}.loadout-roster{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.rider-portrait{height:19vh}.loadout-character strong{font-size:17px}.loadout-character small{font-size:9px}.loadout-boards{gap:5px}.loadout-deck b{font-size:9px}.loadout-locations{gap:5px}.loadout-location strong{font-size:10px}.loadout-location small{font-size:9px}.loadout-shell footer button{font-size:13px!important}.loadout-status{font-size:11px}}
+
 
 /* Grid navigation and explicit A/Enter/Click confirmations for Build Your Line. */
 .loadout-screen .loadout-boards{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:.5cqw .8cqw}
@@ -103,12 +103,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   background:#385357!important;color:#bdcdcb!important;opacity:.7;cursor:not-allowed;
 }
 .loadout-screen .loadout-shell{gap:.65cqw}
-@media(max-width:650px){
-  .loadout-screen .loadout-boards{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .loadout-screen .loadout-deck{min-height:42px;padding:4px!important;flex-direction:column;gap:2px}
-  .loadout-screen .loadout-deck b{font-size:8px}
-  .loadout-screen .rider-portrait{height:17vh}
-}
+
 
 
 /* Agent 08 — keep baked title artwork while making hit targets discoverable. */
@@ -147,24 +142,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   .loadout-screen .shell-content{max-height:96dvh}
   .loadout-shell{justify-content:flex-start;gap:clamp(6px,.65cqw,12px)}
 }
-@media(max-width:650px){
-  .title-screen .shell-content{width:100vw}
-  #game-shell.title-screen .art-hit span{font-size:clamp(8px,2.2vw,12px);letter-spacing:.03em;padding:.2em}
-  #game-shell .title-tools{right:1%;bottom:1%;gap:4px}
-  #game-shell .title-tools button{min-height:30px;padding:5px!important}
-  #game-shell .menu-card{padding:clamp(12px,3vw,18px)}
-  #game-shell .menu-card button{font-size:14px}
-  .loadout-screen .shell-content{max-height:100dvh}
-  .loadout-shell{padding:12px}
-  #game-shell .loadout-shell footer button{padding:9px 12px}
-  .tutorial-screen .shell-content{width:99vw;max-height:73dvh}
-  .tutorial-frame{padding:10px;gap:6px}
-  .tutorial-frame h2{font-size:clamp(17px,3.4cqw,26px)}
-  .tutorial-frame footer span{display:none}
-  .tutorial-poster footer span{display:none}
-  .tutorial-poster footer button{min-height:38px}
-  #game-shell .menu-footnote{width:95vw;white-space:normal;line-height:1.25}
-}
+
 @media(max-height:580px){
   #run-timer{top:7px;right:8px;font-size:23px;padding:5px 9px}
   #now-playing{left:7px;top:7px;padding:5px;max-width:63vw}
@@ -238,7 +216,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
  background:#f3188b;color:white;border:2px solid #ffde8a;text-align:center;white-space:nowrap
 }
 @media(max-width:900px){.loadout-screen .rider-portrait{height:clamp(85px,10cqw,135px)}}
-@media(max-width:650px){.loadout-screen .rider-portrait{height:17vh}.tutorial-frame footer span{display:none}}
+
 @media(prefers-reduced-motion:reduce){#run-timer.time-low{animation:none}}
 
 
@@ -285,12 +263,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)!important;
   z-index:2;min-width:max-content
 }
-@media(max-width:500px){
-  #game-shell .tutorial-frame footer [data-action="skipTutorial"],
-  #game-shell .tutorial-poster footer [data-action="skipTutorial"]{
-    position:static;transform:none!important;min-width:0
-  }
-}
+
 
 /* The tutorial's poster navigation must remain inside any viewport, including 800x450.
    Reserve actual room under the 16:9 artwork; don't crop or squash the poster. */
@@ -428,15 +401,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   65% { opacity:1;transform:translateX(-50%) translateY(2px) scale(1.045) rotate(.3deg); }
   100% { opacity:1;transform:translateX(-50%) translateY(0) scale(1); }
 }
-@media(max-width:650px) {
-  #trick-feedback {
-    top:clamp(50px,11vh,72px);
-    max-width:94vw;
-    font-size:clamp(25px,7vw,43px);
-    text-shadow:2px 2px 0 #070715,3px 4px 0 #201037,4px 5px 0 #06030d;
-  }
-  #game-shell.menu-screen .menu-card button { font-size:16px; }
-}
+
 @media(prefers-reduced-motion:reduce) {
   #trick-feedback.graffiti-pop { animation:none; }
 }
@@ -481,14 +446,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   pointer-events: none;
 }
 #trick-feedback[data-graffiti-text=""]::after { content: none; }
-@media (max-width: 650px) {
-  #trick-feedback {
-    top: clamp(49px, 9vh, 67px);
-    max-width: 90vw;
-    font-size: clamp(18px, 4.2vw, 28px);
-    text-shadow: 1px 2px 0 #1d1232, 2px 3px 1px #06050c;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
   #trick-feedback { will-change: auto; }
 }
@@ -525,22 +483,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 .tutorial-screen .tutorial-frame footer button{
   min-height:44px;
 }
-@media(max-width:720px){
-  .tutorial-screen .shell-content:has(.tutorial-frame){
-    width:calc(100vw - 16px);
-    height:min(78dvh,730px);
-    aspect-ratio:auto;
-    overflow:hidden;
-  }
-  .tutorial-screen .tutorial-frame{padding:12px;gap:10px}
-  .tutorial-screen .tutorial-frame header small{font-size:11px}
-  .tutorial-screen .tutorial-frame h2{font-size:clamp(24px,6vw,37px)}
-  .tutorial-screen .tutorial-frame header p{font-size:12px}
-  .tutorial-screen .tutorial-frame footer{flex-wrap:wrap;gap:6px}
-  .tutorial-screen .tutorial-frame footer button{
-    flex:1;min-width:0;font-size:12px!important;padding:8px!important;
-  }
-}
+
 @media(prefers-reduced-motion:reduce){
   #game-shell button{transition:none!important;scroll-behavior:auto!important}
 }
@@ -551,18 +494,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   -webkit-text-stroke:0;text-shadow:none;letter-spacing:.015em;
   font-family:'Barlow Condensed',Arial,sans-serif;font-weight:800;
 }
-@media(max-width:720px){
-  #game-shell .tutorial-body table{display:block;min-width:0;width:100%;font-size:14px}
-  .tutorial-screen .tutorial-body thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
-  .tutorial-screen .tutorial-body tbody{display:grid;gap:10px}
-  .tutorial-screen .tutorial-body tr{display:grid;padding:8px;background:#e6e5d8;border-radius:5px}
-  .tutorial-screen .tutorial-body td{display:grid;grid-template-columns:minmax(76px,35%) minmax(0,1fr);gap:10px;
-    padding:7px 3px;overflow-wrap:anywhere;white-space:normal;align-items:start}
-  .tutorial-screen .tutorial-body td::before{content:attr(data-label);font-weight:700;color:#304b4d}
-  .tutorial-screen .tutorial-body p{font-size:13px;line-height:1.5}
-  .tutorial-screen .tutorial-body{overflow-x:hidden}
-  #game-shell .title-tools button{min-height:44px}
-}
+
 @media(max-height:500px){
   #game-shell.tutorial-screen .shell-content:has(.tutorial-frame){width:min(960px,96vw);height:calc(100dvh - 24px);aspect-ratio:auto}
   #game-shell .tutorial-frame{padding:12px;gap:8px}

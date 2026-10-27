@@ -65,6 +65,29 @@ test('preset storage is versioned and resistant to disabled local storage', () =
   assert.doesNotThrow(()=>storeGraphicsPreset(forbidden,'ultra'));
 });
 
+test('144 FPS is the new default while subsequent explicit quality choices persist', () => {
+  const values = new Map([['streetskate.graphicsPreset.v1','cinematic']]);
+  const storage = {getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)};
+  assert.equal(DEFAULT_GRAPHICS_PRESET,'high-refresh');
+  assert.equal(loadGraphicsPreset(storage),'high-refresh');
+  storeGraphicsPreset(storage,'high');
+  assert.equal(loadGraphicsPreset(storage),'high');
+});
+
+test('144 FPS bounds render pixels on high-DPI and 4K displays without changing aspect ratio', () => {
+  for (const [width,height,dpr] of [[1280,720,2],[1920,1080,2],[2560,1440,1],[3840,2160,2],[3440,1440,1]]) {
+    const fast=resolveGraphicsSettings('high-refresh',{width,height,devicePixelRatio:dpr});
+    assert.ok(width*height*fast.pixelRatio**2<=1920*1080+1);
+    assert.ok(fast.pixelRatio<=1);
+    assert.equal(fast.postProcessing,false);
+    assert.equal(fast.bloomStrength,0);
+    assert.equal(fast.contactDepth,false);
+    assert.equal(fast.targetFrameRate,144);
+  }
+  assert.equal(resolveGraphicsSettings('high-refresh',{width:3840,height:2160}).pixelRatio,.5);
+  assert.equal(resolveGraphicsSettings('high-refresh',{width:1280,height:720}).pixelRatio,1);
+});
+
 test('linear fog maintains near plane and adjusts far distance relative to the map', () => {
   assert.deepEqual(qualityFogDistance(100,225,GRAPHICS_PRESETS.high.fogDensity),{near:100,far:225});
   assert.ok(qualityFogDistance(100,225,GRAPHICS_PRESETS.cinematic.fogDensity).far>225);

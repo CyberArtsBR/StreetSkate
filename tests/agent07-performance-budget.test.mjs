@@ -99,10 +99,10 @@ test('agent07: relief GPU budget drops 75% without reducing photographic texture
   assert.ok(materials.coping.roughness < .35);
 });
 
-test('agent07: Performance renders directly instead of allocating or executing post effects', () => {
+test('agent07: Performance and 144 FPS render directly without executing post effects', () => {
   const pipeline = Object.create(GraphicsPipeline.prototype);
   let direct = 0, composer = 0;
-  pipeline.settings = {name:'performance',bloomStrength:0};
+  pipeline.settings = {...GRAPHICS_PRESETS.performance,name:'performance'};
   pipeline.faulted = false;
   pipeline.scene = {};
   pipeline.camera = {};
@@ -112,5 +112,9 @@ test('agent07: Performance renders directly instead of allocating or executing p
   pipeline.composer = {render(){composer++;}};
   pipeline.render();
   assert.equal(direct,1);
+  assert.equal(composer,0);
+  pipeline.settings = {...GRAPHICS_PRESETS['high-refresh'],name:'high-refresh'};
+  pipeline.render();
+  assert.equal(direct,2);
   assert.equal(composer,0);
 });

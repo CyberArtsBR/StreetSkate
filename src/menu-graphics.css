@@ -156,45 +156,7 @@ body[data-screen='graphics'] #game-shell .menu-art-caption {bottom:35px}
   #game-shell.loadout-screen .session-mode {margin-left:0;margin-top:5px}
   #game-shell.menu-screen .menu-card {padding:24px}
 }
-@media(max-width:720px) {
-  #game-shell.loadout-screen .shell-content {width:100vw;max-height:calc(100dvh - 45px)}
-  #game-shell.loadout-screen .loadout-shell {padding:14px;gap:14px}
-  #game-shell.loadout-screen .loadout-shell header {padding:0;min-height:0}
-  #game-shell.loadout-screen .loadout-shell header h2 {font-size:clamp(30px,6.5vw,46px)}
-  #game-shell.loadout-screen .loadout-shell header>small {font-size:8px;letter-spacing:.12em}
-  #game-shell.loadout-screen .session-mode {margin-left:8px;font-size:8px}
-  #game-shell.loadout-screen .loadout-shell header p {font-size:8px;letter-spacing:.04em}
-  #game-shell.loadout-screen .music-menu-slot {position:static;width:100%;margin-top:14px}
-  #game-shell.loadout-screen .music-menu-slot #now-playing {padding:10px;max-width:100%}
-  #game-shell.loadout-screen .loadout-panels {grid-template-columns:1fr}
-  #game-shell.loadout-screen .loadout-section {padding:14px}
-  #game-shell.loadout-screen .spot-panel {grid-column:auto}
-  #game-shell.loadout-screen .selected-rider {min-height:230px}
-  #game-shell.loadout-screen .loadout-character {min-height:64px;grid-template-columns:50px minmax(0,1fr)}
-  #game-shell.loadout-screen .loadout-character strong {font-size:18px}
-  #game-shell.loadout-screen .loadout-character small {font-size:8px}
-  #game-shell.loadout-screen .loadout-character .rider-portrait {width:50px;height:54px}
-  #game-shell.loadout-screen .loadout-boards {grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(90px,auto))}
-  #game-shell.loadout-screen .deck-thumb {min-height:58px}
-  #game-shell.loadout-screen .loadout-deck b {font-size:12px}
-  #game-shell.loadout-screen .loadout-locations {grid-template-columns:1fr;grid-auto-rows:minmax(170px,auto)}
-  #game-shell.loadout-screen .loadout-location {min-height:170px}
-  #game-shell.loadout-screen .loadout-location strong {font-size:28px}
-  #game-shell.loadout-screen .loadout-location small {font-size:11px}
-  #game-shell.loadout-screen .loadout-shell footer {flex-wrap:wrap;padding:10px;gap:10px}
-  #game-shell.loadout-screen .loadout-recap {order:3;flex-basis:100%;font-size:10px}
-  #game-shell.loadout-screen .loadout-shell footer [data-action='confirmLoadout'] {flex:1;min-width:0;font-size:17px}
-  #game-shell.menu-screen .shell-content,body[data-screen='graphics'] #game-shell .shell-content {width:94vw;max-height:calc(100dvh - 66px)}
-  #game-shell.menu-screen .menu-stage {grid-template-columns:1fr}
-  #game-shell.menu-screen .menu-session-art {display:none}
-  #game-shell.menu-screen .menu-card,body[data-screen='graphics'] #game-shell.menu-screen .menu-card {padding:22px 18px;gap:12px}
-  #game-shell.menu-screen .menu-card h2 {font-size:48px}
-  #game-shell.menu-screen .menu-card button {min-height:46px;font-size:14px}
-  #game-shell.menu-screen .audio-volume-control {grid-template-columns:1fr 44px 44px}
-  #game-shell.menu-screen .audio-volume-control button {min-height:44px}
-  #game-shell.menu-screen .menu-card .graphics-preset {min-height:66px}
-  body:is([data-screen='select'],[data-screen='pause'],[data-screen='options'],[data-screen='graphics']) .menu-footnote {font-size:7px;bottom:5px;max-width:95vw;padding:6px 8px;line-height:1.5}
-}
+
 @media(prefers-reduced-motion:reduce) {
   #game-shell.loadout-screen *,#game-shell.menu-screen * {animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
