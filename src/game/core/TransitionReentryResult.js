@@ -5,6 +5,28 @@ function horizontal(vector) {
 }
 
 /**
+ * A world-UP air wheel sweep may put the leading truck onto the top deck
+ * while the board centre is already INSIDE its original wall. That partial
+ * footprint cannot own a flat landing; the ramp-oriented sweep must finish
+ * the descent. This is contact routing only, never synthetic wheel support.
+ */
+export function partialDeckContactDuringReturn({support,air,position,rig,config}={}) {
+  if(!air?.frame || air.transferring || !air.apexPassed || !support?.supported
+    || Math.abs(support.normal?.y ?? 0)<.985 || !position || !rig || !config) return false;
+  const front=Boolean(support.frontSupported),rear=Boolean(support.rearSupported);
+  if(front===rear)return false; // Full deck support belongs to the normal solver.
+  const {lipPoint,rampInward,surfaceNormal}=air.frame;
+  if(!lipPoint || !rampInward || !surfaceNormal)return false;
+  const radial=horizontal(position.clone().sub(lipPoint)).dot(rampInward);
+  const wheelReach=Math.hypot(Math.max(Math.abs(rig.frontTruckZ),Math.abs(rig.rearTruckZ)),
+    Math.max(Math.abs(rig.leftWheelX),Math.abs(rig.rightWheelX)));
+  if(radial<=.015 || radial> wheelReach+.04)return false;
+  // Reuse the authored lip bounds/height gates. The saved face normal is only
+  // a classification reference; it does not create or accept a contact.
+  return supportMatchesOriginalTransition({position:support.position,normal:surfaceNormal},air,config);
+}
+
+/**
  * Verify that a support belongs to the same authored transition that launched
  * the active vert-air state. This is geometry evidence only; it never mutates
  * gameplay orientation or velocity.

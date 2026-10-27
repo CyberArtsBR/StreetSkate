@@ -170,6 +170,8 @@ export class ParkCollision {
     const result = this._sweepResult;
     result.point.copy(pointOut); result.normal.copy(normalOut);
     result.distance = hit.distance;
+    result.object = hit.object;
+    result.faceIndex = hit.faceIndex;
     result.fraction = THREE.MathUtils.clamp(hit.distance / Math.max(distance, EPS), 0, 1);
     return result;
   }

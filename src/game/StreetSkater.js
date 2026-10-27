@@ -270,6 +270,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   update(delta, input, elapsed) {
     const before = { grounded: this.grounded, velocity: this._beforeVelocity.copy(this.velocity), airTime: this.airTime };
     this.advance(delta, input);
+    if(this.lastCaughtFlip){this.board?.catchFlip(this.lastCaughtFlip);this.lastCaughtFlip=null;}
     const present = this.updatePresentation(delta, input, before);
 
     this.root.position.copy(this.position);

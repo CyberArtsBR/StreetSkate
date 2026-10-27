@@ -76,8 +76,8 @@ export class StreetBoard {
     };
   }
 
-  async load({ persist = true } = {}) {
-    this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
+  prepareContactGeometry(model) {
+    this.model = model;
     // Match Half Pipe's deck-only 18% extension: trucks/wheelbase stay intact.
     this.model.traverse(o => { if (o.isMesh && /^Board1/i.test(o.name)) o.scale.x *= 1.18; });
     const original = new THREE.Box3().setFromObject(this.model);
@@ -91,6 +91,11 @@ export class StreetBoard {
     this.model.position.set(-center.x, -box.min.y - this.deckHeight, -center.z);
     this.model.updateMatrixWorld(true);
     this.contactRig = this.deriveContactRig();
+    return this.contactRig;
+  }
+
+  async load({ persist = true } = {}) {
+    this.prepareContactGeometry((await new GLTFLoader().loadAsync(this.url)).scene);
     this.root.add(this.model);
     // A board must never inherit transparent/blended faces from the imported
     // GLB. Both sides of the deck, trucks and wheels must write real depth;
@@ -203,6 +208,13 @@ export class StreetBoard {
     this._wasFlipping = false;
     this._lastFlipYaw = 0;
     this._lastFlipProgress = 0;
+  }
+
+  catchFlip(flip) {
+    if(!flip)return;
+    this._lastFlipYaw=flipTurns({...flip,progress:1}).yaw*Math.PI*2;
+    this._lastFlipProgress=1;
+    this._wasFlipping=true;
   }
 
   update({ presentation = null, airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,

@@ -34,9 +34,9 @@ test('vert launch remains bounded even at maximal ramp speed and boost', () => {
   assert.equal(air.transferring, false);
   assert.ok(velocity.y <= VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed + 1e-8);
   assert.ok(velocity.y > 0);
-  // At gravity=20 the charged ceiling is 5.63 metres above departure. Fast
+  // The shipped 17 m/s cap gives a 7.225 metre ceiling at gravity=20. Fast
   // ramp air needs more than the former 2.81 m ceiling to fit multiple tricks.
-  assert.ok(velocity.y ** 2 / 40 <= 5.63);
+  assert.ok(velocity.y ** 2 / 40 <= 7.225 + 1e-8);
 });
 
 test('generic quarter lip retains a strong jump but never compounds vertical velocity into a roof launch', () => {

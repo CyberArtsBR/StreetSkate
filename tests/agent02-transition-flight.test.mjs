@@ -48,7 +48,9 @@ test('small and large quarter: launch height follows actual transition slope', (
   const large = setup({ normalY: 0.20 });
   assert.ok(large.air.launchVertical > small.air.launchVertical + 1.5);
   for (const state of [small, large]) {
-    const budget = state.before.lengthSq() + (2.8 * 0.72) ** 2;
+    // The shipped coping-boost tuning (ffd6b07) converts 82% of the
+    // requested impulse. Keep the energy assertion, using that contract.
+    const budget = state.before.lengthSq() + (2.8 * 0.82) ** 2;
     assert.ok(state.velocity.lengthSq() <= budget + 1e-7,
       'transition may not create kinetic energy beyond explicit boost');
     assert.ok(state.air.launchHorizontal.dot(state.candidate.rampInward) < 1e-9);

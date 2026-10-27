@@ -67,7 +67,7 @@ export class StreetPhysics {
     this.airHeading = heading;
     this.setMovementState(support ? MOVEMENT_STATE.GROUND : MOVEMENT_STATE.AIR);
     this.speed = 0; this.charge = 0; this.airSpin = 0;
-    this.flipState = null; this.grabState = null; this.manual = null; this.flatland = null;
+    this.flipState = null; this.lastCaughtFlip = null; this.grabState = null; this.manual = null; this.flatland = null;
     this.grind = null; this.wallRide = null; this.stance = 1;
     this.airTime = 0; this.accumulator = 0; this.coyote = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
     this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
@@ -198,7 +198,7 @@ export class StreetPhysics {
     const result = this.tricks.settle();
     if (!result) return;
     this.score += result.points;
-    this.feedback = `${result.names} · ${result.multiplier}X · +${result.points}`;
+    this.feedback = `BANKED · +${result.points} · ${result.multiplier}X`;
     this.feedbackTime = 2.6;
   }
 

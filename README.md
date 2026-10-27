@@ -1,5 +1,7 @@
 # StreetSkate
 
+The local coping/presentation quality pass is documented in [docs/coping-quality-pass-2026-10-27.md](docs/coping-quality-pass-2026-10-27.md), including the confirmed cause, before/after captures and validation. Run `npm run test:browser` against a local preview with `STREETSKATE_URL` set to its URL; the smoke test covers the current three-map game.
+
 Playable Three.js street skateboarding prototype, using the reconstructed Insanity-inspired park, the user-supplied TheanchoURi character, and the skateboard from CyberArtsBR/Skate.
 
 ## Run locally

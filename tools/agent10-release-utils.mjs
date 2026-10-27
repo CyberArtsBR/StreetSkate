@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-export const LOCATION_IDS = Object.freeze(['rooftop', 'orbit', 'grand-warehouse']);
+export const LOCATION_IDS = Object.freeze(['skate-paradise', 'orbit', 'grand-warehouse']);
 export const RELEASE_META_FILE = 'agent10-build.json';
 const shaPattern = /^[0-9a-f]{40}$/i;
 

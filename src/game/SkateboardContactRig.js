@@ -182,6 +182,8 @@ export class SkateboardContactRig {
     wheel.previous.copy(wheel.point).addScaledVector(wheel.normal, this.skin);
     wheel.distance = hit.distance ?? 0;
     wheel.sweepFraction = hit.fraction ?? 1;
+    wheel.triangleIndex = hit.faceIndex ?? null;
+    wheel.surface = hit.object?.name || hit.object?.userData?.surface || null;
     return true;
   }
 

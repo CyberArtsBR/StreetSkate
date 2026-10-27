@@ -55,7 +55,9 @@ test('ghost material copies textures and keeps rigged mesh geometry without crea
  assert.notEqual(mesh.material,original);
  assert.equal(mesh.material.transparent,true);
  assert.equal(mesh.material.depthWrite,false);
- assert.equal(mesh.material.opacity,0.80);
+ // The green spectral finish introduced in 9c90797 preserves more of the
+ // authored silhouette at 90% opacity, while retaining source transparency.
+ assert.equal(mesh.material.opacity,0.90);
  assert.ok(mesh.material.emissiveIntensity>0);
  assert.ok(mesh.material.emissive.getHex()>0);
  assert.equal(mesh.userData.ghostRiderGlow,true);

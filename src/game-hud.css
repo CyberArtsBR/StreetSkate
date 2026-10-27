@@ -121,3 +121,9 @@ body[data-screen='graphics'] #game-shell .graphics-card{width:100%;max-width:100
 .graphics-advanced summary:focus-visible{outline:2px solid #ffdf90;outline-offset:3px}
 .graphics-advanced p{margin:0 0 8px}
 @media(max-width:720px){#game-shell.menu-screen .graphics-card{padding:18px}.skate-hud .session-score{min-width:60px}.skate-hud{gap:9px}}
+
+#trick-feedback .combo-caption{display:block;flex-basis:100%;font:800 11px/1.4 'DM Sans',Arial,sans-serif;
+  letter-spacing:.12em;color:#f6efdc;-webkit-text-fill-color:currentColor;-webkit-text-stroke:0;
+  text-shadow:0 1px 4px #000;margin-bottom:4px}
+#trick-feedback[data-combo-phase='banked'] .combo-caption{color:#b3edc2}
+#trick-feedback[data-combo-phase='bail'] .combo-caption{color:#ffccd1}

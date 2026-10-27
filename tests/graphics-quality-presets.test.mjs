@@ -53,11 +53,11 @@ test('unstable SSR is disabled across all tiers while preserving high preset blo
 });
 
 test('Cinematic is default while previously selected valid tiers remain respected', () => {
-  assert.equal(DEFAULT_GRAPHICS_PRESET,'high');
+  assert.equal(DEFAULT_GRAPHICS_PRESET,'cinematic');
   const saved = { getItem() { return 'ultra'; } };
   assert.equal(loadGraphicsPreset(saved),'ultra');
   const empty = { getItem() { return null; } };
-  assert.equal(loadGraphicsPreset(empty),'high');
+  assert.equal(loadGraphicsPreset(empty),'cinematic');
 });
 
 test('preset storage is versioned and resistant to disabled local storage', () => {
