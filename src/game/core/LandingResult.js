@@ -76,6 +76,12 @@ function rejected(rejectReason, supportMode = 'reject', extra = {}) {
   };
 }
 
+export function landingBailMessage(landing) {
+  return landing?.rejectReason===LANDING_REJECT_REASON.FLIP
+    ? 'BAIL · finish your flip before landing'
+    : 'BAIL · land along your direction of travel';
+}
+
 /** Shared pure geometry/safety evaluation. It never mutates gameplay state. */
 function evaluateLandingCore({
   support,

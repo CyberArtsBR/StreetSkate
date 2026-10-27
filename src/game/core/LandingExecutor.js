@@ -70,6 +70,9 @@ export function applyAcceptedLanding(controller, support, landing, {
     controller.velocity.set(0, 0, 0);
   }
 
+  // Auto-catches can clear a flip between render frames. Preserve its completed
+  // decorative orientation so a caught shove-it does not unwind on the deck.
+  if(controller.flipState)controller.lastCaughtFlip={...controller.flipState,progress:1};
   controller.flipState = null;
   controller.grabState = null;
   controller.airSpin = 0;

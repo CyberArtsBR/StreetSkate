@@ -13,6 +13,7 @@ import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
+import { CopingTrace } from './game/CopingTrace.js';
 import { RunSummary } from './game/RunSummary.js';
 import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
@@ -372,6 +373,12 @@ function setPaused(value) {
   input.clear();
   gameShell.syncPause(paused);
   if (paused) {
+    if (import.meta.env.DEV && skater?.copingTrace?.size) {
+      let capture=document.getElementById('local-coping-capture');
+      if(!capture){capture=document.createElement('script');capture.type='application/json';capture.id='local-coping-capture';document.body.append(capture);}
+      capture.textContent=JSON.stringify({location:currentWorld?.id,rig:skater.contactRig,
+        camera:followCamera?.mode,trace:skater.copingTrace.snapshot()});
+    }
     skateAudio.silence();
     input.clear();
     if (skater) {
@@ -433,9 +440,14 @@ function updateHud() {
   setHudGlyphValue(hud['score-value'],scoreText);
   const trickNode = hud['trick-feedback'];
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
+  const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active'
+    :trickLabel.startsWith('BANKED')?'banked':'notice';
+  const comboCaption={bail:'TRY AGAIN',active:'COMBO AT RISK',banked:'POINTS BANKED',notice:''}[comboPhase];
   // Do not reset the pop animation on every render frame.
-  if (trickNode.dataset.graffitiText !== trickLabel) {
-    trickNode.innerHTML = trickLabel ? graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
+  if (trickNode.dataset.graffitiText !== trickLabel || trickNode.dataset.comboPhase!==comboPhase) {
+    trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
+      +graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
+    trickNode.dataset.comboPhase=comboPhase;
     trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
     trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
     trickNode.classList.remove('graffiti-pop');
@@ -658,6 +670,8 @@ async function loadGame() {
       rampTuning: { factor: manifest.transitionScale, baked: true },
       captureState: () => captureGameplayState(skater),
       captureInput: () => ({ ...lastInputState }),
+      setCopingTrace: (enabled, capacity = 720) => { skater.copingTrace = enabled ? new CopingTrace(capacity) : null; },
+      captureCopingTrace: () => skater.copingTrace?.snapshot() || [],
       toggleDebugOverlay: () => debugOverlay.toggle(),
       captureAuditTelemetry: () => captureAuditTelemetry({
         skater, followCamera, camera, input: lastInputState,
@@ -666,6 +680,7 @@ async function loadGame() {
       transitionDebug,
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
+    if(import.meta.env.DEV)skater.copingTrace=new CopingTrace();
     // Local art-director capture route; Vite removes this block from production.
     if(import.meta.env.DEV){
       const captureMap=new URLSearchParams(location.search).get('art-capture');

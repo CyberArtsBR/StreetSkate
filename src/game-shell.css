@@ -544,3 +544,31 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 @media(prefers-reduced-motion:reduce){
   #game-shell button{transition:none!important;scroll-behavior:auto!important}
 }
+
+/* Reference instructions need crisp letterforms at every viewport. */
+.tutorial-frame header h2 {
+  color:#182831;background:none;-webkit-text-fill-color:currentColor;
+  -webkit-text-stroke:0;text-shadow:none;letter-spacing:.015em;
+  font-family:'Barlow Condensed',Arial,sans-serif;font-weight:800;
+}
+@media(max-width:720px){
+  #game-shell .tutorial-body table{display:block;min-width:0;width:100%;font-size:14px}
+  .tutorial-screen .tutorial-body thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+  .tutorial-screen .tutorial-body tbody{display:grid;gap:10px}
+  .tutorial-screen .tutorial-body tr{display:grid;padding:8px;background:#e6e5d8;border-radius:5px}
+  .tutorial-screen .tutorial-body td{display:grid;grid-template-columns:minmax(76px,35%) minmax(0,1fr);gap:10px;
+    padding:7px 3px;overflow-wrap:anywhere;white-space:normal;align-items:start}
+  .tutorial-screen .tutorial-body td::before{content:attr(data-label);font-weight:700;color:#304b4d}
+  .tutorial-screen .tutorial-body p{font-size:13px;line-height:1.5}
+  .tutorial-screen .tutorial-body{overflow-x:hidden}
+  #game-shell .title-tools button{min-height:44px}
+}
+@media(max-height:500px){
+  #game-shell.tutorial-screen .shell-content:has(.tutorial-frame){width:min(960px,96vw);height:calc(100dvh - 24px);aspect-ratio:auto}
+  #game-shell .tutorial-frame{padding:12px;gap:8px}
+  #game-shell .tutorial-frame header h2{font-size:28px;margin:3px 0}
+  #game-shell .tutorial-frame header p{font-size:13px}
+  #game-shell .tutorial-frame footer [data-action="skipTutorial"]{position:static;transform:none!important}
+  #game-shell .tutorial-frame footer{gap:8px}
+  #game-shell .tutorial-frame footer button{font-size:12px!important;min-height:44px;padding:8px 12px!important}
+}

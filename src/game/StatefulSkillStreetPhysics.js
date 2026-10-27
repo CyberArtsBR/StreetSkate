@@ -306,6 +306,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
   }
 
   step(dt, input = {}) {
+    this.copingTrace?.begin(this, input, dt);
     const releaseNow = this.pumpReleaseQueued;
     this.updatePumpState(dt, { ...input, ollieReleased: releaseNow });
     if (releaseNow) this.pumpReleaseQueued = false;
@@ -313,6 +314,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
     this.syncMovementState();
     this.syncCanonicalState();
     super.step(dt, { ...input, ollieReleased: false });
+    this.copingTrace?.finish(this);
     this.syncMovementState();
     this.syncCanonicalState();
   }

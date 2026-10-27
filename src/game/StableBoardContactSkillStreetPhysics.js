@@ -4,6 +4,7 @@ import { CollisionResolver } from './collision/CollisionResolver.js';
 import {
   evaluateStableLanding,
   stableFlipLandingMode,
+  landingBailMessage,
 } from './core/LandingResult.js';
 import {
   applyAcceptedLanding,
@@ -165,6 +166,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
   resolveMotion(before, beforeUp, input = {}) {
     const collision = this.ensureCollisionResolver();
+    const velocityBefore = this.copingTrace ? this.velocity.toArray() : null;
     const result = collision.resolveBody({
       from: before,
       desired: this.position,
@@ -176,6 +178,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       ignoreRail: this.grind?.rail.name || null,
     });
     collision.applyBodyResult(this, result);
+    this.copingTrace?.decision('body-collision', {velocityBefore,velocityAfter:this.velocity.toArray(),
+      contacts:result.wallContacts.map(c=>({normal:c.normal?.toArray(),surface:c.surface,rail:c.railId}))});
 
     const wall = result.wallContacts[0] || null;
     const slideContact = result.contacts.find(hit => Math.abs(hit.normal?.y ?? 1) < 0.3);
@@ -359,7 +363,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
 
     if (!landing.accepted) {
-      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
+      if (landing.shouldBail) this.bail(landingBailMessage(landing));
       return false;
     }
 

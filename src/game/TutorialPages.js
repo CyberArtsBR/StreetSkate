@@ -9,10 +9,11 @@ export function xboxIcons(value) {
     return '<span class="xbox-input '+cls+'" aria-label="Xbox '+token+'">'+token+'</span>';
   });
 }
-const table=(head,rows)=>`<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td>${head[i]?.startsWith('Xbox')?xboxIcons(v):v}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+const attribute=value=>String(value).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+const table=(head,rows)=>`<table role="table"><thead><tr>${head.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr role="row">${row.map((v,i)=>`<td role="cell" data-label="${attribute(head[i])}"><span class="tutorial-value">${head[i]?.startsWith('Xbox')?xboxIcons(v):v}</span></td>`).join('')}</tr>`).join('')}</tbody></table>`;
 export function tutorialPages() {
   return [
-    {title:'Welcome to the rooftop',subtitle:'90 seconds. Build a line. Land your combos.',html:table(['Action','Keyboard','Xbox'],[
+    {title:'Build your first line',subtitle:'90 seconds. Build a line. Land your combos.',html:table(['Action','Keyboard','Xbox'],[
       ['Steer / trick direction','W A S D','Left stick / D-pad'],['Ollie','Hold Space, then release','Hold A, then release'],
       ['Flip / Grab / Grind','← / → / ↑ arrow keys','X / B / Y'],['Air rotation','Q / E','LB / RB'],
       ['Vert exit / switch stance','Left Ctrl / Right Ctrl','LT / RT'],['Camera 1–3','1 / 2 / 3','Click right stick to cycle'],

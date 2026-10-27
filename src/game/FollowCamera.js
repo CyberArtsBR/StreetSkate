@@ -154,6 +154,7 @@ export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
+    this.motionPreference=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
     this.mode = 'follow';
     this.position = new THREE.Vector3();
     this.target = new THREE.Vector3();
@@ -205,6 +206,7 @@ export class FollowCamera {
 
   update(player, dt, input = {}) {
     dt = THREE.MathUtils.clamp(Number(dt) || 0, 0, 0.1);
+    const reducedMotion=this.motionPreference?.matches===true;
     const firstFrame = !this.initialized;
     const state = captureCameraState(player, {
       previousDirection: this.direction,
@@ -260,7 +262,7 @@ export class FollowCamera {
         THPS_CAMERA.maximumTrackedYawRadiansPerSecond));
       if (returning && state.doingTrick) this.trickZoomActive = true;
       if (!returning) this.trickZoomActive = false;
-      const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
+      const zoomTarget = highFollow || reducedMotion ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
       const highFrame = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }) : null;
@@ -352,7 +354,7 @@ export class FollowCamera {
     // Fixed is intentionally a constant-lens, world-axis shot. Gameplay
     // follow modes can gently open their lens at speed; portrait displays get
     // extra visibility without altering the avatar or authored geometry.
-    const speedFov = this.mode === 'fixed' ? 0 : Math.min(
+    const speedFov = this.mode === 'fixed' || reducedMotion ? 0 : Math.min(
       THPS_CAMERA.highSpeedFovCap,
       Math.max(0, state.horizontalSpeed - 12) * THPS_CAMERA.highSpeedFovGain);
     const portraitFov = this.mode === 'fixed' ? 0 : Math.min(

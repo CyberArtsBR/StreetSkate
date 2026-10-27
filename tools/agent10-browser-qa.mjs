@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 const url=process.env.STREETSKATE_URL||'http://127.0.0.1:4173';
 const out=process.env.AGENT10_ARTIFACT_DIR||'artifacts/agent10';
 await mkdir(out,{recursive:true});
@@ -10,7 +11,10 @@ const report={url,started:new Date().toISOString(),checks:[],pageErrors:[],reque
 // Headless Chromium can deprioritize RAF in software WebGL even while the
 // tab is under test. Disable background throttling without lowering the
 // required number of animation frames.
-const browser=await chromium.launch({headless:true,args:[
+const localChrome='C:/Program Files/Google/Chrome/Application/chrome.exe';
+const executablePath=process.env.STREETSKATE_BROWSER_EXECUTABLE
+ || (process.platform==='win32'&&existsSync(localChrome)?localChrome:undefined);
+const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{}),args:[
  '--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist',
  '--disable-background-timer-throttling','--disable-renderer-backgrounding',
  '--disable-backgrounding-occluded-windows',
@@ -39,7 +43,7 @@ async function gotoTitle(){
 async function chooseLoadout(){
  await page.locator('.loadout-character').first().click();
  await page.locator('.loadout-deck').nth(2).click();
- await page.locator('.loadout-location[data-location="rooftop"]').click();
+ await page.locator('.loadout-location[data-location="skate-paradise"]').click();
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
  await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
  if(page.viewportSize()?.width<=800) await page.screenshot({path:join(out,'selection-five-800.png'),fullPage:true});
@@ -125,12 +129,12 @@ try{
  await checked('options camera and persisted music volume',async()=>{
   await page.locator('[data-action="options"]').click();
   await page.locator('[data-action="camera"]').click();
-  await page.locator('[data-action="volumeDown"]').click();
-  const stored=await page.evaluate(()=>localStorage.getItem('streetskate.masterVolume'));
+  await page.locator('[data-action="musicDown"]').click();
+  const stored=await page.evaluate(()=>localStorage.getItem('streetskate.musicVolume'));
   assert.ok(Number.isFinite(Number(stored))&&Number(stored)>=0&&Number(stored)<=1);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.streetSkate?.ready===true,null,{timeout:90000});
-  assert.equal(await page.evaluate(()=>localStorage.getItem('streetskate.masterVolume')),stored);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('streetskate.musicVolume')),stored);
   await page.locator('body[data-screen="title"]').waitFor();
  });
  await checked('timed run selection, grid keyboard, and three playable locations',async()=>{
@@ -146,7 +150,7 @@ try{
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),0);
-  for (const id of ['rooftop', 'orbit', 'grand-warehouse']) {
+  for (const id of ['skate-paradise', 'orbit', 'grand-warehouse']) {
     assert.equal(await page.locator(`.loadout-location[data-location="${id}"]`).isEnabled(),true,
       `${id} must remain available and selectable`);
   }
@@ -191,7 +195,7 @@ try{
   assert.ok(reachedLocation,'ArrowRight cannot navigate from skateboard to location');
  });
  await checked('invalid custom avatar is rejected without DOM injection',async()=>{
-  const input=page.locator('input[type="file"][accept*=".glb"]');
+  const input=page.locator('input[type="file"][accept*=".glb"]').first();
   await input.setInputFiles({name:'not-a-model.glb',mimeType:'model/gltf-binary',buffer:Buffer.alloc(128)});
   await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent || ''), null, { timeout: 30000 });
   assert.match(await page.locator('.loadout-status').textContent(),/Invalid GLB header/i);
@@ -258,7 +262,6 @@ try{
   if(await page.locator('body').getAttribute('data-screen')!=='title')
     await page.locator('[data-action="title"]').click();
   await page.locator('body[data-screen="title"]').waitFor();
-  await page.locator('[data-action="options"]').click();
   await page.locator('[data-action="practice"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   await chooseLoadout();
