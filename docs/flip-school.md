@@ -1,6 +1,6 @@
 # Flip School
 
-Entry points: title menu, pause menu, and Tutorial → Flip tricks. Eight unique base flip lessons use the authoritative `TrickCatalog` definitions: Kickflip, Heelflip, Impossible, Pop Shove-It, Hardflip, Inward Heelflip, Varial Kickflip and Varial Heelflip. Upgrade names are shown as a next step; the videos demonstrate the base tricks.
+Entry points: Tutorial on the title menu, the pause-menu shortcut, and Tutorial → Flip tricks. Tutorial opens Flip School first; Next: Controls opens the existing tutorial pages. Eight unique base flip lessons use the authoritative `TrickCatalog` definitions: Kickflip, Heelflip, Impossible, Pop Shove-It, Hardflip, Inward Heelflip, Varial Kickflip and Varial Heelflip. Upgrade names are shown as a next step; the videos demonstrate the base tricks.
 
 Each lesson has one silent looping WebM, a poster, a controller/keyboard overlay driven by the video's media timestamp, four written steps, and a landing tip. Xbox, PlayStation and keyboard instructions all map to the existing game inputs. Slow motion is the initial playback speed. Pause, replay and normal speed use the same timestamp-based overlay, so there is no separate animation clock to drift.
 

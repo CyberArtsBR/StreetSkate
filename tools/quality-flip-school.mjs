@@ -14,7 +14,8 @@ try{
   const page=await context.newPage();page.on('pageerror',error=>report.errors.push(error.message));
   await page.goto(auditUrl);
   await page.waitForFunction(()=>window.streetSkate?.ready,null,{timeout:90000});
-  await page.locator('[data-action="flipSchool"]').click();
+  assert.equal(await page.locator('[data-action="flipSchool"]').count(),0,'Title must have a single Tutorial entry');
+  await page.locator('[data-action="tutorial"]').click();
   await page.locator('body[data-screen="flipSchool"]').waitFor();
   assert.equal(await page.locator('.flip-steps').evaluate(el=>el.parentElement.className),'flip-lesson-detail');
   const video=page.locator('[data-flip-video]');
@@ -80,7 +81,7 @@ try{
   await page.locator('body[data-screen="tutorial"]').waitFor();
   assert.ok((await page.locator('.tutorial-frame h2').textContent()).includes('Flip tricks'));
   report.checks.push('Desktop layouts, keyboard selection, gamepad Back, disposal and return to tutorial');
-  await page.keyboard.press('Escape');await page.locator('[data-action="flipSchool"]').click();
+  await page.keyboard.press('Escape');await page.locator('[data-action="tutorial"]').click();
   await page.locator('[data-action="practice"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
   await page.locator('[data-action="hero"][data-index="0"]').click();
@@ -95,11 +96,11 @@ try{
   await page.locator('body[data-screen="playing"]').waitFor();
   report.checks.push('Free Practice opens a real session; opening lessons pauses gameplay and returning resumes');
   const reduced=await context.newPage();await reduced.emulateMedia({reducedMotion:'reduce'});
-  await reduced.goto(auditUrl);await reduced.locator('[data-action="flipSchool"]').click();
+  await reduced.goto(auditUrl);await reduced.locator('[data-action="tutorial"]').click();
   await reduced.waitForFunction(()=>document.querySelector('video')?.readyState>=2);
   assert.equal(await reduced.locator('video').evaluate(v=>v.paused),true);await reduced.close();
   const failure=await context.newPage();await failure.route('**/flip-school/*.webm',route=>route.fulfill({status:404,body:'missing test clip'}));
-  await failure.goto(auditUrl);await failure.locator('[data-action="flipSchool"]').click();
+  await failure.goto(auditUrl);await failure.locator('[data-action="tutorial"]').click();
   await failure.locator('[data-video-error]').waitFor({state:'visible'});
   assert.equal(await failure.locator('.flip-steps li').count(),4);await failure.close();
   report.checks.push('Reduced motion starts paused; missing video retains readable instructions');
