@@ -8,7 +8,8 @@ try{
   page.on('pageerror',error=>console.error(error));
   await page.goto((process.env.STREETSKATE_URL||'http://127.0.0.1:5180/')+'tools/flip-demo.html');
   await page.waitForFunction(()=>window.demoReady,null,{timeout:90000});
-  for(const lesson of FLIP_LESSONS){
+  const selected = process.env.FLIP_LESSONS?.split(',').map(id=>id.trim()).filter(Boolean);
+  for(const lesson of FLIP_LESSONS.filter(lesson=>!selected || selected.includes(lesson.id))){
     const result=await page.evaluate(id=>window.recordLesson(id),lesson.id);
     await writeFile(`${out}/${lesson.id}.webm`,Buffer.from(result.video.split(',')[1],'base64'));
     await writeFile(`${out}/${lesson.id}.jpg`,Buffer.from(result.poster.split(',')[1],'base64'));

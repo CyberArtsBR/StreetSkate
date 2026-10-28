@@ -22,6 +22,15 @@ The default **144 FPS** graphics profile follows the display refresh rate, enabl
 
 Open **Tutorial** on the title screen to start with Flip School: eight looping flip-trick demonstrations, synchronized Xbox/PlayStation/keyboard inputs, numbered button order, pause/replay, and 0.5× slow motion. The pause menu also provides a direct Flip School shortcut. Only the selected clip loads, and exiting the menu stops playback. Free Practice opens the normal unlimited session setup.
 
+In Free Practice, press **M** to save a grounded practice marker and **N** to return to it. On a controller, hold both shoulder buttons and press D-pad up to save or down to return. The marker restores position, facing, and stance; save a new marker after changing parks.
+
+Pause Free Practice and turn on **Practice Drills** for a sequence of optional challenges. Successfully bank an ollie, a kickflip, a grind, and a three-trick combo to complete them.
+The pause menu also offers an optional **Input Display** showing your recent skating actions.
+
+Options includes a controller stick dead zone setting (8%, 16%, or 24%) for skating and camera movement. Increase it if the sticks drift; menu navigation and trick-direction taps keep their separate thresholds.
+
+Graphics includes optional 2× edge smoothing for the 144 FPS preset with glow enabled. It can reduce frame rate; it is off by default and can be compared locally on your hardware.
+
 | Action | Keyboard | Standard gamepad |
 | --- | --- | --- |
 | Roll / trick direction | Automatic push; W selects forward | Automatic push; stick / D-pad forward |

@@ -16,6 +16,7 @@ import { boardPortraits } from './BoardPortraits.js';
 import { graffitiLettering } from './GraffitiLettering.js';
 import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, GRAPHICS_DESCRIPTIONS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
 import { RUN_SCORE_RULES } from './RunFinalScore.js';
+import { STICK_DEAD_ZONES } from '../input/SkateInput.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -37,6 +38,7 @@ export class GameShell {
     this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
+    this.smoothEdges=stored('streetskate.smoothEdges','off')==='on';
     this.songToastRemaining=4;
     this.sound=stored('streetskate.sound','on')!=='off';
     const savedFinish=Number(stored('streetskate.boardFinish',DEFAULT_BOARD_FINISH));
@@ -139,7 +141,7 @@ export class GameShell {
     target?.focus({preventScroll:true});
     // Controller focus may be below the fold in the scrollable loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
-    if(reveal&&['select','pause','options','graphics','results','flipSchool'].includes(this.phase))
+    if(reveal&&['select','pause','options','graphics','results','flipSchool','tutorial'].includes(this.phase))
       target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
   // Keyboard and gamepad share the same logical layout-aware focus route.
@@ -218,13 +220,16 @@ export class GameShell {
         <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
+        (this.practice?this.button('PRACTICE DRILLS · '+(this.actions.drillsEnabled?.()?'ON':'OFF'),'practiceDrills'):'')+
+        (this.practice?this.button('INPUT DISPLAY · '+(this.actions.practiceInputsEnabled?.()?'ON':'OFF'),'practiceInputs'):'')+
         this.button('FLIP SCHOOL · VIDEO LESSONS','flipSchool')+this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
         +`<p class="test-map-note" role="status" aria-live="polite">${safe(this.mapUploadStatus||'Local GLB · random rider & deck · unlimited practice')}</p>`
         +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
-        +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div></div>'
+        +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div>'
+        +this.button('STICK DEAD ZONE · '+Math.round((this.actions.getDeadZone?.() ?? .16)*100)+'%','deadZone')+'</div>'
         +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
         +this.volumeControl('effects','EFFECTS',this.effectsVolume)
         +'<div class="menu-setting-pair">'+this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
@@ -238,6 +243,8 @@ export class GameShell {
       body='<p class="graphics-intro">Keep your line clear. Choose the detail and responsiveness that suit your display.</p>'
         +GRAPHICS_PRESET_ORDER.map((name,i)=>`<button class="graphics-preset" data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}"><strong>${i===this.graphicsIndex?'✓ ':''}${GRAPHICS_PRESETS[name].label}</strong><span>${GRAPHICS_DESCRIPTIONS[name]}</span></button>`).join('')
         +`<button class="graphics-toggle" data-menu data-action="bloomToggle" aria-pressed="${this.bloomEnabled}">NEON GLOW · ${this.bloomEnabled?'ON':'OFF'}</button>`
+        +`<button class="graphics-toggle" data-menu data-action="edgeToggle" aria-pressed="${this.smoothEdges}">144 FPS EDGE SMOOTHING · ${this.smoothEdges?'ON':'OFF'}</button>`
+        +'<p class="graphics-details">Optional 2× edge smoothing with glow in the 144 FPS preset; may reduce frame rate.</p>'
         +`<p class="graphics-details">${safe(effective?.label||preset.label)} · ${effective?.bloomEnabled?'Glow on':'Glow off'} · stable environment reflections.<br>144 FPS is a target; actual performance depends on your hardware and display.</p>`
         +(effective?`<details class="graphics-advanced"><summary>Rendering details</summary><p>${effective.renderWidth} × ${effective.renderHeight} internal resolution · ${effective.anisotropy}× filtering · ${effective.msaaSamples}× edge samples · 1024² local shadows${effective.postProcessingAvailable?'':' · post effects unavailable'}</p></details>`:'')
         +this.button('← BACK TO OPTIONS','back');
@@ -449,6 +456,8 @@ export class GameShell {
       case 'upload':this.avatarInput.click();break;
       case 'confirmLoadout':void this.confirmLoadout();break;
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
+      case 'practiceDrills':if(this.phase==='pause'&&this.practice){this.actions.toggleDrills?.();this.render();}break;
+      case 'practiceInputs':if(this.phase==='pause'&&this.practice){this.actions.togglePracticeInputs?.();this.render();}break;
       case 'watchHighlights':if(this.actions.watchHighlights?.()){this.replayDisplayKey='';this.setScreen('highlights');this.updateReplayCaption();}break;
       case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
@@ -462,9 +471,11 @@ export class GameShell {
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'deadZone':{const current=this.actions.getDeadZone?.() ?? .16;const next=STICK_DEAD_ZONES[(STICK_DEAD_ZONES.indexOf(current)+1)%STICK_DEAD_ZONES.length];this.actions.setDeadZone?.(next);persist('streetskate.stickDeadZone',next);this.render();break;}
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'bloomToggle':this.bloomEnabled=!this.bloomEnabled;persist('streetskate.bloomEnabled',this.bloomEnabled?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
+      case 'edgeToggle':this.smoothEdges=!this.smoothEdges;persist('streetskate.smoothEdges',this.smoothEdges?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'musicDown':this.adjustVolume('music',-.1);break;
       case 'musicUp':this.adjustVolume('music',.1);break;
       case 'effectsDown':this.adjustVolume('effects',-.1);break;
@@ -503,7 +514,6 @@ export class GameShell {
         const axis=['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(event.code)?'x':'y';
         this.moveSelection(axis,['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1);
       }
-      else if(event.code==='Enter'&&this.open&&this.menuButtons()[this.selection]?.dataset.action!=='flipSchool')this.choose('skipTutorial');
       else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
   }
@@ -551,6 +561,9 @@ export class GameShell {
         else if(edge('start'))this.choose('skipTutorial');
         else if(edge('shoulderLeft')||edge('left'))this.choose('previous');
         else if(edge('shoulderRight')||edge('right'))this.choose('next');
+        else if(direction&&(direction==='up'||direction==='down')&&(!this.navRepeat||edge(direction))){
+          this.moveSelection('y',direction==='up'?-1:1);this.navRepeat=.22;
+        }
         else if(edge('a'))this.menuButtons()[this.selection]?.click();
       } else {
         if(direction&&(!this.navRepeat||edge(direction))){

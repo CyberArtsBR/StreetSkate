@@ -8,6 +8,14 @@ import {flipTurns} from '../src/character/TrickMotion.js';
 const up = new THREE.Vector3(0,1,0);
 const tricks = [FLIP_TRICKS.upRight, DOUBLE_FLIP_TRICKS['Inward Heelflip']];
 
+test('inward and varial heels rotate in opposite shove directions',()=>{
+  for(const trick of tricks) assert.equal(flipTurns({...trick,progress:1}).yaw,.5);
+  assert.equal(flipTurns({...FLIP_TRICKS.downRight,progress:1}).yaw,-.5);
+  assert.equal(flipTurns({...DOUBLE_FLIP_TRICKS['Varial Heelflip'],progress:1}).yaw,-1);
+  assert.ok(flipTurns({...FLIP_TRICKS.upRight,progress:.5}).yaw>0);
+  assert.ok(flipTurns({...FLIP_TRICKS.downRight,progress:.5}).yaw<0);
+});
+
 test('inward heelflips return deck-up at catch and remain upright when the state clears',()=>{
   for(const trick of tricks){
     const board=new StreetBoard('test');board.deckHeight=.12;

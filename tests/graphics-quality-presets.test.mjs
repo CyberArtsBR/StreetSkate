@@ -42,6 +42,12 @@ test('preset caps never exceed DPR, MSAA or GPU anisotropy capabilities', () => 
   assert.equal(resolveGraphicsSettings('cinematic', {devicePixelRatio:3,maxAnisotropy:32,maxSamples:4}).pixelRatio,2.25);
 });
 
+test('optional 144 FPS edge smoothing respects GPU limits',()=>{
+  assert.equal(resolveGraphicsSettings('high-refresh',{maxSamples:4},{smoothEdges:true}).msaaSamples,2);
+  assert.equal(resolveGraphicsSettings('high-refresh',{maxSamples:0},{smoothEdges:true}).msaaSamples,0);
+  assert.equal(resolveGraphicsSettings('high-refresh',{maxSamples:4},{smoothEdges:false}).msaaSamples,0);
+});
+
 test('unstable SSR is disabled across all tiers while preserving high preset bloom', () => {
   assert.equal(GRAPHICS_PRESETS.performance.ssr,false);
   assert.equal(GRAPHICS_PRESETS.balanced.ssr,false);

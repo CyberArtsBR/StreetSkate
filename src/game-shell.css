@@ -477,9 +477,10 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
   line-height:1.4;
 }
 .tutorial-screen .tutorial-body table{
-  font-size:clamp(12px,1.2cqw,16px);
+  font-size:clamp(14px,1.2cqw,16px);
   line-height:1.4;
 }
+.tutorial-screen .tutorial-body p{font-size:clamp(14px,1.23cqw,16px)}
 .tutorial-screen .tutorial-frame footer button{
   min-height:44px;
 }
