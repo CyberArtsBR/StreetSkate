@@ -9,6 +9,7 @@ try{
  await page.goto(auditUrl,{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>window.streetSkate?.ready,{timeout:90000});
  await page.locator('[data-action="tutorial"]').click();
+ await page.locator('[data-action="tutorialNext"]').click();
  await page.locator('[data-action="next"]').click();
  const sizes=[[1280,720],[1920,1080],[2560,1440],[1280,600]];const layouts=[];
  for(const [width,height] of sizes){

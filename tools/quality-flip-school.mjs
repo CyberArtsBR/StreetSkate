@@ -72,6 +72,8 @@ try{
   await page.evaluate(()=>{window.schoolPad.buttons[1]={pressed:false,value:0};});
   assert.equal(await page.locator('video').count(),0);
   await page.locator('[data-action="tutorial"]').click();
+  await page.locator('body[data-screen="flipSchool"]').waitFor();
+  await page.locator('[data-action="tutorialNext"]').click();
   await page.locator('[data-action="next"]').click();await page.locator('[data-action="next"]').click();
   await page.locator('[data-action="flipSchool"]').focus();await page.keyboard.press('Enter');
   await page.locator('body[data-screen="flipSchool"]').waitFor();await page.keyboard.press('Escape');

@@ -79,13 +79,22 @@ test('144 FPS bounds render pixels on high-DPI and 4K displays without changing 
     const fast=resolveGraphicsSettings('high-refresh',{width,height,devicePixelRatio:dpr});
     assert.ok(width*height*fast.pixelRatio**2<=1920*1080+1);
     assert.ok(fast.pixelRatio<=1);
-    assert.equal(fast.postProcessing,false);
-    assert.equal(fast.bloomStrength,0);
+    assert.equal(fast.postProcessing,true);
+    assert.ok(fast.bloomStrength>0);
     assert.equal(fast.contactDepth,false);
     assert.equal(fast.targetFrameRate,144);
   }
   assert.equal(resolveGraphicsSettings('high-refresh',{width:3840,height:2160}).pixelRatio,.5);
   assert.equal(resolveGraphicsSettings('high-refresh',{width:1280,height:720}).pixelRatio,1);
+});
+
+test('144 FPS glow is active by default and its off switch restores direct rendering', () => {
+  const on=resolveGraphicsSettings('high-refresh',{}, {bloomEnabled:true});
+  const off=resolveGraphicsSettings('high-refresh',{}, {bloomEnabled:false});
+  assert.ok(on.bloomStrength>0);
+  assert.equal(on.postProcessing,true);
+  assert.equal(off.bloomStrength,0);
+  assert.equal(off.postProcessing,false);
 });
 
 test('linear fog maintains near plane and adjusts far distance relative to the map', () => {
