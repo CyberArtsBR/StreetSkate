@@ -20,6 +20,8 @@ The default **144 FPS** graphics profile follows the display refresh rate, uses 
 
 ## Controls
 
+Open **Flip School** from the title or pause menu for eight looping flip-trick demonstrations, synchronized Xbox/PlayStation/keyboard inputs, numbered button order, pause/replay, and 0.5× slow motion. It is also linked from Tutorial → Flip tricks. Only the selected clip loads, and exiting the menu stops playback. Free Practice opens the normal unlimited session setup.
+
 | Action | Keyboard | Standard gamepad |
 | --- | --- | --- |
 | Roll / trick direction | Automatic push; W selects forward | Automatic push; stick / D-pad forward |

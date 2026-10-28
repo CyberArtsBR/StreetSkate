@@ -32,6 +32,7 @@ import './menu-presentation.css';
 import './gameplay-instruments.css';
 import './session-results.css';
 import './menu-graphics.css';
+import './flip-school.css';
 
 const container = document.querySelector('#viewport');
 installGraffitiFallback();
