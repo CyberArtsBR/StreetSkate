@@ -46,7 +46,7 @@ export function resolveGraphicsSettings(value, capabilities = {}, overrides = {}
     ...preset, name,
     pixelRatio: resolveRenderPixelRatio(preset, capabilities),
     anisotropy: Math.min(gpuAnisotropy, preset.anisotropy),
-    msaaSamples: Math.min(preset.msaaSamples, maxSamples),
+    msaaSamples: Math.min(name === 'high-refresh' && overrides.smoothEdges ? 2 : preset.msaaSamples, maxSamples),
     bloomStrength,
     // When glow is disabled, the 144 FPS tier can bypass all offscreen passes.
     postProcessing: name === 'high-refresh' ? bloomStrength > 0 : preset.postProcessing,

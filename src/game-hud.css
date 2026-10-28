@@ -115,3 +115,7 @@ body[data-screen='graphics'] #game-shell .graphics-card{width:100%;max-width:100
   text-shadow:0 1px 4px #000;margin-bottom:4px}
 #trick-feedback[data-combo-phase='banked'] .combo-caption{color:#b3edc2}
 #trick-feedback[data-combo-phase='bail'] .combo-caption{color:#ffccd1}
+.practice-drill{position:fixed;top:82px;left:24px;z-index:20;max-width:min(360px,45vw);padding:9px 13px;border:1px solid #c5ed7480;border-radius:8px;background:#10252dea;color:#f5ffd9;font:700 13px/1.3 'DM Sans',sans-serif;pointer-events:none}
+.practice-drill[hidden]{display:none}
+.practice-input{position:fixed;top:125px;left:24px;z-index:20;padding:7px 12px;border:1px solid #a7dfff77;border-radius:8px;background:#10252dea;color:#e7faff;font:700 12px/1.3 'DM Sans',sans-serif;pointer-events:none}
+.practice-input[hidden]{display:none}

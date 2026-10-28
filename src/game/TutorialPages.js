@@ -18,6 +18,7 @@ export function tutorialPages() {
       ['Flip / Grab / Grind','← / → / ↑ arrow keys','X / B / Y'],['Air rotation','Q / E','LB / RB'],
       ['Vert exit / switch stance','Left Ctrl / Right Ctrl','LT / RT'],['Camera 1–3','1 / 2 / 3','Click right stick to cycle'],
       ['Skip song','Backspace','View / Select'],['Pause','Esc','Menu / Start'],
+      ['Practice marker: save / return','M / N','LB + RB + D-pad ↑ / ↓'],
     ])+'<p>WASD chooses direction; arrow keys perform tricks. W = Up, S = Down, A = Left, D = Right. W+A / W+D = upper diagonals; S+A / S+D = lower diagonals. Xbox uses the same direction on the left stick or D-pad. Start Game is 90 seconds. Options → Practice has no time limit.</p>'},
     {title:'Flip tricks',subtitle:'Hold direction + ← / Xbox X. Tap again early to upgrade.',html:table(['Direction: keyboard / stick','One tap','Two taps','Three taps'],
       Object.entries(FLIP_TRICKS).filter(([d])=>d!=='none').map(([d,t])=>{const next=DOUBLE_FLIP_TRICKS[t.name];return[DIRECTIONS[d],t.name,next?.name||'—',DOUBLE_FLIP_TRICKS[next?.name]?.name||'—'];}))+
