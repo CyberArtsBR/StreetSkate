@@ -99,7 +99,7 @@ test('agent07: relief GPU budget drops 75% without reducing photographic texture
   assert.ok(materials.coping.roughness < .35);
 });
 
-test('agent07: Performance and 144 FPS render directly without executing post effects', () => {
+test('agent07: Performance and 144 FPS with glow off render directly without post effects', () => {
   const pipeline = Object.create(GraphicsPipeline.prototype);
   let direct = 0, composer = 0;
   pipeline.settings = {...GRAPHICS_PRESETS.performance,name:'performance'};
@@ -113,8 +113,21 @@ test('agent07: Performance and 144 FPS render directly without executing post ef
   pipeline.render();
   assert.equal(direct,1);
   assert.equal(composer,0);
-  pipeline.settings = {...GRAPHICS_PRESETS['high-refresh'],name:'high-refresh'};
+  pipeline.settings = {...GRAPHICS_PRESETS['high-refresh'],name:'high-refresh',bloomStrength:0,postProcessing:false};
   pipeline.render();
   assert.equal(direct,2);
   assert.equal(composer,0);
+});
+
+test('144 FPS with glow enabled actually renders and composites the bloom pass', () => {
+  const pipeline=Object.create(GraphicsPipeline.prototype);
+  let glow=0,composer=0,direct=0;
+  pipeline.settings={...GRAPHICS_PRESETS['high-refresh'],name:'high-refresh'};
+  pipeline.scene={};pipeline.camera={};pipeline.faulted=false;
+  pipeline.bloomComposite={enabled:true};pipeline.updateContactShadows=()=>{};
+  pipeline.renderSelectiveBloom=()=>{glow++;return true;};
+  pipeline.composer={render(){composer++;}};pipeline.renderer={render(){direct++;}};
+  pipeline.render();
+  assert.equal(glow,1);assert.equal(composer,1);assert.equal(direct,0);
+  assert.equal(pipeline.bloomComposite.enabled,true);
 });

@@ -60,7 +60,8 @@ try{
     },map);
     const measured=await sample();report.samples.push(measured);
     assert.deepEqual(measured.canvas,[1920,1080]);
-    assert.equal(measured.status.postProcessingEnabled,false);
+    assert.equal(measured.status.postProcessingEnabled,true);
+    assert.equal(measured.status.bloomEnabled,true);
     assert.ok(measured.position.every(Number.isFinite));
     await page.screenshot({path:`${out}/${map}.png`});
     console.log(`${map}: ${measured.fps.toFixed(1)} FPS, p95 ${measured.p95Ms.toFixed(1)} ms`);

@@ -14,7 +14,7 @@ const pad=`<svg class="flip-pad" viewBox="0 0 260 145" aria-hidden="true">
   <path d="M118 51h7m10 0h7" stroke="#879ca5" stroke-width="3" stroke-linecap="round"/>
 </svg>`;
 
-export function renderFlipSchool(index=0,mode='xbox'){
+export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
   const lesson=FLIP_LESSONS[index]||FLIP_LESSONS[0];
   return `<article class="flip-school" aria-label="Flip trick video tutorials">
     <header class="flip-school-header"><div><span class="flip-eyebrow">CHIMP HAWK / FIELD NOTES 01</span><h2>FLIP <em>SCHOOL.</em></h2><p>Watch the board. Learn the buttons. Find your line.</p></div><span class="flip-header-stamp">8 TRICKS<br><b>ONE CLEAN LANDING.</b></span></header>
@@ -47,7 +47,7 @@ export function renderFlipSchool(index=0,mode='xbox'){
         <div class="flip-coach-note"><span>LANDING NOTE</span><p>${lesson.tip}</p><small>Next: ${lesson.upgrade}. Tap flip again early, before the first flip finishes. Advanced flips need more airtime.</small></div>
       </section>
     </div>
-    <footer class="flip-school-footer"><button data-menu data-action="back">← BACK</button><p>Left stick / D-pad to navigate · A / Cross to select · B / Circle to return</p><button data-menu data-action="practice" class="flip-practice">FREE PRACTICE ↗</button></footer>
+    <footer class="flip-school-footer"><button data-menu data-action="back">← BACK</button><p>Left stick / D-pad to navigate · A / Cross to select · B / Circle to return</p>${tutorialFlow?'<button data-menu data-action="tutorialNext">NEXT: CONTROLS →</button>':''}<button data-menu data-action="practice" class="flip-practice">FREE PRACTICE ↗</button></footer>
   </article>`;
 }
 

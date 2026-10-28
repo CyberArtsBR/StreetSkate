@@ -249,10 +249,10 @@ export class GameShell {
     } else if(this.phase==='highlights') {
       body=`<div class="highlights-overlay"><header><span class="session-eyebrow">YOUR BEST MOMENTS</span><h2>SESSION HIGHLIGHTS</h2><p data-replay-caption aria-live="polite"></p></header><footer>${this.button('← BACK TO RESULTS','stopHighlights')}<span>ESC / B · BACK TO RESULTS</span></footer></div>`;
     } else if(this.phase==='flipSchool') {
-      body=renderFlipSchool(this.flipLessonIndex,this.flipInputMode);
+      body=renderFlipSchool(this.flipLessonIndex,this.flipInputMode,this.flipTutorial);
     } else if(this.phase==='tutorial') {
       const page=this.pages[this.page];
-      const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
+      const navigation=`<footer>${this.button('← PREVIOUS','previous')}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
@@ -427,9 +427,9 @@ export class GameShell {
   pause(){if(this.active){if(this.actions.portalsOnlineConnected?.()){this.actions.portalsOnlineOpen?.();return;}this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
   syncPause(value){if(value&&this.active)this.setScreen('pause');else if(!value&&this.phase==='pause')this.setScreen('playing');}
-  openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.actions.pause(true);this.setScreen('tutorial');}
-  openFlipSchool(){this.flipReturn=this.phase;this.actions.pause(true);this.setScreen('flipSchool');}
-  closeFlipSchool(){if(this.flipReturn==='playing')this.resume();else this.setScreen(this.flipReturn||'title');}
+  openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.flipTutorial=true;this.actions.pause(true);this.setScreen('flipSchool');}
+  openFlipSchool(){this.flipReturn=this.phase;this.flipTutorial=false;this.actions.pause(true);this.setScreen('flipSchool');}
+  closeFlipSchool(){if(this.flipTutorial){this.flipTutorial=false;this.closeTutorial();}else if(this.flipReturn==='playing')this.resume();else this.setScreen(this.flipReturn||'title');}
   closeTutorial(){
     this.tutorialSeen=true;
     if(this.pendingMode){const practice=this.pendingMode==='practice';this.pendingMode=null;this.start(practice);}
@@ -457,6 +457,7 @@ export class GameShell {
       case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
       case 'flipSchool':this.openFlipSchool();break;
+      case 'tutorialNext':this.page=0;this.setScreen('tutorial');break;
       case 'flipLesson':this.flipLessonIndex=Math.max(0,Math.min(FLIP_LESSONS.length-1,index));this.focusHint={action:'flipLesson',index:this.flipLessonIndex};this.render();break;
       case 'flipInput':this.flipInputMode=['xbox','playstation','keyboard'][index]||'xbox';this.flipPlayer?.setInputMode(this.flipInputMode);break;
       case 'flipPlay':this.flipPlayer?.toggle();break;
@@ -476,7 +477,7 @@ export class GameShell {
       case 'deck':this.finishIndex=(this.finishIndex+1)%BOARD_CHOICES.length;this.actions.deck(this.finishIndex);this.render();break;
       case 'title':this.actions.pause(true);this.setScreen('title');break;
       case 'back':this.back();break;
-      case 'previous':this.page=Math.max(0,this.page-1);this.render();break;
+      case 'previous':if(this.page===0){this.flipTutorial=true;this.setScreen('flipSchool');}else{this.page--;this.render();}break;
       case 'next':this.page=Math.min(this.pages.length-1,this.page+1);this.render();break;
       case 'closeTutorial':this.closeTutorial();break;
       case 'skipTutorial':this.closeTutorial();break;
@@ -503,7 +504,7 @@ export class GameShell {
     if(this.phase==='timeup'){event.preventDefault();event.stopImmediatePropagation();return;}
     if(this.phase==='highlights'&&event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();return;}
     if(event.code==='Backspace'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)this.music.next();return;}
-    if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else this.openTutorial();}return;}
+    if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else if(this.phase==='flipSchool')this.closeFlipSchool();else this.openTutorial();}return;}
     if(this.active)return;
     this.music.unlock();
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space','Enter','Escape'].includes(event.code)){

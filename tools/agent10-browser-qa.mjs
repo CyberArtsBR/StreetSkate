@@ -231,6 +231,8 @@ try{
   await page.locator('body[data-screen="pause"]').waitFor();
   await page.screenshot({path:join(out,'pause-800.png'),fullPage:true});
   await page.locator('[data-action="tutorial"]').click();
+  await page.locator('body[data-screen="flipSchool"]').waitFor();
+  await page.locator('[data-action="tutorialNext"]').click();
   await page.locator('body[data-screen="tutorial"]').waitFor();
   assert.equal(await page.locator('[data-action="skipTutorial"]').count(),1);
   const next=page.locator('[data-action="next"]');

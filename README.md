@@ -16,7 +16,7 @@ Simulation pauses when the page loses focus; Esc / Start resumes it. Explore mod
 
 PC browsers with keyboard/mouse or a standard gamepad are supported. Mobile/touch controls and phone layouts are not supported.
 
-The default **144 FPS** graphics profile follows the display refresh rate, uses a single scene pass, and caps internal rendering at 1920 × 1080 pixels (preserving aspect ratio). Set your display to 144 Hz in the operating system; actual frame rate depends on the GPU and browser. Higher visual presets remain available in Options → Graphics. The simulation stays at a fixed 120 Hz across display refresh rates.
+The default **144 FPS** graphics profile follows the display refresh rate, enables lightweight glow, and caps internal rendering at 1920 × 1080 pixels (preserving aspect ratio). Turning glow off skips post-processing. Set your display to 144 Hz in the operating system; actual frame rate depends on the GPU and browser. Higher visual presets remain available in Options → Graphics. The simulation stays at a fixed 120 Hz across display refresh rates.
 
 ## Controls
 

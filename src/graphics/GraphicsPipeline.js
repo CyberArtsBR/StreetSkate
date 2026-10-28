@@ -460,8 +460,8 @@ export class GraphicsPipeline {
     }
     try {
       this.updateContactShadows();
-      // The 144 FPS and Performance profiles use one scene pass. The canvas
-      // retains hardware AA, ACES tone mapping and output color conversion.
+      // Performance and 144 FPS with glow disabled use one scene pass. The
+      // canvas retains hardware AA, ACES tone mapping and output conversion.
       if (!this.settings.postProcessing) {
         this.renderer.render(this.scene, this.camera);
         return;
