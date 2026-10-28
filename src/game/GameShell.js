@@ -1,5 +1,7 @@
 import { gameAssetUrl } from './AssetPaths.js';
 import { tutorialPages } from './TutorialPages.js';
+import { FlipSchoolPlayer, renderFlipSchool } from './FlipSchool.js';
+import { FLIP_LESSONS } from './FlipLessons.js';
 import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
 import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
@@ -31,6 +33,7 @@ export class GameShell {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
+    this.flipLessonIndex=0;this.flipInputMode='xbox';this.flipPlayer=null;
     this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
@@ -136,7 +139,7 @@ export class GameShell {
     target?.focus({preventScroll:true});
     // Controller focus may be below the fold in the scrollable loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
-    if(reveal&&['select','pause','options','graphics','results'].includes(this.phase))
+    if(reveal&&['select','pause','options','graphics','results','flipSchool'].includes(this.phase))
       target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
   // Keyboard and gamepad share the same logical layout-aware focus route.
@@ -174,6 +177,7 @@ export class GameShell {
     </div>`;
   }
   render(){
+    this.flipPlayer?.dispose();this.flipPlayer=null;
     // Keep the music panel alive while replacing menu contents; selection
     // screens give it a layout slot so it never covers their heading/cards.
     if(this.song&&this.song.parentElement!==document.body)document.body.append(this.song);
@@ -182,11 +186,12 @@ export class GameShell {
     this.timer.hidden=!this.active;this.updateTimer();
     this.song.classList.remove('song-compact');this.songToastRemaining=4;
     this.root.className=this.phase==='title'?'title-screen':this.phase==='tutorial'?'tutorial-screen':this.phase==='select'?'loadout-screen':this.phase==='results'?'results-screen':this.phase==='timeup'?'timeup-screen':this.phase==='highlights'?'highlights-screen':'menu-screen';
+    if(this.phase==='flipSchool')this.root.className='flip-school-screen';
     this.root.classList.toggle('run-art-screen',['select','pause','timeup','results'].includes(this.phase));
     if(this.active)return;
     let title='',body='';
     if(this.phase==='title') {
-      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('PRACTICE','practice',!this.ready)}${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}${this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading Skate Paradise…'}</p>`;
+      body=`<button class="art-hit art-start" data-menu data-action="start" aria-label="Start Game — 90 seconds" ${this.ready?'':'disabled'}><span>START GAME</span></button><button class="art-hit art-back" data-menu data-action="launcher" aria-label="Back to Game Selection"><span>BACK TO GAME SELECTION</span></button><div class="title-tools">${this.button('PRACTICE','practice',!this.ready)}${this.button('FLIP SCHOOL','flipSchool')}${this.button('TUTORIAL','tutorial')}${this.button('OPTIONS','options')}${this.actions.portalsAvailable?.()?this.button('PORTALS RANKINGS','portals'):''}${this.actions.portalsOnlineAvailable?.()?this.button('PLAY ONLINE · BETA','online'):''}</div><p class="title-status" role="status">${this.ready?'':this.loadError?`Unable to load the park: ${safe(this.loadErrorDetail||'Reload to retry.')}`:'Loading Skate Paradise…'}</p>`;
     } else if(this.phase==='select') {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
@@ -213,7 +218,7 @@ export class GameShell {
         <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
-        this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
+        this.button('FLIP SCHOOL · VIDEO LESSONS','flipSchool')+this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
@@ -243,12 +248,14 @@ export class GameShell {
       body=this.renderResults();
     } else if(this.phase==='highlights') {
       body=`<div class="highlights-overlay"><header><span class="session-eyebrow">YOUR BEST MOMENTS</span><h2>SESSION HIGHLIGHTS</h2><p data-replay-caption aria-live="polite"></p></header><footer>${this.button('← BACK TO RESULTS','stopHighlights')}<span>ESC / B · BACK TO RESULTS</span></footer></div>`;
+    } else if(this.phase==='flipSchool') {
+      body=renderFlipSchool(this.flipLessonIndex,this.flipInputMode);
     } else if(this.phase==='tutorial') {
       const page=this.pages[this.page];
       const navigation=`<footer>${this.button('← PREVIOUS','previous',this.page===0)}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
-      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p></header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
+      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
-    this.content.innerHTML=['title','tutorial','select','timeup','results','highlights'].includes(this.phase)?body:this.renderMenuFrame(title,body);
+    this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     else this.content.querySelector('.menu-music-slot')?.append(this.song);
     for(const button of this.menuButtons()) {
@@ -264,6 +271,7 @@ export class GameShell {
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
     else if(['pause','options','graphics'].includes(this.phase))this.loadPortraits();
+    if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode);
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
       const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
@@ -420,13 +428,15 @@ export class GameShell {
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
   syncPause(value){if(value&&this.active)this.setScreen('pause');else if(!value&&this.phase==='pause')this.setScreen('playing');}
   openTutorial(){this.tutorialReturn=this.phase;this.page=0;this.actions.pause(true);this.setScreen('tutorial');}
+  openFlipSchool(){this.flipReturn=this.phase;this.actions.pause(true);this.setScreen('flipSchool');}
+  closeFlipSchool(){if(this.flipReturn==='playing')this.resume();else this.setScreen(this.flipReturn||'title');}
   closeTutorial(){
     this.tutorialSeen=true;
     if(this.pendingMode){const practice=this.pendingMode==='practice';this.pendingMode=null;this.start(practice);}
     else if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     if(this.phase==='timeup')return;
     this.music.unlock();
@@ -446,6 +456,12 @@ export class GameShell {
       case 'watchHighlights':if(this.actions.watchHighlights?.()){this.replayDisplayKey='';this.setScreen('highlights');this.updateReplayCaption();}break;
       case 'stopHighlights':this.showResults();break;
       case 'tutorial':this.openTutorial();break;
+      case 'flipSchool':this.openFlipSchool();break;
+      case 'flipLesson':this.flipLessonIndex=Math.max(0,Math.min(FLIP_LESSONS.length-1,index));this.focusHint={action:'flipLesson',index:this.flipLessonIndex};this.render();break;
+      case 'flipInput':this.flipInputMode=['xbox','playstation','keyboard'][index]||'xbox';this.flipPlayer?.setInputMode(this.flipInputMode);break;
+      case 'flipPlay':this.flipPlayer?.toggle();break;
+      case 'flipReplay':this.flipPlayer?.replay();break;
+      case 'flipSpeed':this.flipPlayer?.toggleSpeed();break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
@@ -499,7 +515,7 @@ export class GameShell {
         const axis=['ArrowLeft','ArrowRight','KeyA','KeyD'].includes(event.code)?'x':'y';
         this.moveSelection(axis,['ArrowUp','ArrowLeft','KeyW','KeyA'].includes(event.code)?-1:1);
       }
-      else if(event.code==='Enter'&&this.open)this.choose('skipTutorial');
+      else if(event.code==='Enter'&&this.open&&this.menuButtons()[this.selection]?.dataset.action!=='flipSchool')this.choose('skipTutorial');
       else if(event.code==='Enter'||event.code==='Space')this.menuButtons()[this.selection]?.click();
     }
   }
