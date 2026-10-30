@@ -6,6 +6,14 @@ const safe01 = value => MathUtils.clamp(Number.isFinite(value) ? value : 0, 0, 1
 
 export const FLIP_TIMING = Object.freeze({ pop: 0.14, flick: 0.34, rotationEnd: 0.82, catchEnd: 0.94 });
 
+// Use the authored rotation, not the display name: 360 Flip is a kickflip
+// family trick and Laser Flip is a heelflip family trick. Both names omit
+// those words. Stance mirroring remains the rider's anatomical responsibility.
+export function flipFlickOffset(flipState) {
+  const roll = Number.isFinite(flipState?.roll) ? flipState.roll : 0;
+  return roll < 0 ? -.19 : roll > 0 ? .22 : .06;
+}
+
 export function flipMotion(progress = 0) {
   const p = safe01(progress);
   const rotation = MathUtils.smoothstep(p, 0.12, FLIP_TIMING.rotationEnd);

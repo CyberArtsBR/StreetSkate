@@ -29,3 +29,34 @@ test('Tutorial entry returns to a paused session and direct Flip School returns 
   const guide=shellAt('tutorial');guide.page=1;guide.openFlipSchool();
   assert.equal(guide.flipTutorial,false);guide.back();assert.equal(guide.phase,'tutorial');assert.equal(guide.page,1);
 });
+
+test('tutorial never starts an unconfirmed loadout or discards its practice mode',()=>{
+  for(const mode of ['practice','timed'])for(const originalGuide of [false,true]){
+    const shell=shellAt('select');shell.pendingMode=mode;
+    shell.heroConfirmed=false;shell.boardConfirmed=false;
+    shell.start=()=>assert.fail('tutorial must not start a session');
+    shell.openTutorial();
+    if(originalGuide)shell.choose('tutorialNext');
+    shell.back();
+    assert.equal(shell.phase,'select');
+    assert.equal(shell.pendingMode,mode);
+    assert.equal(shell.heroConfirmed,false);assert.equal(shell.boardConfirmed,false);
+  }
+});
+
+test('Tab stays inside the menu, wraps both ways, and leaves browser shortcuts alone',()=>{
+  const oldDocument=globalThis.document;
+  globalThis.document={activeElement:null};
+  try{
+    const shell=shellAt('options');shell.selection=0;
+    const buttons=Array.from({length:3},()=>({classList:{toggle(){}},focus(){document.activeElement=this;}}));
+    shell.menuButtons=()=>buttons;
+    let prevented=0;
+    const tab=(extra={})=>shell.key({code:'Tab',target:{tagName:'BUTTON'},preventDefault(){prevented++;},stopImmediatePropagation(){},...extra});
+    buttons[2].focus();tab();assert.equal(document.activeElement,buttons[0]);
+    tab({shiftKey:true});assert.equal(document.activeElement,buttons[2]);
+    tab({ctrlKey:true});assert.equal(prevented,2);
+    globalThis.document.activeElement=null;tab();assert.equal(document.activeElement,buttons[0]);
+    shell.phase='playing';tab();assert.equal(prevented,3);
+  }finally{globalThis.document=oldDocument;}
+});

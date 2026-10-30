@@ -276,7 +276,9 @@ export class GraphicsPipeline {
     this.bloomCacheAge++;
     for (const object of this.bloomEnvironmentEmissives) allowed.add(object);
     if (!allowed.size) return false;
-    const replaced = [];
+    // Reuse flat scratch storage: a park can contain thousands of meshes, so
+    // allocating one [mesh, material] pair per mesh at 144 Hz creates needless GC.
+    const replaced = this.bloomReplacements ??= [];
     const originalBackground = this.scene.background;
     const originalFog = this.scene.fog;
     const originalOverride = this.scene.overrideMaterial;
@@ -300,14 +302,15 @@ export class GraphicsPipeline {
       // Dark geometry still writes depth: rider bloom cannot appear through walls.
       for (const object of this.bloomSceneMeshes) {
         if (allowed.has(object)) continue;
-        replaced.push([object, object.material]);
+        replaced.push(object, object.material);
         object.material = this.blackoutMaterial;
       }
       this.bloomComposer.render();
       this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
       return true;
     } finally {
-      for (const [object, material] of replaced) object.material = material;
+      for (let i = 0; i < replaced.length; i += 2) replaced[i].material = replaced[i + 1];
+      replaced.length = 0;
       this.scene.background = originalBackground;
       this.scene.fog = originalFog;
       this.scene.overrideMaterial = originalOverride;

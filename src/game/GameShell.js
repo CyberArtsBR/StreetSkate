@@ -258,7 +258,8 @@ export class GameShell {
       body=renderFlipSchool(this.flipLessonIndex,this.flipInputMode,this.flipTutorial);
     } else if(this.phase==='tutorial') {
       const page=this.pages[this.page];
-      const navigation=`<footer>${this.button('← PREVIOUS','previous')}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?(this.pendingMode?'LET’S SKATE':'BACK TO GAME'):'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
+      const returnLabel=this.tutorialReturn==='select'?'BACK TO LOADOUT':this.tutorialReturn==='playing'?'RESUME SESSION':this.tutorialReturn==='pause'?'BACK TO PAUSE':this.tutorialReturn==='options'?'BACK TO OPTIONS':this.tutorialReturn==='graphics'?'BACK TO GRAPHICS':this.tutorialReturn==='results'?'BACK TO RESULTS':'BACK TO MENU';
+      const navigation=`<footer>${this.button('← PREVIOUS','previous')}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?returnLabel:'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
       body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
@@ -437,11 +438,11 @@ export class GameShell {
   closeFlipSchool(){if(this.flipTutorial){this.flipTutorial=false;this.closeTutorial();}else if(this.flipReturn==='playing')this.resume();else this.setScreen(this.flipReturn||'title');}
   closeTutorial(){
     this.tutorialSeen=true;
-    if(this.pendingMode){const practice=this.pendingMode==='practice';this.pendingMode=null;this.start(practice);}
-    else if(this.tutorialReturn==='playing')this.resume();
+    // Tutorials interrupt a screen; they never bypass loadout confirmation.
+    if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.pendingMode=null;this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     if(this.phase==='timeup')return;
     this.music.unlock();
@@ -505,6 +506,18 @@ export class GameShell {
     if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else if(this.phase==='flipSchool')this.closeFlipSchool();else this.openTutorial();}return;}
     if(this.active)return;
     this.music.unlock();
+    if(event.target?.tagName==='SUMMARY'&&['Enter','Space'].includes(event.code))return;
+    if(event.code==='Tab'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
+      // Include native disclosures as well as actions; their Enter/Space behavior
+      // stays native so rendering details remain keyboard-accessible.
+      const buttons=this.content?[...this.content.querySelectorAll('button[data-menu]:not(:disabled),summary')]:this.menuButtons();
+      if(!buttons.length)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const current=buttons.indexOf(document.activeElement);
+      const next=current<0?(event.shiftKey?buttons.length-1:0):(current+(event.shiftKey?-1:1)+buttons.length)%buttons.length;
+      const target=buttons[next];target.focus({preventScroll:true});
+      target.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});return;
+    }
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space','Enter','Escape'].includes(event.code)){
       event.preventDefault();event.stopImmediatePropagation();if(event.repeat)return;
       if(event.code==='Escape')this.back();

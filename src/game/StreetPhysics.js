@@ -20,8 +20,8 @@ export const MOVEMENT_STATE = Object.freeze({
 });
 
 export const PHYSICS = Object.freeze({
-  step: 1 / 120, push: 8.5, maxSpeed: 17, gravity: 20, brake: 16,
-  minJump: 5.4, maxJump: 7.6, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
+  step: 1 / 120, push: 8.5, maxSpeed: 18, gravity: 21, brake: 16,
+  minJump: 5.6, maxJump: 7.9, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
   vertOllieBuffer: 0.9, maxLandingCorrection: 0.22,
 });
 const UP = new THREE.Vector3(0, 1, 0);
@@ -198,8 +198,8 @@ export class StreetPhysics {
     const result = this.tricks.settle();
     if (!result) return;
     this.score += result.points;
-    this.feedback = `BANKED · +${result.points} · ${result.multiplier}X`;
-    this.feedbackTime = 2.6;
+    this.feedback = `${result.names} · +${result.points}`;
+    this.feedbackTime = 3.2;
   }
 
   handleEvents(events) {

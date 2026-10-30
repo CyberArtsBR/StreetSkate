@@ -90,8 +90,25 @@ test('normal environment shader chain does not include an all-scene bloom pass',
   assert.match(fx,/this\.bloomComposer\.addPass\(this\.bloom\)/);
   assert.doesNotMatch(fx,/this\.composer\.addPass\(this\.bloom\)/);
   assert.match(fx,/this\.scene\.background = null/);
-  assert.match(fx,/replaced\.push\(\[object, object\.material\]\)/);
   assert.match(main,/graphicsPipeline\.setGlowTarget\(skater\.visual\)/);
   assert.match(fx,/this\.composite|this\.bloomComposite/);
   assert.match(fx,/this\.settings\.bloomScale/);
+});
+
+test('repeated bloom passes release saved materials, including after failure and material changes',()=>{
+  const {pipeline,meshes,materials}=fixture();
+  pipeline.renderSelectiveBloom();
+  const storage=pipeline.bloomReplacements;
+  assert.equal(storage.length,0);
+  const changed={name:'replacement concrete'};
+  meshes[0].material=changed;
+  pipeline.bloomComposer.render=()=>{throw new Error('lost context');};
+  assert.throws(()=>pipeline.renderSelectiveBloom(),/lost context/);
+  assert.equal(meshes[0].material,changed);
+  assert.equal(meshes[1].material,materials[1]);
+  assert.equal(pipeline.bloomReplacements,storage);
+  assert.equal(storage.length,0,'no old park materials retained after rendering');
+  pipeline.bloomComposer.render=()=>{};
+  pipeline.renderSelectiveBloom();
+  assert.equal(meshes[0].material,changed);
 });

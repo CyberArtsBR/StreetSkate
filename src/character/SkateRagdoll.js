@@ -34,6 +34,7 @@ export class SkateRagdoll {
     this.chains = [];
     this.pose = new Map();
     this.accumulator = 0;
+    this.groundImpact = null;
   }
 
   start(rider, { velocity, severity = 0 } = {}) {
@@ -54,7 +55,7 @@ export class SkateRagdoll {
       const radius = name === 'head' ? .29 : name === 'pelvis' || name === 'spine_03' ? .15
         : /upperarm|thigh/.test(name) ? .09 : .055;
       const mass = name === 'pelvis' ? 6 : name === 'spine_03' ? 5 : name === 'head' ? 3 : 1;
-      this.nodes.set(name, { p, previous: p.clone(), radius, inverseMass: 1 / mass, contactNormal: V(),
+      this.nodes.set(name, { name, p, previous: p.clone(), radius, inverseMass: 1 / mass, contactNormal: V(),
         velocity: launch.clone().multiplyScalar(.92)
           .add(V().crossVectors(angular, p.clone().sub(centre))).clampLength(0, 12) });
     }
@@ -117,6 +118,14 @@ export class SkateRagdoll {
     }
   }
 
+  recordGroundImpact(node, point, normal) {
+    // Feet may already touch down when a bail starts. Wait for the falling
+    // torso/head, and use the collider's world contact rather than the skater anchor.
+    if (this.groundImpact || !['pelvis','spine_03','head'].includes(node.name)) return;
+    if (normal.y > .45 && node.velocity.dot(normal) < -.8)
+      this.groundImpact = {point:point.clone(), normal:normal.clone().normalize(), body:node.name};
+  }
+
   collide(node, surface) {
     if (!surface) return;
     const hitPoint = V(), hitNormal = V();
@@ -124,10 +133,12 @@ export class SkateRagdoll {
     if (surface.sweepSolidSphere?.(node.previous, node.p, node.radius, hitPoint, hitNormal)) {
       node.p.copy(hitPoint).addScaledVector(hitNormal, node.radius + .003);
       node.contactNormal.add(hitNormal);
+      this.recordGroundImpact(node, hitPoint, hitNormal);
     }
     if (surface.sweepRideable?.(node.previous, node.p, hitPoint, hitNormal, node.radius)) {
       node.p.copy(hitPoint).addScaledVector(hitNormal, node.radius + .003);
       node.contactNormal.add(hitNormal);
+      this.recordGroundImpact(node, hitPoint, hitNormal);
     }
     const floor = surface.ground?.(node.p, node.radius + .12, node.radius + .16);
     if (floor) {
@@ -135,6 +146,7 @@ export class SkateRagdoll {
       if (depth > 0) {
         node.p.addScaledVector(floor.normal, depth + .002);
         node.contactNormal.add(floor.normal);
+        this.recordGroundImpact(node, floor.point, floor.normal);
       }
     }
   }

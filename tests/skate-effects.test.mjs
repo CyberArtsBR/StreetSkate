@@ -53,3 +53,15 @@ test('map teleport clears existing trails and re-arms without a landing burst',(
   fx.setSize(900,2);assert.equal(fx.glints.points.material.uniforms.viewportHeight.value,1800);
   fx.dispose();
 });
+
+test('bail liquid waits for ragdoll contact, emits once, fades and clears on reset',()=>{
+  const fx=new SkateEffects(),s=rider();fx.update(1/60,s);
+  s.bailTime=2;s.rider={ragdoll:{groundImpact:null}};
+  fx.update(1/60,s);assert.equal(fx.puddles.some(p=>p.mesh.visible),false);
+  s.rider.ragdoll.groundImpact={point:new THREE.Vector3(1,0,2),normal:new THREE.Vector3(0,1,0)};
+  fx.update(1/60,s);assert.equal(fx.puddles.filter(p=>p.mesh.visible).length,1);
+  const cursor=fx.dust.cursor;fx.update(1/60,s);assert.equal(fx.dust.cursor,cursor);
+  for(let i=0;i<310;i++)fx.update(1/60,s);
+  assert.equal(fx.puddles.some(p=>p.mesh.visible),false);
+  fx.reset(s);assert.equal(count(fx.dust),0);fx.dispose();
+});
