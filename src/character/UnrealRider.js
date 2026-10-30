@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
 import { applyGhostRiderPresentation, shouldApplyGhostRiderPresentation } from './GhostRiderMaterials.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { flipMotion, pushMotion } from './TrickMotion.js';
+import { flipMotion, flipFlickOffset, pushMotion } from './TrickMotion.js';
 import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, skatingArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
@@ -418,9 +418,8 @@ export class UnrealRider {
     if (motion) {
       this.ft[front].y += motion.frontLift;
       this.ft[rear].y += motion.rearLift;
-      const heel = /Heel/i.test(flipState.name), kick = /Kick|Hard|Varial/i.test(flipState.name);
       const outward = this.outward[front] || (front === 'l' ? -1 : 1);
-      this.ft[front].x += outward * (heel ? -.19 : kick ? .22 : .06) * motion.flick;
+      this.ft[front].x += outward * flipFlickOffset(flipState) * motion.flick;
       const noseSign = Math.sign(this.feet[front].point.z) || -1;
       this.ft[front].z += noseSign * .16 * motion.flick;
       this.ft[rear].z -= noseSign * .06 * motion.clearance;

@@ -19,12 +19,12 @@ function approach(velocity) {
   };
 }
 
-test('agent03: low-speed valid capture starts at the arcade grind speed floor', () => {
+test('agent03: low-speed valid capture preserves projected entry speed', () => {
   const ctx = approach(new THREE.Vector3(0, -0.35, -0.21));
   const capture = resolveGrindCapture(ctx);
   assert.ok(capture, 'aligned and close low-speed approach should capture');
-  assert.ok(capture.speed === GRIND_CAPTURE.antiStallSpeed);
-  assert.ok(GRIND_CAPTURE.antiStallSpeed >= 3);
+  assert.ok(capture.speed === 0.21);
+  assert.equal(GRIND_CAPTURE.antiStallSpeed, 0);
   let recorded = 0;
   const runtime = {
     position: ctx.position.clone(), velocity: ctx.velocity.clone(),
@@ -32,7 +32,7 @@ test('agent03: low-speed valid capture starts at the arcade grind speed floor', 
     recordTrick() { recorded++; },
   };
   assert.equal(applyGrindEntry(runtime, capture, ctx.trick), true);
-  assert.ok(runtime.grind.speed === GRIND_CAPTURE.antiStallSpeed);
+  assert.ok(runtime.grind.speed === 0.21);
   assert.equal(recorded, 1);
 });
 

@@ -1,3 +1,4 @@
+import { automaticPushAcceleration, GROUND_MOTOR } from "./core/GroundMotor.js";
 export const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const BOARD_GEOMETRY = Object.freeze({
@@ -21,16 +22,24 @@ export const GRIND_CAPTURE = Object.freeze({
   maxAbove: 0.28,
   maxBelow: 0.07,
   // Arcade grind assistance applies only after a valid capture.
-  antiStallSpeed: 3.2,
+  antiStallSpeed: 0,
   cooldown: 0.28,
 });
 
 export const GRIND_MOTION = Object.freeze({ acceleration: .35, maximumSpeed: 23 });
 
-export function advanceGrindSpeed(speed, gravityAlong, dt) {
-  const current = clamp(Math.max(GRIND_CAPTURE.antiStallSpeed, Number(speed) || 0), 0, GRIND_MOTION.maximumSpeed);
+export function advanceGrindSpeed(speed, gravityAlong, dt, braking = false) {
+  const current = Math.max(0, Number(speed) || 0);
+  const step = Math.max(0, Number(dt) || 0);
+  if (braking) return Math.max(0, current - 16 * step);
+  // Ground-like automatic propulsion, followed by a slow challenge ramp.
+  const push = current < GROUND_MOTOR.autoPushTarget
+    ? Math.max(GRIND_MOTION.acceleration, automaticPushAcceleration({speed:current}))
+    : GRIND_MOTION.acceleration;
+  // Do not discard incoming overspeed; stop adding propulsion above the cap.
+  if (current >= GRIND_MOTION.maximumSpeed) return current;
   return Math.min(GRIND_MOTION.maximumSpeed,
-    current + (GRIND_MOTION.acceleration + Math.max(0, Number(gravityAlong) || 0)) * Math.max(0, Number(dt) || 0));
+    current + (push + Math.max(0, Number(gravityAlong) || 0)) * step);
 }
 
 const PROFILE = (name, contact, clearance, difficulty, durationRate, presentation, approach = {}) => Object.freeze({

@@ -497,9 +497,8 @@ function updateHud() {
   setHudGlyphValue(hud['score-value'],scoreText);
   const trickNode = hud['trick-feedback'];
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
-  const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active'
-    :trickLabel.startsWith('BANKED')?'banked':'notice';
-  const comboCaption={bail:'TRY AGAIN',active:'COMBO AT RISK',banked:'POINTS BANKED',notice:''}[comboPhase];
+  const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active':'notice';
+  const comboCaption=comboPhase==='bail'?'TRY AGAIN':'';
   // Do not reset the pop animation on every render frame.
   if (trickNode.dataset.graffitiText !== trickLabel || trickNode.dataset.comboPhase!==comboPhase) {
     trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`

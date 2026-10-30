@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BailLiquid } from './BailLiquid.js';
 
 const finite = v => v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 const clamp = THREE.MathUtils.clamp;
@@ -53,7 +54,8 @@ function makePool(name,count,additive) {
     initialSize:new Float32Array(count),initialOpacity:new Float32Array(count),gravity:new Float32Array(count)};
 }
 
-/** Presentation-only skating particles. Two fixed draw calls, no textures,
+/** Presentation-only skating particles. Two particle draws and up to three
+ * short-lived bail puddles, no textures,
  * physics probes or per-update buffer/object allocation. Hide root during the
  * selective bloom pass: these fine details belong to the normal scene pass.
  */
@@ -67,6 +69,9 @@ export class SkateEffects {
     this.origin=new THREE.Vector3();this.forward=new THREE.Vector3();this.normal=new THREE.Vector3();
     this.initialized=false;this.previousGrounded=true;this.previousSerial=0;this.airDuration=0;
     this.grindBudget=0;this.traceBudget=0;this.landingLatch=false;this.scale=1;this.performance=false;
+    this.lastBailImpact=null;
+    this.bailLiquid=new BailLiquid(this.root);
+    this.puddles=this.bailLiquid.puddles;
   }
 
   setQuality(settings) {
@@ -87,6 +92,8 @@ export class SkateEffects {
   }
 
   reset(skater=null) {
+    this.bailLiquid.reset();
+    this.lastBailImpact=skater?.rider?.ragdoll?.groundImpact||null;
     this.clearPool(this.dust);this.clearPool(this.glints);
     this.grindBudget=0;this.traceBudget=0;this.airDuration=0;this.landingLatch=false;
     this.initialized=finite(skater?.position);
@@ -148,6 +155,12 @@ export class SkateEffects {
     if(!this.initialized||(skater.respawnSerial||0)!==this.previousSerial
       ||this.previousPosition.distanceToSquared(skater.position)>36){this.reset(skater);return;}
     this.stepPool(this.dust,dt,true);this.stepPool(this.glints,dt,false);
+    this.bailLiquid.update(dt);
+    const impactEvent=skater.rider?.ragdoll?.groundImpact;
+    if(skater.bailTime>0&&impactEvent&&impactEvent!==this.lastBailImpact){
+      this.lastBailImpact=impactEvent;
+      this.bailLiquid.spawn(impactEvent,this.performance);
+    }
     if(skater.bailTime>0){this.airDuration=0;this.grindBudget=0;this.traceBudget=0;this.remember(skater);return;}
     this.origin.copy(skater.position);
     this.normal.copy(finite(skater.normal)?skater.normal:THREE.Object3D.DEFAULT_UP);
@@ -182,6 +195,7 @@ export class SkateEffects {
   }
 
   dispose() {
+    this.bailLiquid.dispose();
     this.root.removeFromParent();
     this.dust.points.geometry.dispose();this.dust.points.material.dispose();
     this.glints.points.geometry.dispose();this.glints.points.material.dispose();

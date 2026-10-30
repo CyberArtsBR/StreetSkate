@@ -200,8 +200,6 @@ export class SkateTricks {
       entry.name === name && entry.stance === normalizedStance
       && this.time - entry.recordedAt >= 0 && this.time - entry.recordedAt < 0.14);
     if (duplicate) return duplicate;
-    const priorRepeats = this.combo.reduce((count, entry) =>
-      count + Number(entry.name === name && entry.stance === normalizedStance), 0);
     if (!this.combo.length) this.comboStartedAt = this.time;
     const entry = {
       name, basePoints: Math.max(0, Number.isFinite(points) ? points : 0),
@@ -209,9 +207,6 @@ export class SkateTricks {
     };
     this.combo.push(entry);
     this.recalculateCombo();
-    // First and second executions build a combo; mechanical input loops do not
-    // inflate the multiplier forever. New tricks and switch stance add variety.
-    if (priorRepeats < 2) this.comboMultiplier = Math.min(MAX_COMBO_MULTIPLIER, this.comboMultiplier + 1);
     this.lastLabel = name;
     this.settleTimer = 0;
     return entry;
@@ -223,7 +218,7 @@ export class SkateTricks {
     entry.basePoints = points;
     this.recalculateCombo();
     this.lastLabel = name;
-    // The extra rotation improves this trick; it is not a second multiplier.
+    // An upgrade changes this entry's identity, never adds a second entry.
     return true;
   }
 
@@ -231,9 +226,13 @@ export class SkateTricks {
     const counts = new Map();
     let base = 0;
     let duration = 0;
+    let multiplier = 0;
     for (const entry of this.combo) {
       const key = `${entry.stance}:${entry.name}`;
       const repeated = counts.get(key) || 0;
+      // Derive variety from final identities: repeatedly upgrading a fresh
+      // Kickflip to Double Kickflip must not bypass the repeat limit.
+      if (repeated < 2) multiplier++;
       entry.repeatFactor = REPEAT_VALUES[Math.min(repeated, REPEAT_VALUES.length - 1)];
       entry.points = Math.round(entry.basePoints * entry.repeatFactor);
       base += entry.points;
@@ -242,6 +241,7 @@ export class SkateTricks {
     }
     const wholeDuration = Math.floor(duration + 1e-9);
     this.comboBase = base + wholeDuration;
+    this.comboMultiplier = Math.min(MAX_COMBO_MULTIPLIER, multiplier);
     this.durationFraction = Math.max(0, duration - wholeDuration);
   }
 

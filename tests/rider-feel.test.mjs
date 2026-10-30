@@ -30,7 +30,7 @@ test('shipping controller captures a slow approach and accelerates without stall
   p.position.set(.04,1.02,1.25);p.heading=0;p.airHeading=0;p.airDirection();
   p.setMovementState(MOVEMENT_STATE.AIR);p.velocity.set(0,-.35,-.21);
   assert.equal(p.enterGrind({name:'50-50'}),true);
-  assert.equal(p.grind.speed,GRIND_CAPTURE.antiStallSpeed);
+  assert.equal(p.grind.speed,0.21);
   const start=p.grind.s;
   for(let i=0;i<120;i++) {
     const previous=p.grind.speed;p.stepGrind(1/120,{});
@@ -50,3 +50,4 @@ test('balance pressure keeps increasing beyond the first few seconds on a rail',
   const pressure = duration => stepBalance(createBalanceState(),{dt:1/120,duration,speed:5,rail:true}).pressure;
   assert.ok(pressure(10)>pressure(3));assert.ok(pressure(18)>pressure(10));
 });
+
