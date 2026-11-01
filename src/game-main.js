@@ -30,6 +30,7 @@ import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { SkateEffects } from './graphics/SkateEffects.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
+import { normalizeGlowOverrides, readGlowPresets, saveGlowPresets } from './graphics/GlowTuning.js';
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
@@ -40,6 +41,7 @@ import './session-results.css';
 import './menu-graphics.css';
 import './flip-school.css';
 import './player-settings.css';
+import './graphics-glow.css';
 import './round-flow.css';
 
 const container = document.querySelector('#viewport');
@@ -123,6 +125,7 @@ graphicsPipeline.setEffectsTarget(skateEffects.root);
 let effectsWereActive = false;
 const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
 let graphicsPreset = loadGraphicsPreset(graphicsStorage);
+let glowPresets = readGlowPresets(graphicsStorage);
 
 const views = {
   overview: { position: [66, 62, 80], target: [-1, 0, 0], caption: 'The whole playground', index: '01' },
@@ -239,6 +242,8 @@ const gameShell = new GameShell({
   setDeadZone: value => { input.stickDeadZone = value; },
   graphics: name => applyGraphicsPreset(name),
   graphicsStatus: () => graphicsPipeline.getStatus(),
+  graphicsGlow: (key,value) => setGlowValue(key,value),
+  graphicsGlowReset: () => resetGlowValues(),
   screenChanged: phase => {
     sceneNeedsRender=true;
     if (phase === 'results' && runFinished && !highlightRecorder.finished) {
@@ -311,7 +316,8 @@ function applyGraphicsPreset(name) {
     devicePixelRatio: window.devicePixelRatio,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
-  }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges });
+  }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
+    glowTuning:glowPresets[graphicsPreset] });
   skateEffects.setQuality(graphicsPipeline.settings);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
@@ -321,6 +327,23 @@ function applyGraphicsPreset(name) {
     graphicsPipeline.setWorld(currentWorld.park);
     applyLighting();
   }
+}
+
+function setGlowValue(key, value) {
+  const overrides = normalizeGlowOverrides({ ...glowPresets[graphicsPreset], [key]:value });
+  glowPresets = saveGlowPresets({ ...glowPresets, [graphicsPreset]:overrides }, graphicsStorage);
+  graphicsPipeline.setGlowTuning(glowPresets[graphicsPreset]);
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
+}
+
+function resetGlowValues() {
+  const next = { ...glowPresets };
+  delete next[graphicsPreset];
+  glowPresets = saveGlowPresets(next, graphicsStorage);
+  graphicsPipeline.setGlowTuning({});
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
 }
 
 function applyLighting() {
