@@ -1,10 +1,12 @@
 import { gameAssetUrl } from '../game/AssetPaths.js';
 import * as THREE from 'three';
+import { fetchCompressedGlb } from '../game/CompressedAsset.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { batchWarehouseVisuals } from './WarehouseVariants.js';
 import { warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
 import { createOrbitVisualPass } from '../graphics/OrbitVisualPass.js';
+import { shippingSurfaceTag } from '../game/SurfaceAudio.js';
 
 const authoredName = warehouseObjectName;
 
@@ -121,7 +123,8 @@ export function splitOrbitScene(scene, sourceRails = []) {
       const points = curvePoints(object);
       if (points) {
         const template = sourceRails.find(rail => rail.name === railName);
-        rails.push({ ...template, name: railName, points, radius: template?.radius || .075 });
+        rails.push({ ...template, name: railName, points, radius: template?.radius || .075,
+          audioSurfaceTag:shippingSurfaceTag(object) });
       }
     }
     const purpleRamp = /^04_FLOW_LAB \/ Flow launch ramp/.test(name);
@@ -142,6 +145,7 @@ export function splitOrbitScene(scene, sourceRails = []) {
     const mesh = new THREE.Mesh(object.geometry.clone().applyMatrix4(object.matrixWorld), material);
     mesh.name = name;
     mesh.userData.surface = rideable ? 'rideable' : 'solid';
+    mesh.userData.audioSurfaceTag = shippingSurfaceTag(object);
     mesh.userData.skateFeatureId = orbitFeatureId(object, name);
     mesh.userData.skateClassification = object.userData?.skateCollisionSurface || object.userData?.skate?.collisionSurface ? 'glb-metadata' : 'legacy-alias';
     if (luminousRail) mesh.userData.railId = railName;
@@ -216,12 +220,14 @@ export function addChimpionsOrbitSign(park, anchor, canvasFactory = () => docume
 
 export async function createOrbitPark() {
   const [gltf, manifest, sky] = await Promise.all([
-    new GLTFLoader().loadAsync(gameAssetUrl('/assets/spacepark/orbit.glb')),
+    fetchCompressedGlb(gameAssetUrl('/assets/spacepark/orbit.glb.gz'), gameAssetUrl('/assets/spacepark/orbit.glb'))
+      .then(buffer => new GLTFLoader().parseAsync(buffer, '')),
     fetch(gameAssetUrl('/assets/spacepark/orbit-manifest.json')).then(response => {
       if (!response.ok) throw new Error('ORBIT manifest unavailable.');
       return response.json();
     }),
-    new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.png')),
+    new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.webp'))
+      .catch(() => new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.png'))),
   ]);
   const world = splitOrbitScene(gltf.scene, manifest.rails);
   addChimpionsOrbitSign(world.park, world.brandingAnchor);

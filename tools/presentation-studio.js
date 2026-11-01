@@ -25,7 +25,9 @@ board.setFinish(6,{persist:false});actor.add(board.root);
 const sheet=document.createElement('canvas');sheet.id='sheet';sheet.width=W*4;sheet.height=(H+30)*4+40;
 document.body.append(sheet);const ctx=sheet.getContext('2d');
 let rider=null;
-const view={front:[0,1.6,-4],side:[4,1.6,0],rear:[0,1.6,4]};
+// Leave room above the tallest rider during an airborne trick; clipping the
+// head prevents reviewers from judging the full pose in a contact sheet.
+const view={front:[0,1.8,-5.5],side:[5.5,1.8,0],rear:[0,1.8,5.5]};
 async function loadRider(name){
   rider?.root.removeFromParent();rider?.dispose();
   rider=await new UnrealRider(`/assets/rider/${name}.glb`).load();rider.deckHeight=board.deckHeight;actor.add(rider.root);
@@ -53,7 +55,7 @@ function motionState(kind,t,stance,name){
 }
 window.capturePresentationSheet=async({riderName,stance=1,angle='side',type='motion'})=>{
   if(!rider || rider.url!==`/assets/rider/${riderName}.glb`)await loadRider(riderName);
-  camera.position.set(...view[angle]);camera.lookAt(0,1.15,0);
+  camera.position.set(...view[angle]);camera.lookAt(0,1.25,0);
   ctx.fillStyle='#101c24';ctx.fillRect(0,0,sheet.width,sheet.height);
   ctx.font='20px sans-serif';ctx.fillStyle='#effbf5';ctx.fillText(`${riderName} / ${stance===1?'REGULAR':'SWITCH'} / ${angle} / ${type}`,18,28);
   const grabs=[...new Set([...Object.values(GRAB_TRICKS),...Object.values(DOUBLE_GRAB_TRICKS)].map(t=>t.name))];

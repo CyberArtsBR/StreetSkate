@@ -752,6 +752,10 @@ async function loadGame() {
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
     if(import.meta.env.DEV)skater.copingTrace=new CopingTrace();
+    if(import.meta.env.DEV)window.streetSkate.audioStatus=()=>({
+      recorded:[...skateAudio.recordedFoley],enabled:skateAudio.enabled,
+      effectsVolume:skateAudio.effectsVolume,announcerVolume:skateAudio.announcerVolume,
+    });
     // Local art-director capture route; Vite removes this block from production.
     if(import.meta.env.DEV){
       const captureMap=new URLSearchParams(location.search).get('art-capture');

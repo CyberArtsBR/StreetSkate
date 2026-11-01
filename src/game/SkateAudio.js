@@ -1,7 +1,8 @@
-// Original synthesized skate sounds: no downloads or third-party samples.
+// Real CC0 skateboard recordings with a synthesized fallback when unavailable.
 import { readAudioVolume, saveAudioVolume, readBackgroundAudio, saveBackgroundAudio } from './AudioSettings.js';
 import { createSkateImpact } from './SkateSoundSynthesis.js';
 import { surfaceAudioFor } from './SurfaceAudio.js';
+import { loadSkateFoley } from './SkateFoley.js';
 export class SkateAudio {
   constructor() {
     this.enabled = true;
@@ -17,6 +18,7 @@ export class SkateAudio {
     this.voices = new Set();
     this.disposed = false;
     this.lastBailImpact = null;
+    this.recordedFoley = new Set();
     this._visibility = () => { if (this.isBackgroundMuted()) this.silence(); };
     globalThis.document?.addEventListener?.('visibilitychange', this._visibility);
   }
@@ -48,6 +50,22 @@ export class SkateAudio {
       this.wind = this.loop('lowpass', 700);
       this.impacts = Object.fromEntries(['pop','landing','grind','bail','loss','catch','push']
         .map(kind => [kind, createSkateImpact(c, kind)]));
+      // Decode in the background without blocking controls or the first frame.
+      // Each clip replaces its fallback independently when it is ready.
+      this.foleyLoad = loadSkateFoley(c, (kind, buffer) => {
+        if (this.disposed || this.context !== c) return;
+        if (kind === 'roll') {
+          const previous = this.roll.source, source = c.createBufferSource();
+          source.buffer = buffer; source.loop = true; source.connect(this.roll.filter);
+          source.playbackRate.value = previous.playbackRate?.value || 1;
+          source.start(); this.roll.source = source;
+          try { previous.stop(); previous.disconnect(); } catch {}
+        } else {
+          this.impacts[kind] = buffer;
+          if (kind === 'landing') this.impacts.catch = buffer;
+        }
+        this.recordedFoley.add(kind);
+      });
       // Soft resonant steel vibration and damped, street-surface wheel noise.
       this.grind.filter.Q.value = 1.65;
       this.roll.filter.Q.value = 0.55;
@@ -73,17 +91,23 @@ export class SkateAudio {
     this.lastImpacts.set(kind, now);
     this.lastImpactTime = now;
     const power = Math.max(0.001,Math.min(1,Number(strength) || 0));
-    const pop = kind === 'pop', length = this.impacts?.[kind]?.duration || (pop ? 0.11 : metal ? 0.25 : 0.24);
+    const recorded = this.recordedFoley.has(kind === 'catch' ? 'landing' : kind);
+    const pop = kind === 'pop', duration = this.impacts?.[kind]?.duration || (pop ? 0.11 : metal ? 0.25 : 0.24);
+    // The catch is a softer contact during flight, not another full landing.
+    const length = recorded && kind === 'catch' ? Math.min(.12,duration) : duration;
     const source = c.createBufferSource();
     const filter = c.createBiquadFilter(), gain = c.createGain();
     source.buffer = this.impacts?.[kind] || this.buffer;
     filter.type = metal ? 'bandpass' : 'lowpass';
-    filter.frequency.value = pop ? 6500 : metal ? 2800 : kind === 'push' ? 1500 : 4200;
+    filter.frequency.value = recorded ? 10000 : pop ? 6500 : metal ? 2800 : kind === 'push' ? 1500 : 4200;
     if(filter.Q)filter.Q.value = metal ? 2.1 : 0.72;
     // Attack envelope avoids digital clicks; the high-frequency pop gives
     // takeoff snap, low-band impact gives board-and-wheel landing weight.
     gain.gain.setValueAtTime(0.001, now);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.001,power),now+0.003);
+    const volume=power*(recorded&&kind==='catch'?.38:1);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.001,volume),now+0.003);
+    if(recorded && typeof gain.gain.setValueAtTime === 'function')
+      gain.gain.setValueAtTime(Math.max(0.001,volume),now+Math.max(.004,length-.018));
     gain.gain.exponentialRampToValueAtTime(0.001, now+length);
     source.connect(filter); filter.connect(gain); gain.connect(this.master);
     this.voices.add(source);

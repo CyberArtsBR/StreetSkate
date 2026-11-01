@@ -3,6 +3,7 @@ import { Capsule } from 'three/addons/math/Capsule.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { BlockTriangleIndex } from './collision/BlockTriangleIndex.js';
 import { auditParkSurfaceCoverage } from './collision/ParkCoverageAudit.js';
+import { authoredSurfaceTag } from './SurfaceAudio.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -126,6 +127,8 @@ export class ParkCollision {
       const result = this._probeResult;
       result.point.copy(pointOut); result.normal.copy(normalOut);
       result.distance = hit.distance; result.fraction = maxDistance > EPS ? hit.distance / maxDistance : 0;
+      result.object=hit.object;result.faceIndex=hit.faceIndex;
+      result.audioSurfaceTag=authoredSurfaceTag(hit.object)||'neutral';
       return result;
     }
     return null;
@@ -172,6 +175,7 @@ export class ParkCollision {
     result.distance = hit.distance;
     result.object = hit.object;
     result.faceIndex = hit.faceIndex;
+    result.audioSurfaceTag = hit.audioSurfaceTag;
     result.fraction = THREE.MathUtils.clamp(hit.distance / Math.max(distance, EPS), 0, 1);
     return result;
   }

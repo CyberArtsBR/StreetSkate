@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { inspectGlb, GLB_LIMITS } from '../../tools/agent10-glb-inspector.mjs';
 import { ParkCollision } from './ParkCollision.js';
 import { validateParkWorld, disposeParkWorld } from './ParkRegistry.js';
+import { authoredSurfaceTag, validatedSurfaceTag } from './SurfaceAudio.js';
 
 export const TEST_MAP_LIMITS = Object.freeze({ ...GLB_LIMITS, bytes:80*1024*1024, nodes:2048, meshes:1024 });
 const MAX_TRIANGLES = 350000;
@@ -156,7 +157,8 @@ export function readTestMapManifest(park) {
   const rails=data.rails.map(r=>{
     const transition=readTestMapTransition(r.transition);
     if(transition){if(transitionIds.has(transition.id))throw new Error('Duplicate test map ramp transition.');transitionIds.add(transition.id);}
-    return {name:r.name,points:r.points,radius:r.radius,...(transition?{transition}:{})};
+    return {name:r.name,points:r.points,radius:r.radius,
+      audioSurfaceTag:validatedSurfaceTag(r.audioSurfaceTag ?? r.surfaceType),...(transition?{transition}:{})};
   });
   const presentation=readTestMapPresentation(data.presentation);
   return { name:String(data.name||'Uploaded test map').slice(0,80), spawn:data.spawn, spawnHeading:data.spawnHeading||0,
@@ -223,6 +225,7 @@ export function assembleTestMap(park, filename='Uploaded map.glb') {
       const mesh=new THREE.Mesh(geometry,material);
       mesh.name=node.name;
       mesh.userData.surface=nodeFlag(node,'surface')==='solid'?'solid':'rideable';
+      mesh.userData.audioSurfaceTag=authoredSurfaceTag(node)||'neutral';
       mesh.userData.transitionSkin=nodeFlag(node,'transitionSkin')===true;
       mesh.userData.railId=nodeFlag(node,'railId');
       mesh.userData.cameraTransparent=nodeFlag(node,'cameraTransparent')===true;

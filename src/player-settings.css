@@ -33,7 +33,7 @@ body[data-screen='tutorial'] #now-playing,body[data-screen='flipSchool'] #now-pl
 #game-shell.results-screen .run-results-actions{position:sticky;bottom:0;z-index:5;background:#101b2bf5;border-top:1px solid #88b0c469;padding:12px;box-shadow:0 -8px 24px #08101d66}
 #game-shell.results-screen .run-results-actions button{font-size:var(--ui-support);min-height:46px}
 /* One short warning adjacent to the clock, independent of audio state. */
-#run-timer.time-low::after{content:attr(data-warning-label);display:block;position:static;padding:7px 10px;margin-top:2px;border-radius:5px;border:1px solid #ffd18a;background:#282016ee;color:#ffe3a6;font:800 var(--ui-label)/1.3 'DM Sans',Arial,sans-serif;letter-spacing:.04em;text-shadow:none;-webkit-text-stroke:0;animation:clock-warning-in .45s ease-out 1}
+#run-timer.time-low::after{content:attr(data-warning-label);display:block;position:static;padding:7px 10px;margin-top:2px;border-radius:5px;border:1px solid #ffd18a;background:#282016;color:#fff8e8;font:800 var(--ui-support)/1.3 'DM Sans',Arial,sans-serif;letter-spacing:.04em;text-shadow:none;-webkit-text-stroke:0;animation:clock-warning-in .45s ease-out 1}
 #run-timer.time-critical::after{background:#791d35f2;border-color:#ffd0d8;color:#fff3f6;animation:clock-critical-in .45s ease-out 1}
 @keyframes clock-warning-in{0%{transform:scale(.94);opacity:.5}65%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
 @keyframes clock-critical-in{0%{transform:scale(.94)}55%{transform:scale(1.06)}100%{transform:scale(1)}}

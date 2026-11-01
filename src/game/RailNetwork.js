@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { validatedSurfaceTag } from './SurfaceAudio.js';
 import {
   GRIND_CAPTURE,
   captureEligibility,
@@ -20,6 +21,7 @@ export class RailNetwork {
       const name = rail.name || `Rail ${railIndex + 1}`;
       return {
         name,
+        audioSurfaceTag:validatedSurfaceTag(rail.audioSurfaceTag ?? rail.surfaceType),
         points,
         cumulative,
         length: cumulative.at(-1) || 0,

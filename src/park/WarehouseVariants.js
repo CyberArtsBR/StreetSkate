@@ -10,6 +10,7 @@ import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFil
 import { buildParkRouteMetadata } from './ParkRegistry.js';
 import { refineWarehouseMaterials, loadWarehousePhotoFinish } from './WarehouseMaterialPresentation.js';
 import { collectWarehousePracticalAnchors, createWarehouseVisualPass } from '../graphics/WarehouseVisualPass.js';
+import { fetchCompressedGlb } from '../game/CompressedAsset.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -30,6 +31,7 @@ const VARIANTS = Object.freeze({
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
     url: gameAssetUrl('/assets/warehouse/granwarehouse.glb?v=fbc46ba3'),
+    compressedUrl: gameAssetUrl('/assets/warehouse/granwarehouse.glb.gz?v=fbc46ba3'),
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',
@@ -166,7 +168,9 @@ export async function createWarehouseVariant(id) {
   const loader = new GLTFLoader();
   let gltf;
   try {
-    gltf = await loader.loadAsync(variant.url);
+    gltf = variant.compressedUrl
+      ? await loader.parseAsync(await fetchCompressedGlb(variant.compressedUrl, variant.url), '')
+      : await loader.loadAsync(variant.url);
   } catch (error) {
     throw new Error(`${variant.name} needs ${variant.url}; upload the GLB to public/assets/warehouse/ first. ${error.message || ''}`);
   }

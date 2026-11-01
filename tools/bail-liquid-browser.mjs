@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchAuditBrowser} from './quality-browser-runtime.mjs';
-const out='artifacts/bail-liquid-v2';await mkdir(out,{recursive:true});
+const out=process.env.BAIL_AUDIT_OUTPUT||'artifacts/bail-liquid-v2';await mkdir(out,{recursive:true});
 const browser=await launchAuditBrowser();
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];

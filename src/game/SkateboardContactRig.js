@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundForwardFromHeading } from './core/GroundMotor.js';
+import { validatedSurfaceTag } from './SurfaceAudio.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const clamp = THREE.MathUtils.clamp;
@@ -172,6 +173,7 @@ export class SkateboardContactRig {
 
     if (!hit) {
       wheel.valid = false;
+      wheel.audioSurfaceTag='neutral';
       wheel.previous.copy(wheel.predicted);
       return false;
     }
@@ -184,6 +186,7 @@ export class SkateboardContactRig {
     wheel.sweepFraction = hit.fraction ?? 1;
     wheel.triangleIndex = hit.faceIndex ?? null;
     wheel.surface = hit.object?.name || hit.object?.userData?.surface || null;
+    wheel.audioSurfaceTag=validatedSurfaceTag(hit.audioSurfaceTag ?? hit.object?.userData?.audioSurfaceTag ?? hit.object?.userData?.surfaceType);
     return true;
   }
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { repairImportedWarehouse } from './ImportedWarehouseRepairs.js';
+import { shippingSurfaceTag } from '../game/SurfaceAudio.js';
 
 export function warehouseObjectName(object) {
   for (let node = object; node; node = node.parent) {
@@ -60,7 +61,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
   const collision = new THREE.Group(); collision.name = 'Urban warehouse / imported collision';
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   const buckets = new Map(), rails = [], surfaces = [], railPaths = new Set();
-  const add = (geometry, surface, name, railId = null) => {
+  const add = (geometry, surface, name, railId = null, audioSurfaceTag = 'neutral') => {
     if (geometry.index) { const old = geometry; geometry = geometry.toNonIndexed(); old.dispose(); }
     for (const attribute of Object.keys(geometry.attributes)) if (attribute !== 'position') geometry.deleteAttribute(attribute);
     const cameraTransparent = Boolean(railId) || /vertical_post|Down_Rail_Support/.test(name);
@@ -68,8 +69,8 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     // merged collision BVH. A near-vertical tip is not a blocking wall.
     const transitionSkin = surface === 'rideable'
       && /Skateable_Surface|Rideable_Arc|Continuous_Rideable_Surface|Bowl.*Transition|Flow.*ramp/i.test(name);
-    const id = `${surface}:${railId || ''}:${cameraTransparent}:${transitionSkin}`;
-    if (!buckets.has(id)) buckets.set(id, { geometries: [], surface, railId, cameraTransparent, transitionSkin });
+    const id = `${surface}:${railId || ''}:${cameraTransparent}:${transitionSkin}:${audioSurfaceTag}`;
+    if (!buckets.has(id)) buckets.set(id, { geometries: [], surface, railId, cameraTransparent, transitionSkin, audioSurfaceTag });
     buckets.get(id).geometries.push(geometry);
     if (surface === 'rideable') surfaces.push(name);
   };
@@ -102,7 +103,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
       if (!vertices.length) continue;
       const proxy = new THREE.BufferGeometry();
       proxy.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      add(proxy, surface, name);
+      add(proxy, surface, name, null, shippingSurfaceTag(object));
     }
   };
 
@@ -126,6 +127,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
       }
     }
     const materialName = object.material?.name || '';
+    const audioSurfaceTag = shippingSurfaceTag(object);
     const joinedRamp = object.parent?.userData?.name?.includes(' / ')
       && /Side_Edge_Band|Side_Wood_Core|Back_Panel/.test(name);
     const grandMetal = grandMode && /Foundry_(?:Stainless_Coping|Grind_Rail)/.test(materialName);
@@ -175,7 +177,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
         if (!grandMode) throw new Error(`Cannot extract grind path from ${name}`);
         // Some joined steel details are supports, not valid 10-sided pipes.
         // Preserve them as physical blockers, never create a phantom grind.
-        add(geometry, 'solid', name);
+        add(geometry, 'solid', name, null, audioSurfaceTag);
         return;
       }
       const railId = `${base} / imported ${rails.length + 1}`;
@@ -190,16 +192,16 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
         if (railPaths.has(signature) || coincident) continue;
         railPaths.add(signature);
         rails.push({
-          ...path, name: i ? `${railId}.${i}` : railId,
+          ...path, name: i ? `${railId}.${i}` : railId, audioSurfaceTag,
           ...(template?.transition ? { transition: { ...template.transition, id: `${template.transition.id}-${rails.length}` } } : {}),
         });
       }
       // Coping stays available to grind/transition logic without blocking wheels
       // rolling through the lip. Regular handrails remain physical obstacles.
       if (template?.transition || /coping/i.test(base)) geometry.dispose();
-      else add(geometry, 'solid', name, railId);
+      else add(geometry, 'solid', name, railId, audioSurfaceTag);
     } else add(geometry, rideable ? 'rideable' : 'solid', joinedRiding
-      ? name.replace(/Side_Edge_Band|Side_Wood_Core|Back_Panel/, 'Skateable_Surface') : name);
+      ? name.replace(/Side_Edge_Band|Side_Wood_Core|Back_Panel/, 'Skateable_Surface') : name, null, audioSurfaceTag);
   });
   let triangles = 0;
   for (const bucket of buckets.values()) {
@@ -209,6 +211,7 @@ export function buildImportedWarehouseCollision(root, authoredRails = [], { gran
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = `Imported collision / ${bucket.surface} / ${bucket.railId || 'world'}`;
     mesh.userData.surface = bucket.surface;
+    mesh.userData.audioSurfaceTag = bucket.audioSurfaceTag;
     mesh.userData.cameraTransparent = bucket.cameraTransparent;
     mesh.userData.transitionSkin = bucket.transitionSkin;
     if (bucket.railId) mesh.userData.railId = bucket.railId;

@@ -32,9 +32,12 @@ test('soundtrack files and committed playlist match runtime track paths', () => 
 test('public runtime assets respect relative and absolute deployment bases', () => {
   assert.equal(gameAssetUrl('/assets/park/halfnew.glb', './'), './assets/park/halfnew.glb');
   assert.equal(gameAssetUrl('/media/chimpion-slide.mp3', './'), './media/chimpion-slide.mp3');
+  assert.equal(gameAssetUrl('/audio/foley/pop.wav', './'), './audio/foley/pop.wav');
   assert.equal(gameAssetUrl('/assets/rider/TuxR.glb', '/'), '/assets/rider/TuxR.glb');
   assert.equal(gameAssetUrl('/assets/spacepark/orbit.glb', '/games/streetskate/'),
     '/games/streetskate/assets/spacepark/orbit.glb');
+  assert.equal(gameAssetUrl('/audio/foley/pop.wav', '/games/streetskate/'),
+    '/games/streetskate/audio/foley/pop.wav');
   assert.equal(gameAssetUrl('blob:local-rider', './'), 'blob:local-rider');
   assert.equal(gameAssetUrl('https://example.org/a.glb', './'), 'https://example.org/a.glb');
 });

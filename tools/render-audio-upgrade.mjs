@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {launchAuditBrowser} from './quality-browser-runtime.mjs';
-const out='artifacts/presentation-upgrade/audio';await mkdir(out,{recursive:true});
+const out=process.env.AUDIO_AUDIT_OUTPUT||'artifacts/presentation-upgrade/audio';await mkdir(out,{recursive:true});
 const browser=await launchAuditBrowser();
 try {
   const page=await browser.newPage();
   // A text-only page avoids another WebGL workload during motion QA.
   await page.goto((process.env.STREETSKATE_URL||'http://127.0.0.1:5182/')+'tools/audio-preview.html');
   const result=await page.evaluate(async()=>{
-    const [{SkateAudio},{createSkateImpact}]=await Promise.all([
-      import('/src/game/SkateAudio.js'),import('/src/game/SkateSoundSynthesis.js')]);
+    const [{SkateAudio},{createSkateImpact},{loadSkateFoley}]=await Promise.all([
+      import('/src/game/SkateAudio.js'),import('/src/game/SkateSoundSynthesis.js'),import('/src/game/SkateFoley.js')]);
     const sampleRate=24000,duration=10,context=new OfflineAudioContext(1,sampleRate*duration,sampleRate);
     const audio=new SkateAudio();let scheduled=0;
     audio.context=new Proxy(context,{get(target,key){
@@ -20,6 +20,13 @@ try {
     audio.announcer=context.createGain();audio.announcer.gain.value=.45;
     audio.master.connect(context.destination);audio.announcer.connect(context.destination);
     audio.impacts=Object.fromEntries(['pop','catch','landing','grind','loss','bail'].map(kind=>[kind,createSkateImpact(context,kind)]));
+    // Use the exact shipped real recordings and playback envelopes, retaining
+    // the procedural fallback for any single unavailable asset.
+    const decoded=await loadSkateFoley(context,(kind,buffer)=>{
+      if(kind==='roll')return;
+      audio.impacts[kind]=buffer;if(kind==='landing')audio.impacts.catch=buffer;
+      audio.recordedFoley.add(kind);
+    });
     const segments=[];
     for(const kind of ['confirm','back','ready','go','tenSeconds','finalFive','roundOver']){
       segments.push({kind,start:scheduled});audio.cue(kind);scheduled+=.65;
@@ -32,7 +39,8 @@ try {
       const samples=data.subarray(Math.floor(segment.start*sampleRate),Math.floor((segment.start+.5)*sampleRate));
       segment.peak=Math.max(...samples.map(Math.abs));segment.rms=Math.sqrt(samples.reduce((sum,x)=>sum+x*x,0)/samples.length);
     }
-    return {sampleRate,segments,samples:Array.from(data),limitations:'Offline graph render verifies signal and scheduling; no physical listening or hardware latency claim.'};
+    return {sampleRate,segments,samples:Array.from(data),recordings:[...audio.recordedFoley],
+      decoded:decoded.map(r=>r.status),limitations:'Offline graph render verifies signal and scheduling; no physical listening or hardware latency claim.'};
   });
   const {samples,...report}=result;
   for(const segment of report.segments){assert.ok(segment.peak<1&&segment.peak>.001);assert.ok(segment.rms>.0001);}
