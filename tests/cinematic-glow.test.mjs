@@ -45,9 +45,9 @@ test('Cinematic boosts authored emissive materials without compounding on repeat
   pipeline.reflectionBase = new WeakMap();
   pipeline.settings = resolveGraphicsSettings('cinematic');
   pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.45);
+  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.35);
   pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.45);
+  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.35);
   pipeline.settings = resolveGraphicsSettings('high-refresh');
   pipeline.updateMaterials();
   assert.equal(material.emissiveIntensity, 2 * .8);

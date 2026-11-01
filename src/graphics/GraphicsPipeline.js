@@ -421,13 +421,13 @@ export class GraphicsPipeline {
     const ultra = this.settings.name === 'ultra';
     // Performance means no extra scene pass, even on emissive-heavy ORBIT.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
-    const scale = cinematic ? 2.4 : ultra ? 1.7 : 1.5;
+    const scale = cinematic ? 2.1 : ultra ? 1.7 : 1.5;
     this.bloom.strength = this.settings.bloomStrength * this.settings.vfxScale * scale;
-    this.bloom.radius = cinematic ? .42 : ultra ? .33 : .26;
+    this.bloom.radius = cinematic ? .38 : ultra ? .33 : .26;
     // Only emissive meshes enter this pass, so the lower cinematic threshold
     // can reveal colored neon without blooming ordinary faces and surfaces.
-    this.bloom.threshold = cinematic ? (orbit ? .38 : .3) : ultra ? .65 : (orbit ? .98 : .75);
-    this.bloomComposite.uniforms.bloomMix.value = cinematic ? .8 : orbit ? .6 : .38;
+    this.bloom.threshold = cinematic ? (orbit ? .42 : .34) : ultra ? .65 : (orbit ? .98 : .75);
+    this.bloomComposite.uniforms.bloomMix.value = cinematic ? .75 : orbit ? .6 : .38;
   }
 
   resize(width, height) {
