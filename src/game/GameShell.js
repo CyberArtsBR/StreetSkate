@@ -171,6 +171,7 @@ export class GameShell {
   }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
   locationName(){return this.testMapName||LOCATIONS[this.locationIndex]?.name||'';}
+  loadoutStatus(){return this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.');}
   renderMenuFrame(title, body){
     const hero=this.heroes[this.heroIndex];
     const spot=LOCATIONS[this.locationIndex];
@@ -226,8 +227,8 @@ export class GameShell {
         <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
         <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">THREE PARKS. YOUR LINE.</span></div>
         <div class="loadout-locations">${spots}</div><div class="selection-note"><span>SESSION LOCATION</span><strong>MAP ${LOCATIONS[this.locationIndex].number} / ${safe(LOCATIONS[this.locationIndex].name)}</strong></div></section></div>
-        <footer>${this.button('← BACK','back')}<div class="loadout-recap"><span class="loadout-checks"><span class="${this.heroConfirmed?'complete':''}">${this.heroConfirmed?'✓':'01'} RIDER</span><span class="${this.boardConfirmed?'complete':''}">${this.boardConfirmed?'✓':'02'} DECK</span><span class="complete">✓ SPOT</span></span><span>${safe(this.heroes[this.heroIndex].name)} <i>/</i> ${safe(BOARD_CHOICES[this.boardIndex].label)} <i>/</i> MAP ${LOCATIONS[this.locationIndex].number}</span></div>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
-        <p class="loadout-status" aria-live="polite">${safe(this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.'))}</p></div>`;
+        <footer>${this.button('← BACK','back')}<div class="loadout-recap"><span class="loadout-checks"><span class="${this.heroConfirmed?'complete':''}">${this.heroConfirmed?'✓':'01'} RIDER</span><span class="${this.boardConfirmed?'complete':''}">${this.boardConfirmed?'✓':'02'} DECK</span><span class="complete">✓ SPOT</span></span><span><span data-recap-rider>${safe(this.heroes[this.heroIndex].name)}</span> <i>/</i> <span data-recap-deck>${safe(BOARD_CHOICES[this.boardIndex].label)}</span> <i>/</i> <span data-recap-spot>MAP ${LOCATIONS[this.locationIndex].number}</span></span></div>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <p class="loadout-status" aria-live="polite">${safe(this.loadoutStatus())}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
         (this.practice?this.button('PRACTICE DRILLS · '+(this.actions.drillsEnabled?.()?'ON':'OFF'),'practiceDrills'):'')+
@@ -385,23 +386,64 @@ export class GameShell {
     this.focusHint={action:'hero',index:this.heroIndex};
     this.setScreen('select');
   }
-  async loadPortraits(){
-    for(const el of this.content.querySelectorAll('[data-portrait-url]')){
-      const url=el.dataset.portraitUrl;
-      if(!url)continue;
-      characterPortrait(url).then(image=>{
-        if(!el.isConnected)return;
-        const thumb=document.createElement('img');
-        thumb.src=image;thumb.alt='';thumb.draggable=false;
-        el.replaceChildren(thumb);
-        el.dataset.previewState='ready';
-      }).catch(()=>{
-        if(!el.isConnected)return;
-        el.dataset.previewState='unavailable';
-        const status=el.querySelector('.preview-status');
-        if(status)status.textContent='Preview unavailable';
-      });
+  loadPortrait(el){
+    const url=el.dataset.portraitUrl;
+    if(!url)return;
+    characterPortrait(url).then(image=>{
+      if(!el.isConnected||el.dataset.portraitUrl!==url)return;
+      const thumb=document.createElement('img');
+      thumb.src=image;thumb.alt='';thumb.draggable=false;
+      el.replaceChildren(thumb);
+      el.dataset.previewState='ready';
+    }).catch(()=>{
+      if(!el.isConnected||el.dataset.portraitUrl!==url)return;
+      el.dataset.previewState='unavailable';
+      const status=el.querySelector('.preview-status');
+      if(status)status.textContent='Preview unavailable';
+    });
+  }
+  loadPortraits(){
+    for(const el of this.content.querySelectorAll('[data-portrait-url]'))this.loadPortrait(el);
+  }
+  updateLoadoutSelection(action,index){
+    const hero=this.heroes[this.heroIndex],board=BOARD_CHOICES[this.boardIndex],spot=LOCATIONS[this.locationIndex];
+    const root=this.content;
+    // Keep headings, decoded glyphs, previews and scroll position mounted when
+    // changing a selection; rebuilding the menu briefly exposes fallback text.
+    for(const [kind,selected,confirmed] of [['hero',this.heroIndex,this.heroConfirmed],['board',this.boardIndex,this.boardConfirmed],['location',this.locationIndex,true]]){
+      for(const button of root.querySelectorAll(`[data-action="${kind}"]`)){
+        const chosen=confirmed&&Number(button.dataset.index)===selected;
+        button.classList.toggle('is-chosen',chosen);
+        button.setAttribute('aria-pressed',String(chosen));
+      }
     }
+    const rider=root.querySelector('.selected-rider');
+    rider.style.setProperty('--rider-accent',hero.accent);
+    rider.querySelector('.rider-stage-number').textContent=String(this.heroIndex+1).padStart(2,'0');
+    rider.querySelector('.selected-rider-copy span').textContent=this.heroConfirmed?'YOUR RIDER':'MEET THE CREW';
+    rider.querySelector('.selected-rider-copy strong').textContent=hero.name;
+    rider.querySelector('.selected-rider-copy small').textContent=hero.subtitle;
+    const portrait=rider.querySelector('[data-portrait-url]');
+    if(portrait.dataset.portraitUrl!==hero.url){
+      portrait.dataset.portraitUrl=hero.url;portrait.dataset.previewState='loading';
+      const status=document.createElement('span');status.className='preview-status';status.textContent='Loading preview…';
+      portrait.replaceChildren(status);this.loadPortrait(portrait);
+    }
+    root.querySelector('.deck-panel .selection-note span').textContent=this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH';
+    root.querySelector('.deck-panel .selection-note strong').textContent=board.label;
+    root.querySelector('.spot-panel .selection-note strong').textContent=`MAP ${spot.number} / ${spot.name}`;
+    const checks=root.querySelectorAll('.loadout-checks > span');
+    for(const [el,confirmed,label,prefix] of [[checks[0],this.heroConfirmed,'RIDER','01'],[checks[1],this.boardConfirmed,'DECK','02']]){
+      el.classList.toggle('complete',confirmed);el.textContent=`${confirmed?'✓':prefix} ${label}`;
+    }
+    root.querySelector('[data-recap-rider]').textContent=hero.name;
+    root.querySelector('[data-recap-deck]').textContent=board.label;
+    root.querySelector('[data-recap-spot]').textContent=`MAP ${spot.number}`;
+    root.querySelector('[data-action="confirmLoadout"]').disabled=this.selectBusy||!this.heroConfirmed||!this.boardConfirmed;
+    root.querySelector('.loadout-status').textContent=this.loadoutStatus();
+    const button=root.querySelector(`[data-action="${action}"][data-index="${index}"]`);
+    const selection=this.menuButtons().indexOf(button);
+    if(selection>=0){this.selection=selection;this.focusSelection(false);}
   }
   loadBoardPreviews(){
     const elements=[...this.content.querySelectorAll('[data-board-preview]')];
@@ -483,9 +525,9 @@ export class GameShell {
       // Same game-selection destination used by CyberArtsBR/Skate's launcher.
       case 'launcher':window.location.assign('https://chimp-jump.onrender.com/');break;
       case 'start':this.begin(false);break;case 'practice':this.begin(true);break;
-      case 'hero':this.heroIndex=index;this.heroConfirmed=true;this.focusHint={action:'hero',index};this.render();break;
-      case 'board':this.boardIndex=index;this.boardConfirmed=true;this.focusHint={action:'board',index};this.render();break;
-      case 'location':if(LOCATIONS[index]?.available){this.locationIndex=index;this.focusHint={action:'location',index};this.render();}break;
+      case 'hero':this.heroIndex=index;this.heroConfirmed=true;this.updateLoadoutSelection(action,index);break;
+      case 'board':this.boardIndex=index;this.boardConfirmed=true;this.updateLoadoutSelection(action,index);break;
+      case 'location':if(LOCATIONS[index]?.available){this.locationIndex=index;this.updateLoadoutSelection(action,index);}break;
       case 'upload':this.avatarInput.click();break;
       case 'confirmLoadout':void this.confirmLoadout();break;
       case 'restart':this.start(this.practice);break;case 'resume':this.resume();break;
