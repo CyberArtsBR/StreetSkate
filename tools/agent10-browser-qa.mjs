@@ -416,6 +416,9 @@ try{
    const posed=await page.evaluate(() => {
      const game=window.streetSkate,skater=game.skater,rider=skater.rider;
      const board=skater.board,camera=game.camera;
+     // The preceding live practice can leave the board tumbling in a bail.
+     // Test a skating pose from a known ground state, not on a fallen board.
+     skater.reset();
      const oldPosition=camera.position.clone(),oldRotation=camera.quaternion.clone();
      const images={},metrics={};
      for(const pose of ['crouch','grab']){
@@ -448,9 +451,11 @@ try{
      }
      camera.position.copy(oldPosition);camera.quaternion.copy(oldRotation);
      camera.updateMatrixWorld(true);rider.resetPresentation();skater.update(0,{},0);
-     return {metrics,images};
+     return {metrics,images,fixture:{grounded:skater.grounded,bailTime:skater.bailTime}};
    });
    console.log('AGENT10 ANIMATION POSE '+name+' '+JSON.stringify(posed.metrics));
+   assert.equal(posed.fixture.grounded,true,name+' pose fixture must start grounded');
+   assert.equal(posed.fixture.bailTime,0,name+' pose fixture must not be bailing');
    for(const pose of ['crouch','grab']){
      assert.ok(posed.metrics[pose].hipsAboveDeck>0.34,name+' pelvis intersects board during '+pose);
      assert.ok(Number.isFinite(posed.metrics[pose].knees.l)&&
@@ -488,9 +493,9 @@ try{
       unique:metric('UNIQUE TRICKS'),bails:metric('BAILS'),
     };
   });
-  const expectedFinal=Math.max(0,Math.round((runScore.banked+100*runScore.combos+25*runScore.tricks)
+  const expectedFinal=Math.max(0,Math.round(runScore.banked
     *(100+Math.min(100,5*runScore.unique))/100)-250*runScore.bails);
-  assert.equal(runScore.final,expectedFinal,'Final score must apply displayed achievements and bail deductions');
+  assert.equal(runScore.final,expectedFinal,'Final score must apply line-score-v2 variety and bail deductions');
   assert.equal(runScore.banked,runScore.liveBanked,'Final weighting must preserve the underlying gameplay score');
   await page.screenshot({path:join(out,'timed-results.png'),fullPage:true});
   await page.locator('[data-action="title"]').click();
