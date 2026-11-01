@@ -351,7 +351,7 @@ export class GraphicsPipeline {
         }
         if (m.emissive?.getHex?.() > 0 && 'emissiveIntensity' in m) {
           if (!this.emissiveBase.has(m)) this.emissiveBase.set(m, m.emissiveIntensity);
-          m.emissiveIntensity = this.emissiveBase.get(m) * this.settings.vfxScale;
+          m.emissiveIntensity = this.emissiveBase.get(m) * this.settings.vfxScale * (this.settings.emissiveScale ?? 1);
         }
       }
     });
@@ -417,14 +417,17 @@ export class GraphicsPipeline {
   configureBloom() {
     if (!this.settings) return;
     const orbit = Boolean(this.world?.userData.environmentBloom);
+    const cinematic = this.settings.name === 'cinematic';
+    const ultra = this.settings.name === 'ultra';
     // Performance means no extra scene pass, even on emissive-heavy ORBIT.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
-    this.bloom.strength = orbit
-      ? (this.settings.name==='high-refresh' ? .2 : .24)
-      : this.settings.bloomStrength * this.settings.vfxScale;
-    this.bloom.radius = .24;
-    this.bloom.threshold = orbit ? 1.25 : .88;
-    this.bloomComposite.uniforms.bloomMix.value = orbit ? .55 : .32;
+    const scale = cinematic ? 2.4 : ultra ? 1.7 : 1.5;
+    this.bloom.strength = this.settings.bloomStrength * this.settings.vfxScale * scale;
+    this.bloom.radius = cinematic ? .42 : ultra ? .33 : .26;
+    // Only emissive meshes enter this pass, so the lower cinematic threshold
+    // can reveal colored neon without blooming ordinary faces and surfaces.
+    this.bloom.threshold = cinematic ? (orbit ? .38 : .3) : ultra ? .65 : (orbit ? .98 : .75);
+    this.bloomComposite.uniforms.bloomMix.value = cinematic ? .8 : orbit ? .6 : .38;
   }
 
   resize(width, height) {
