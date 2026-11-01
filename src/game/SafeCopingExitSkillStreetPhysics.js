@@ -166,7 +166,10 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     }
 
     const control = air?.exitControl;
-    const originalTransition = Boolean(air
+    // A verified deliberate exit owns its deck landing. Mixed lip support can
+    // still geometrically overlap the original ramp, but must not bypass the
+    // deck-target check and settle backward on that blended contact.
+    const originalTransition = Boolean(air && (!air.transferring || control?.abortToReturn)
       && supportMatchesOriginalTransition(support, air));
     const deckTargetMatches = supportMatchesDeckTarget(support, air);
     const route = resolveLandingRoute({

@@ -15,6 +15,10 @@ import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
 import { GameShell } from './game/GameShell.js';
 import { CopingTrace } from './game/CopingTrace.js';
 import { RunSummary } from './game/RunSummary.js';
+import { sessionAttemptState } from './game/SessionFlow.js';
+import { ScoreRecords } from './game/ScoreRecords.js';
+import { readPlayerPreferences, applyPlayerPreferences } from './game/PlayerPreferences.js';
+import { FrameMetrics } from './graphics/FrameMetrics.js';
 import { PracticeDrills } from './game/PracticeDrills.js';
 import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
@@ -34,6 +38,8 @@ import './gameplay-instruments.css';
 import './session-results.css';
 import './menu-graphics.css';
 import './flip-school.css';
+import './player-settings.css';
+import './round-flow.css';
 
 const container = document.querySelector('#viewport');
 installGraffitiFallback();
@@ -107,6 +113,10 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 const graphicsPipeline = new GraphicsPipeline(renderer, scene, camera);
+const performanceHud=document.createElement('div');performanceHud.className='frame-metrics';performanceHud.hidden=true;app.append(performanceHud);
+const frameMetrics=new FrameMetrics(renderer,performanceHud);
+let playerPreferences=applyPlayerPreferences(readPlayerPreferences());
+frameMetrics.setEnabled(playerPreferences.performance);
 const skateEffects = new SkateEffects(scene);
 graphicsPipeline.setEffectsTarget(skateEffects.root);
 let effectsWereActive = false;
@@ -148,6 +158,8 @@ window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: tru
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const runSummary = new RunSummary();
+const scoreRecords=new ScoreRecords(graphicsStorage);
+let overtimeFirstRecord=false;
 const highlightRecorder = new HighlightRecorder();
 let runInProgress = false;
 let runFinished = false;
@@ -179,9 +191,29 @@ const highlightPlayback = new HighlightPlayback({
   onMoment: moment => { highlightStatus = { ...moment, total: moment.count }; },
 });
 const gameShell = new GameShell({
+  input,
+  clearInput:()=>input.suppressHeldInputs(),
+  attemptState:()=>sessionAttemptState(skater),
+  overtime:()=>{overtimeFirstRecord=!skater.tricks.combo.length&&sessionAttemptState(skater).eligibleAttempt;},
+  cue:kind=>skateAudio.cue(kind),
+  preferences:(partial,all)=>{
+    playerPreferences=all;followCamera?.setPreferences(all);sceneNeedsRender=true;
+    skateEffects.setLiquidEnabled(all.liquid);frameMetrics.setEnabled(all.performance);
+    if(partial.effectsVolume!=null)skateAudio.setEffectsVolume(partial.effectsVolume);
+    if(partial.announcerVolume!=null)skateAudio.setAnnouncerVolume(partial.announcerVolume);
+    if(partial.backgroundAudio!=null)skateAudio.setBackgroundAudio(partial.backgroundAudio);
+  },
+  tryTrick:lesson=>{
+    if(!skater?.grounded||skater.bailTime)return;
+    practiceMarker={position:skater.position.clone(),heading:skater.heading,stance:skater.stance,location:currentWorld.id};
+    practiceDrills.selectTrick(lesson.trick.name,lesson.id);practiceInputsEnabled=true;
+    updateDrillHud();
+  },
   start: practice => {
     if (!skater) return;
     practiceMarker = null;
+    overtimeFirstRecord=false;
+    practiceDrills.target = null;
     practiceDrills.reset();
     practiceInputText = ''; practiceInputTime = 0;
     highlightPlayback.stop();
@@ -213,9 +245,12 @@ const gameShell = new GameShell({
   },
   score: () => skater?.score || 0,
   finishRun: () => {
+    if(runFinished)return gameShell.runSummary;
     runInProgress = false; runFinished = true;
-    return runSummary.finish({ totalScore: skater?.score || 0,
-      durationSeconds: gameShell.practice ? runSummary.elapsedSeconds : 90 });
+    if(gameShell.sessionFlow.finishReason!=='landed')skater?.tricks.cancelCombo();
+    const run=runSummary.finish({ totalScore: skater?.score || 0,
+      durationSeconds: gameShell.practice ? runSummary.elapsedSeconds : gameShell.sessionFlow.elapsed });
+    return {...run,parkRecord:scoreRecords.record(currentWorld.id,run)};
   },
   canWatchHighlights: () => highlightClips.length > 0,
   watchHighlights: () => highlightPlayback.start(highlightClips),
@@ -237,16 +272,21 @@ function observeRunScoring(controller) {
   const originalSettle = scorer.settle;
   scorer.record = function (...args) {
     const first = !this.combo.length;
+    if(runInProgress&&!gameShell.sessionFlow.snapshot().allowNewCombo&&first&&!overtimeFirstRecord)return null;
+    if(runFinished)return null;
     const entry = originalRecord.apply(this, args);
+    if(entry)overtimeFirstRecord=false;
     if (runInProgress && entry && first) comboStartTime = sessionEventTime;
     return entry;
   };
   scorer.settle = function (...args) {
+    if(this.combo.length&&runInProgress&&!gameShell.sessionFlow.acceptSettlement()){this.cancelCombo();return null;}
+    if(runFinished){this.cancelCombo();return null;}
     const entries = runInProgress && this.combo.length ? this.combo.map(entry => ({ ...entry })) : [];
     const durationSeconds = this.comboDuration();
     const result = originalSettle.apply(this, args);
     if (runInProgress && result) {
-      if (gameShell.practice && practiceDrills.accept(entries)) updateDrillHud();
+      if (gameShell.practice){practiceDrills.observe(controller,1/120);practiceDrills.accept(entries);updateDrillHud();}
       const moment = runSummary.recordCombo({ ...result, entries, durationSeconds,
         startTime: comboStartTime, endTime: sessionEventTime });
       if (moment) pendingReplayMoments.push({ start: moment.startTime, end: moment.endTime,
@@ -257,6 +297,7 @@ function observeRunScoring(controller) {
 }
 gameShell.sound = skateAudio.enabled;
 skateAudio.setEffectsVolume(gameShell.effectsVolume);
+skateEffects.setLiquidEnabled(playerPreferences.liquid);
 applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
@@ -662,6 +703,7 @@ async function loadGame() {
     // Keeping the group reference automatically tracks later character hot-swaps.
     graphicsPipeline.setGlowTarget(skater.visual);
     followCamera = new FollowCamera(camera);
+    followCamera.setPreferences(playerPreferences);
     currentWorld = initialWorld;
     ({ park, collision, manifest } = initialWorld);
     scene.add(park, sun.target);
@@ -694,6 +736,7 @@ async function loadGame() {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       currentLocation: currentWorld.id, selectLocation,
       graphicsStatus: () => graphicsPipeline.getStatus(),
+      performanceMetrics:()=>({...frameMetrics.value}),
       setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2',
       rampTuning: { factor: manifest.transitionScale, baked: true },
       captureState: () => captureGameplayState(skater),
@@ -832,7 +875,7 @@ renderer.setAnimationLoop(() => {
     if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
     if (state.cameraModePressed && gameShell.active) toggleCameraMode();
     if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
-    if (!paused && gameShell.active) {
+    if (!paused && gameShell.simulating) {
       if (gameShell.practice && gameShell.inputGrace <= 0) {
         if (state.practiceMark) {
           if (skater.grounded && !skater.bailTime) {
@@ -847,6 +890,7 @@ renderer.setAnimationLoop(() => {
             const score = skater.score;
             skater.reset(practiceMarker.position.clone(), practiceMarker.heading);
             skater.score = score; skater.stance = practiceMarker.stance;
+            practiceDrills.retry();
             followCamera.snap(skater);
             skater.feedback = 'RETURNED TO MARKER';
           } else skater.feedback = 'SAVE A PRACTICE MARKER FIRST';
@@ -856,6 +900,7 @@ renderer.setAnimationLoop(() => {
       const respawn = skater.respawnSerial;
       sessionEventTime = highlightRecorder.time + realDelta;
       skater.update(dt, gameShell.inputGrace > 0 ? {} : state, elapsed);
+      if(gameShell.practice)practiceDrills.observe(skater,dt);
       if (runInProgress) {
         runSummary.update(skater, realDelta);
         highlightRecorder.record(skater, realDelta);
@@ -889,7 +934,7 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
-  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
+  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
   const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
   if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
   skateEffects.root.visible = Boolean(effectsActive);
@@ -899,7 +944,9 @@ renderer.setAnimationLoop(() => {
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,
   // rather than running HDR and bloom behind an opaque title/options screen.
   if(gameShell.phase!=='select'&&(gameShell.active||(gameShell.phase==='highlights'&&document.hasFocus())||mode==='explore'||sceneNeedsRender)){
+    if(gameShell.simulating)frameMetrics.begin();
     graphicsPipeline.render({ contactSource: gameShell.phase === 'highlights' ? null : skater });sceneNeedsRender=false;
+    if(gameShell.simulating)frameMetrics.end();else frameMetrics.suspend();
     if(import.meta.env.DEV&&artCaptureMap&&!document.getElementById('art-thumbnail')){
       // Bake a compact WebP directly from the rendered canvas, after this frame.
       const thumbnail=document.createElement('canvas');thumbnail.width=768;thumbnail.height=432;

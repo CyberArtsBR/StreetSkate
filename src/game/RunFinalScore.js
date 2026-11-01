@@ -1,7 +1,11 @@
 export const RUN_SCORE_RULES = Object.freeze({
-  version: 'achievement-score-v1',
-  pointsPerLandedCombo: 100,
-  pointsPerLandedTrick: 25,
+  version: 'line-score-v2',
+  // Linking and repetition are already valued by SkateTricks. A fixed reward
+  // for each bank made three isolated ollies beat the same tricks in one line.
+  // Keep these fields for transparent older result renderers, but award no
+  // second flat bonus for either a bank or a zero-value repeated trick.
+  pointsPerLandedCombo: 0,
+  pointsPerLandedTrick: 0,
   percentPerUniqueTrick: 5,
   maxVarietyBonusPercent: 100,
   pointsPerBail: 250,

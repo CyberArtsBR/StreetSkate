@@ -1,4 +1,5 @@
 import { DirectionTapDetector } from './DirectionTapDetector.js';
+import { readBindings, saveBindings, cloneBindings, withBinding } from './ControlBindings.js';
 
 const PREVENT_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 export const STICK_DEAD_ZONES = Object.freeze([0.08, 0.16, 0.24]);
@@ -10,6 +11,9 @@ export class SkateInput {
     this.pressed = new Set();
     this.released = new Set();
     this.enabled = false;
+    this.bindings = readBindings();
+    this.blockedKeys = new Set();
+    this.blockedButtons = new Set();
     let saved; try { saved = Number(localStorage.getItem('streetskate.stickDeadZone')); } catch {}
     this.stickDeadZone = STICK_DEAD_ZONES.includes(saved) ? saved : 0.16;
     this.padPrevious = {};
@@ -21,12 +25,14 @@ export class SkateInput {
 
     this._down = e => {
       if (!this.enabled || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName) || e.target?.isContentEditable) return;
+      if (this.blockedKeys.has(e.code)) return;
       if (PREVENT_DEFAULT.has(e.code)) e.preventDefault();
       if (e.ctrlKey && ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR'].includes(e.code)) e.preventDefault();
       if (!e.repeat && !this.keys.has(e.code)) this.pressed.add(e.code);
       this.keys.add(e.code);
     };
     this._up = e => {
+      this.blockedKeys.delete(e.code);
       if (this.enabled && PREVENT_DEFAULT.has(e.code)) e.preventDefault();
       if (this.keys.has(e.code)) this.released.add(e.code);
       this.keys.delete(e.code);
@@ -64,6 +70,30 @@ export class SkateInput {
     this.mouseDX = 0; this.mouseDY = 0; this.pointerLook = false;
   }
 
+  // A consumed menu/rebind press cannot become a gameplay charge on resume.
+  suppressHeldInputs() {
+    for(const key of this.keys)this.blockedKeys.add(key);
+    const pad=[...(globalThis.navigator?.getGamepads?.()||[])].find(p=>p?.connected);
+    pad?.buttons?.forEach((button,index)=>{if(button.pressed)this.blockedButtons.add(index);});
+    this.clear();this.padIdentity=null;
+  }
+
+  bind(action, device, value) {
+    const result = withBinding(this.bindings, action, device, value);
+    if (result.ok) this.setBindings(result.bindings);
+    return result;
+  }
+
+  setBindings(bindings) {
+    this.suppressHeldInputs();
+    this.bindings = bindings;
+    saveBindings(bindings);
+    this.clear();
+    this.padIdentity = null;
+  }
+
+  resetBindings() { this.setBindings(cloneBindings()); }
+
   read({ practice = false } = {}) {
     const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
     // A reconnect (or switching pads) inherits the physical held state,
@@ -75,31 +105,41 @@ export class SkateInput {
     const axis = v => Math.abs(v || 0) < dead ? 0 : Math.sign(v) * (Math.abs(v) - dead) / (1-dead);
     const held = (...codes) => codes.some(code => this.keys.has(code));
     const just = (...codes) => codes.some(code => this.pressed.has(code));
+    const heldAction = action => held(...this.bindings[action].keyboard);
+    const pressedAction = action => just(...this.bindings[action].keyboard);
+    const releasedAction = action => this.bindings[action].keyboard.some(code => this.released.has(code));
+    for (const index of this.blockedButtons) if (!pad?.buttons[index]?.pressed) this.blockedButtons.delete(index);
+    const padAction = action => {
+      const index=this.bindings[action].gamepad;
+      return index!==null && !this.blockedButtons.has(index) && !!pad?.buttons[index]?.pressed;
+    };
 
     const buttons = {
-      ollie: !!pad?.buttons[0]?.pressed,
-      grab: !!pad?.buttons[1]?.pressed,
-      flip: !!pad?.buttons[2]?.pressed,
-      grind: !!pad?.buttons[3]?.pressed,
-      spinLeft: !!pad?.buttons[4]?.pressed,
-      spinRight: !!pad?.buttons[5]?.pressed,
-      vertExit: !!pad?.buttons[6]?.pressed,
-      switchStance: !!pad?.buttons[7]?.pressed,
+      ollie: padAction('ollie'),
+      grab: padAction('grab'),
+      flip: padAction('flip'),
+      grind: padAction('grind'),
+      spinLeft: padAction('spinLeft'),
+      spinRight: padAction('spinRight'),
+      vertExit: padAction('vertExit'),
+      switchStance: padAction('switchStance'),
       pause: !!pad?.buttons[9]?.pressed,
-      cameraMode: !!pad?.buttons[11]?.pressed,
-      dpadUp: !!pad?.buttons[12]?.pressed,
-      dpadDown: !!pad?.buttons[13]?.pressed,
-      dpadLeft: !!pad?.buttons[14]?.pressed,
-      dpadRight: !!pad?.buttons[15]?.pressed,
+      cameraMode: padAction('cameraMode'),
+      dpadUp: padAction('up'),
+      dpadDown: padAction('down'),
+      dpadLeft: padAction('left'),
+      dpadRight: padAction('right'),
+      brake: padAction('brake'), reset: padAction('reset'),
+      practiceMark: padAction('practiceMark'), practiceReturn: padAction('practiceReturn'),
     };
     if (padChanged) this.padPrevious = { ...buttons };
     const edge = key => buttons[key] && !this.padPrevious[key];
     const release = key => !buttons[key] && this.padPrevious[key] && !!pad;
 
-    const keyboardSteer = Number(held('KeyD')) - Number(held('KeyA'));
+    const keyboardSteer = Number(heldAction('right')) - Number(heldAction('left'));
     const markerChord = practice && buttons.spinLeft && buttons.spinRight;
     const dpadSteer = markerChord ? 0 : Number(buttons.dpadRight) - Number(buttons.dpadLeft);
-    const keyboardDrive = Number(held('KeyW')) - Number(held('KeyS'));
+    const keyboardDrive = Number(heldAction('up')) - Number(heldAction('down'));
     const dpadDrive = markerChord ? 0 : Number(buttons.dpadUp) - Number(buttons.dpadDown);
     const rawStickX = pad?.axes?.[0] || 0;
     const rawStickY = -(pad?.axes?.[1] || 0);
@@ -107,33 +147,33 @@ export class SkateInput {
     const drive = keyboardDrive || dpadDrive || axis(rawStickY);
 
     const directionTaps = new Set(this.analogTaps.update(rawStickX, rawStickY));
-    if (just('KeyW') || (!markerChord && edge('dpadUp'))) directionTaps.add('up');
-    if (just('KeyS') || (!markerChord && edge('dpadDown'))) directionTaps.add('down');
-    if (just('KeyA') || (!markerChord && edge('dpadLeft'))) directionTaps.add('left');
-    if (just('KeyD') || (!markerChord && edge('dpadRight'))) directionTaps.add('right');
+    if (pressedAction('up') || (!markerChord && edge('dpadUp'))) directionTaps.add('up');
+    if (pressedAction('down') || (!markerChord && edge('dpadDown'))) directionTaps.add('down');
+    if (pressedAction('left') || (!markerChord && edge('dpadLeft'))) directionTaps.add('left');
+    if (pressedAction('right') || (!markerChord && edge('dpadRight'))) directionTaps.add('right');
 
     const state = {
       steer,
       drive,
       directionTaps: [...directionTaps],
-      brake: held('ShiftLeft', 'ShiftRight'),
-      ollieHeld: held('Space') || buttons.ollie,
-      olliePressed: (just('Space') && !this.padPrevious.ollie) || (edge('ollie') && !held('Space')),
-      ollieReleased: !held('Space') && !buttons.ollie && (this.released.has('Space') || release('ollie')),
-      flipPressed: just('ArrowLeft') || edge('flip'),
-      grabPressed: just('ArrowRight') || edge('grab'),
-      grabHeld: held('ArrowRight') || buttons.grab,
-      grindPressed: just('ArrowUp') || edge('grind'),
-      grindHeld: held('ArrowUp') || buttons.grind,
-      spin: (Number(held('KeyE')) + Number(buttons.spinRight)) - (Number(held('KeyQ')) + Number(buttons.spinLeft)),
-      vertExit: held('ControlLeft') || buttons.vertExit,
-      switchStancePressed: just('ControlRight') || edge('switchStance'),
+      brake: heldAction('brake') || buttons.brake,
+      ollieHeld: heldAction('ollie') || buttons.ollie,
+      olliePressed: (pressedAction('ollie') && !this.padPrevious.ollie) || (edge('ollie') && !heldAction('ollie')),
+      ollieReleased: !heldAction('ollie') && !buttons.ollie && (releasedAction('ollie') || release('ollie')),
+      flipPressed: pressedAction('flip') || edge('flip'),
+      grabPressed: pressedAction('grab') || edge('grab'),
+      grabHeld: heldAction('grab') || buttons.grab,
+      grindPressed: pressedAction('grind') || edge('grind'),
+      grindHeld: heldAction('grind') || buttons.grind,
+      spin: (Number(heldAction('spinRight')) + Number(buttons.spinRight)) - (Number(heldAction('spinLeft')) + Number(buttons.spinLeft)),
+      vertExit: heldAction('vertExit') || buttons.vertExit,
+      switchStancePressed: pressedAction('switchStance') || edge('switchStance'),
       pausePressed: just('Escape') || edge('pause'),
-      cameraModePressed: (just('KeyC') && !held('ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight')) || edge('cameraMode'),
+      cameraModePressed: (pressedAction('cameraMode') && !held('ControlLeft', 'ControlRight', 'MetaLeft', 'MetaRight')) || edge('cameraMode'),
       cameraModeIndex: just('Digit1','Numpad1') ? 0 : just('Digit2','Numpad2') ? 1 : just('Digit3','Numpad3') ? 2 : null,
-      reset: just('KeyR'),
-      practiceMark: just('KeyM') || (markerChord && edge('dpadUp')),
-      practiceReturn: just('KeyN') || (markerChord && edge('dpadDown')),
+      reset: pressedAction('reset') || edge('reset'),
+      practiceMark: pressedAction('practiceMark') || edge('practiceMark') || (markerChord && edge('dpadUp')),
+      practiceReturn: pressedAction('practiceReturn') || edge('practiceReturn') || (markerChord && edge('dpadDown')),
       cameraX: axis(pad?.axes[2]),
       cameraY: axis(pad?.axes[3]),
       mouseDX: this.mouseDX,

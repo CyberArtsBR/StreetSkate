@@ -154,6 +154,7 @@ export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
+    this.preferences = { cameraDistance: 1, cameraFov: 58, speedFov: 1 };
     this.motionPreference=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
     this.mode = 'follow';
     this.position = new THREE.Vector3();
@@ -181,9 +182,19 @@ export class FollowCamera {
 
   setMode(mode, player = null) {
     this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
-    this.camera.fov = 58;
+    this.camera.fov = this.preferences.cameraFov;
     this.camera.updateProjectionMatrix();
     if (player) this.snap(player);
+  }
+
+  setPreferences(value = {}) {
+    const bounded = (n, fallback, min, max) => Number.isFinite(Number(n))
+      ? THREE.MathUtils.clamp(Number(n), min, max) : fallback;
+    this.preferences = {
+      cameraDistance: bounded(value.cameraDistance, 1, .8, 1.3),
+      cameraFov: bounded(value.cameraFov, 58, 48, 80),
+      speedFov: bounded(value.speedFov, 1, 0, 2),
+    };
   }
 
   snap(player) {
@@ -336,7 +347,7 @@ export class FollowCamera {
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
-      { ...THPS_CAMERA, distance: this.distance,
+      { ...THPS_CAMERA, distance: this.distance * this.preferences.cameraDistance,
         height: this.height + (classic ? this.lookTilt * 3 : 0),
         lookAhead: this.lookAhead });
     this.position.copy(frame.desired);
@@ -359,7 +370,7 @@ export class FollowCamera {
       Math.max(0, state.horizontalSpeed - 12) * THPS_CAMERA.highSpeedFovGain);
     const portraitFov = this.mode === 'fixed' ? 0 : Math.min(
       THPS_CAMERA.portraitFovCap, Math.max(0, 1.2 - (this.camera.aspect || 1.78)) * 3);
-    const requestedFov = 58 + speedFov + portraitFov;
+    const requestedFov = this.preferences.cameraFov + speedFov * this.preferences.speedFov + portraitFov;
     if (Math.abs(this.camera.fov - requestedFov) > 0.05) {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, requestedFov,
         firstFrame ? 1 : 1 - Math.exp(-5 * dt));

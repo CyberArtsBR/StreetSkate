@@ -99,7 +99,10 @@ test('skate events follow intentional pop, truck contact and rail/bail state, wi
   step({ grounded: true });
   step({ grind: {}, grounded: false });
   step({ bailTime: 1, grounded: true });
-  assert.deepEqual(hits, ['landing','pop','catch','landing','grind','bail']);
+  assert.deepEqual(hits, ['landing','pop','catch','landing','grind','loss'], 'loss of control is not the body impact');
+  step({ rider: { ragdoll: { groundImpact: { speed: 5 } } } });
+  step();
+  assert.deepEqual(hits, ['landing','pop','catch','landing','grind','loss','bail'], 'one heavy hit at actual contact');
   hits.length = 0;
   step({ respawnSerial: 2, bailTime: 0, grind: null });
   step({ grounded: false, presentation: { popTime: 0.12 } }, false);
@@ -221,4 +224,61 @@ test('trusted input retries an autoplay attempt that is still pending', async ()
     assert.equal(m.unlocked, true);
     m.dispose();
   } finally { env.restore(); }
+});
+
+test('music duck restores the latest volume after overlapping cues and does not unmute music', async () => {
+  const env = fakeMusicEnvironment();
+  try {
+    const music = new MusicPlayer();
+    music.setMusicVolume(.6);music.duck(100,.5);
+    assert.equal(music.audio.volume,.3);
+    music.setMusicVolume(.2);
+    assert.equal(music.audio.volume,.1,'volume edits remain ducked');
+    music.duck(80,.25);
+    assert.equal(music.audio.volume,.05);
+    await new Promise(resolve=>setTimeout(resolve,115));
+    assert.equal(music.audio.volume,.2,'restore latest saved volume, never the pre-cue value');
+    music.duck(80,.5);music.setMusicVolume(0);
+    await new Promise(resolve=>setTimeout(resolve,100));
+    assert.equal(music.audio.volume,0,'mute survives cue recovery');
+    music.dispose();assert.equal(music.duckTimer,null);
+  } finally {env.restore();}
+});
+
+test('background music preference pauses hidden playback, resumes deliberately and persists', async () => {
+  const env = fakeMusicEnvironment();
+  try {
+    const music = new MusicPlayer();await Promise.resolve();
+    document.hidden=true;music._visibility();
+    assert.equal(music.audio.paused,true);
+    music.next();music.unlock();
+    assert.equal(music.audio.paused,true,'skip and unlock cannot bypass hidden default');
+    music.setBackgroundAudio(true);await Promise.resolve();
+    assert.equal(music.audio.paused,false);
+    assert.equal(env.storage.get('streetskate.backgroundAudio'),'on');
+    const restored = new MusicPlayer();
+    assert.equal(restored.backgroundAudio,true);
+    music.setBackgroundAudio(false);
+    assert.equal(music.audio.paused,true);
+    document.hidden=false;music._visibility();await Promise.resolve();
+    assert.equal(music.audio.paused,false);
+    music.dispose();restored.dispose();
+  } finally {env.restore();}
+});
+
+test('hidden sound cues are suppressed and announcer mute is independent from skating effects', () => {
+  const env=fakeMusicEnvironment();
+  try {
+    const audio=new SkateAudio();let voices=0;
+    const param={setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}};
+    audio.master={gain:param};audio.announcer={gain:param};
+    audio.context={state:'running',currentTime:1,
+      createOscillator(){voices++;return{frequency:param,connect(){},start(){},stop(){}};},
+      createGain:()=>({gain:param,connect(){}})};
+    audio.setAnnouncerVolume(0);assert.equal(audio.effectsVolume,.35);
+    audio.setEffectsVolume(.7);assert.equal(audio.announcerVolume,0);
+    document.hidden=true;audio.cue('go');assert.equal(voices,0);
+    audio.setBackgroundAudio(true);audio.cue('go');assert.equal(voices,1);
+    audio.setBackgroundAudio(false);audio.cue('ready');assert.equal(voices,1);
+  } finally {env.restore();}
 });

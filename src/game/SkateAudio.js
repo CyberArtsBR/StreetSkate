@@ -1,6 +1,7 @@
 // Original synthesized skate sounds: no downloads or third-party samples.
-import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
+import { readAudioVolume, saveAudioVolume, readBackgroundAudio, saveBackgroundAudio } from './AudioSettings.js';
 import { createSkateImpact } from './SkateSoundSynthesis.js';
+import { surfaceAudioFor } from './SurfaceAudio.js';
 export class SkateAudio {
   constructor() {
     this.enabled = true;
@@ -8,12 +9,19 @@ export class SkateAudio {
     this.previous = null;
     this.baseGain = 0.85;
     this.effectsVolume = readAudioVolume('effects');
+    this.announcerVolume = readAudioVolume('announcer');
+    this.backgroundAudio = readBackgroundAudio();
     this.masterVolume = this.effectsVolume;
     this.lastImpactTime = -Infinity;
     this.lastImpacts = new Map();
     this.voices = new Set();
     this.disposed = false;
+    this.lastBailImpact = null;
+    this._visibility = () => { if (this.isBackgroundMuted()) this.silence(); };
+    globalThis.document?.addEventListener?.('visibilitychange', this._visibility);
   }
+
+  isBackgroundMuted() { return !this.backgroundAudio && Boolean(globalThis.document?.hidden); }
 
   async unlock() {
     if (!this.enabled || this.disposed) return;
@@ -22,12 +30,14 @@ export class SkateAudio {
     if (!this.context) {
       const c = this.context = new Audio();
       this.master = c.createGain(); this.master.gain.value = this.baseGain*this.effectsVolume;
+      this.announcer = c.createGain(); this.announcer.gain.value = this.baseGain*this.announcerVolume;
       // Tame overlapping truck hits while preserving the initial pop attack.
       this.compressor = c.createDynamicsCompressor();
       this.compressor.threshold.value = -12;
       this.compressor.knee.value = 10; this.compressor.ratio.value = 4;
       this.compressor.attack.value = 0.004; this.compressor.release.value = 0.12;
       this.master.connect(this.compressor); this.compressor.connect(c.destination);
+      this.announcer.connect(this.compressor);
       this.buffer = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
       const samples = this.buffer.getChannelData(0);
       for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
@@ -36,7 +46,7 @@ export class SkateAudio {
       this.grind = this.loop('bandpass', 2100);
       this.brake = this.loop('highpass', 1400);
       this.wind = this.loop('lowpass', 700);
-      this.impacts = Object.fromEntries(['pop','landing','grind','bail','catch','push']
+      this.impacts = Object.fromEntries(['pop','landing','grind','bail','loss','catch','push']
         .map(kind => [kind, createSkateImpact(c, kind)]));
       // Soft resonant steel vibration and damped, street-surface wheel noise.
       this.grind.filter.Q.value = 1.65;
@@ -55,7 +65,7 @@ export class SkateAudio {
   }
 
   impact(strength = 0.5, metal = false, kind = 'landing') {
-    if (!this.context || !this.enabled || this.disposed || this.context.state !== 'running') return;
+    if (!this.context || !this.enabled || this.disposed || this.isBackgroundMuted() || this.context.state !== 'running') return;
     const c = this.context, now = c.currentTime;
     kind = metal ? 'grind' : kind;
     // Keep different events audible when a catch and landing share a frame.
@@ -98,22 +108,35 @@ export class SkateAudio {
   }
 
   countdownCue(seconds) {
-    if (!this.enabled || this.disposed || !this.context || this.context.state !== 'running') return;
+    this.cue(seconds === 5 ? 'finalFive' : 'tenSeconds');
+  }
+
+  cue(kind) {
+    if (!this.enabled || this.disposed || this.isBackgroundMuted() || !this.context || this.context.state !== 'running') return;
+    const cues = {
+      confirm: [580, 760, .085, .08], back: [520, 390, .085, .065],
+      ready: [330, 390, .16, .10], go: [660, 990, .19, .15],
+      roundOver: [520, 260, .32, .13], tenSeconds: [660, 760, .2, .18],
+      finalFive: [880, 1040, .2, .18],
+    };
+    const spec = cues[kind];
+    if (!spec) return;
     const context = this.context, now = context.currentTime;
-    // Short synthesized arcade cues: one per crossed threshold, honoring
-    // the existing sound toggle and master-volume gain. No audio asset needed.
+    if (now - (this.lastImpacts.get(`cue:${kind}`) ?? -Infinity) < .07) return;
+    this.lastImpacts.set(`cue:${kind}`, now);
+    const [from, to, duration, level] = spec;
     const oscillator = context.createOscillator(), gain = context.createGain();
-    oscillator.type = seconds === 5 ? 'triangle' : 'sine';
-    oscillator.frequency.setValueAtTime(seconds === 5 ? 880 : 660, now);
-    oscillator.frequency.exponentialRampToValueAtTime(seconds === 5 ? 1040 : 760, now + 0.14);
+    oscillator.type = kind === 'finalFive' ? 'triangle' : 'sine';
+    oscillator.frequency.setValueAtTime(from, now);
+    oscillator.frequency.exponentialRampToValueAtTime(to, now + duration * .7);
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+    gain.gain.exponentialRampToValueAtTime(level, now + .012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
     oscillator.connect(gain);
-    gain.connect(this.master);
+    gain.connect(kind === 'confirm' || kind === 'back' ? this.master : (this.announcer || this.master));
     this.voices.add(oscillator);
     oscillator.start(now);
-    oscillator.stop(now + 0.22);
+    oscillator.stop(now + duration + .02);
     oscillator.onended = () => { this.voices.delete(oscillator); oscillator.disconnect(); gain.disconnect(); };
   }
 
@@ -122,26 +145,32 @@ export class SkateAudio {
     const rawSpeed = Number(player.velocity?.length?.() || 0);
     const speed = Number.isFinite(rawSpeed) ? Math.max(0,rawSpeed) : 0;
     const p = player.presentation || {};
+    const impact = player.rider?.ragdoll?.groundImpact || null;
+    const surface = surfaceAudioFor(player);
     const state = { grounded: Boolean(player.grounded), grind: Boolean(player.grind), bail: player.bailTime > 0,
       speed, pop: p.popTime > 0, flipPhase: p.flipPhase, pushPhase: p.pushPhase || 0,
       pushWeight: p.pushWeight || 0, respawn: player.respawnSerial,
       impactSpeed: Math.max(0, -(player.velocity?.dot?.(player.normal) || 0)) };
     if (this.context) {
-      const now = this.context.currentTime, audible = this.enabled && active && this.context.state === 'running';
+      const now = this.context.currentTime, audible = this.enabled && active && !this.isBackgroundMuted() && this.context.state === 'running';
       const level = Math.min(1, speed / 18);
       const rolling = audible && state.grounded && !state.grind && !state.bail;
       const grinding = audible && state.grind && !state.bail;
       const rollLevel = Math.pow(level, 0.65);
-      this.roll.gain.gain.setTargetAtTime(rolling ? rollLevel * 0.48 : 0, now, 0.035);
-      this.roll.filter.frequency.setTargetAtTime(Math.min(2200,550 + speed * 70), now, 0.06);
+      this.roll.gain.gain.setTargetAtTime(rolling ? rollLevel * 0.48 * surface.roll : 0, now, 0.035);
+      this.roll.filter.frequency.setTargetAtTime(Math.min(3000,(550 + speed * 70) * surface.rollPitch), now, 0.06);
       this.roll.source?.playbackRate?.setTargetAtTime(0.7 + level * 1.8, now, 0.06);
-      this.texture?.gain.gain.setTargetAtTime(rolling ? rollLevel * 0.15 : 0, now, 0.035);
+      this.texture?.gain.gain.setTargetAtTime(rolling ? rollLevel * 0.15 * surface.texture : 0, now, 0.035);
+      this.texture?.filter.frequency.setTargetAtTime(1600 * surface.rollPitch, now, .06);
       this.grind.gain.gain.setTargetAtTime(grinding ? 0.18 + level * 0.2 : 0, now, 0.025);
-      this.grind.filter.frequency.setTargetAtTime(Math.min(3900,1650 + speed * 83), now, 0.07);
+      this.grind.filter.frequency.setTargetAtTime(Math.min(4400,(1650 + speed * 83) * surface.scrapePitch), now, 0.07);
+      this.grind.filter.Q?.setTargetAtTime?.(surface.resonance, now, .07);
       this.wind.gain.gain.setTargetAtTime(audible && !state.grounded && !state.grind && !state.bail ? level * 0.05 : 0, now, 0.1);
       this.brake?.gain.gain.setTargetAtTime(rolling && p.state === 'BRAKE' ? level * 0.2 : 0, now, 0.04);
       if (audible && this.previous && state.respawn === this.previous.respawn) {
-        if (state.bail && !this.previous.bail) this.impact(0.85, false, 'bail');
+        if (state.bail && !this.previous.bail) this.impact(0.32, false, 'loss');
+        if (state.bail && impact && impact !== this.lastBailImpact)
+          this.impact(.45 + Math.min(.5, (Number(impact.speed) || 4) / 14), false, 'bail');
         if (!state.bail) {
           if (state.pop && !this.previous.pop && !state.grounded && !state.grind) this.impact(0.9, false, 'pop');
           if (state.grounded && !this.previous.grounded && !state.grind) {
@@ -155,6 +184,9 @@ export class SkateAudio {
         }
       }
     }
+    // Consume contacts while paused/muted too. Unmuting must never replay an
+    // old impact, and returning from a highlight must not invent a second hit.
+    this.lastBailImpact = impact;
     this.previous = active ? state : null;
   }
 
@@ -175,6 +207,17 @@ export class SkateAudio {
     this.masterVolume = this.effectsVolume;
     if (this.context && this.master) this.master.gain.setTargetAtTime(
       this.baseGain*this.effectsVolume,this.context.currentTime,0.045);
+  }
+
+  setAnnouncerVolume(value) {
+    this.announcerVolume = saveAudioVolume('announcer', value);
+    if (this.context && this.announcer) this.announcer.gain.setTargetAtTime(
+      this.baseGain*this.announcerVolume, this.context.currentTime, .045);
+  }
+
+  setBackgroundAudio(value) {
+    this.backgroundAudio = saveBackgroundAudio(value);
+    if (this.isBackgroundMuted()) this.silence();
   }
 
   toggle() {
@@ -198,7 +241,9 @@ export class SkateAudio {
       layer.gain.disconnect();
     }
     this.master?.disconnect();
+    this.announcer?.disconnect();
     this.compressor?.disconnect();
+    globalThis.document?.removeEventListener?.('visibilitychange', this._visibility);
     const context = this.context;
     this.context = null;
     this.previous = null;

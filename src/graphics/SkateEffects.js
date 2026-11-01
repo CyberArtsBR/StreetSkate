@@ -80,6 +80,8 @@ export class SkateEffects {
     if(this.performance){this.clearPool(this.glints);this.grindBudget=0;this.traceBudget=0;}
   }
 
+  setLiquidEnabled(value) { this.bailLiquid.setEnabled(value); }
+
   setSize(height,pixelRatio=1) {
     const pixels=Math.max(1,Number(height)||720)*clamp(Number(pixelRatio)||1,1,2.25);
     this.dust.points.material.uniforms.viewportHeight.value=pixels;
@@ -159,7 +161,7 @@ export class SkateEffects {
     const impactEvent=skater.rider?.ragdoll?.groundImpact;
     if(skater.bailTime>0&&impactEvent&&impactEvent!==this.lastBailImpact){
       this.lastBailImpact=impactEvent;
-      this.bailLiquid.spawn(impactEvent,this.performance);
+      this.bailLiquid.spawn(impactEvent,this.performance,skater.surface);
     }
     if(skater.bailTime>0){this.airDuration=0;this.grindBudget=0;this.traceBudget=0;this.remember(skater);return;}
     this.origin.copy(skater.position);

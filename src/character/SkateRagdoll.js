@@ -123,7 +123,8 @@ export class SkateRagdoll {
     // torso/head, and use the collider's world contact rather than the skater anchor.
     if (this.groundImpact || !['pelvis','spine_03','head'].includes(node.name)) return;
     if (normal.y > .45 && node.velocity.dot(normal) < -.8)
-      this.groundImpact = {point:point.clone(), normal:normal.clone().normalize(), body:node.name};
+      this.groundImpact = {point:point.clone(), normal:normal.clone().normalize(), body:node.name,
+        speed: Math.max(0, -node.velocity.dot(normal))};
   }
 
   collide(node, surface) {

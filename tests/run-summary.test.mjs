@@ -33,9 +33,9 @@ test('run summary reports only banked tricks and keeps repeat penalties factual'
   assert.equal(result.tricksLanded, 2);
   assert.deepEqual(result.uniqueTricks, ['Kickflip']);
   assert.deepEqual(result.runTopTricks.map(trick => trick.points), [200, 165]);
-  assert.equal(result.scoreBreakdown.subtotal, 516);
+  assert.equal(result.scoreBreakdown.subtotal, 366);
   assert.equal(result.scoreBreakdown.multiplierPercent, 105);
-  assert.equal(result.finalScore, 542);
+  assert.equal(result.finalScore, 384);
 });
 
 test('only the three highest accepted combos become highlight candidates', () => {
@@ -49,9 +49,9 @@ test('only the three highest accepted combos become highlight candidates', () =>
   assert.deepEqual(result.highlights.map(moment => moment.points), [1600, 800, 400]);
   assert.equal(result.bestCombo.label, 'Trick 1600');
   assert.equal(result.totalScore, 3050);
-  assert.equal(result.scoreBreakdown.comboBonus, 500);
-  assert.equal(result.scoreBreakdown.trickBonus, 125);
-  assert.equal(result.finalScore, 4594);
+  assert.equal(result.scoreBreakdown.comboBonus, 0);
+  assert.equal(result.scoreBreakdown.trickBonus, 0);
+  assert.equal(result.finalScore, 3813);
 });
 
 test('distance uses actual physics path and excludes bails, resets and teleports', () => {
@@ -127,7 +127,7 @@ test('final summary uses authoritative score, freezes details and stops recordin
   assert.ok(Object.isFrozen(result.highlights[0]));
   assert.equal(result.totalScore, 600);
   assert.equal(result.scoreBreakdown.bankedScore, 600);
-  assert.equal(result.finalScore, 761);
+  assert.equal(result.finalScore, 630);
   assert.ok(Object.isFrozen(result.scoreBreakdown));
   assert.throws(() => { result.scoreBreakdown.finalScore = 1; }, TypeError);
   assert.throws(() => { result.highlights[0].points = 1; }, TypeError);

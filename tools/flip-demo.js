@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { UnrealRider } from '../src/character/UnrealRider.js';
 import { StreetBoard } from '../src/skateboard/StreetBoard.js';
-import { FLIP_LESSONS,FLIP_LESSON_TIMING,flipLessonFrame } from '../src/game/FlipLessons.js';
+import { ALL_FLIP_LESSONS as FLIP_LESSONS,FLIP_LESSON_TIMING,flipLessonFrame } from '../src/game/FlipLessons.js';
 
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
 renderer.setSize(960,540);renderer.setPixelRatio(1);

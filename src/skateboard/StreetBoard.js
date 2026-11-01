@@ -4,7 +4,7 @@ import { installHalfPipeFinish } from './HalfPipeFinish.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
-import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
+import { flipTurns, impossibleMotion, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
 import { DEFAULT_BOARD_FINISH, SKATEBOARD_FINISHES } from './BoardFinishes.js';
 import { deckEmissionForGlow } from './BoardGlow.js';
 
@@ -277,6 +277,7 @@ export class StreetBoard {
     y += flatPose.yaw;
     z += flatPose.roll;
     this.root.position.y += flatPose.lift;
+    this.riderHeight = this.root.position.y;
 
     if (bail) {
       const p = clamp(bailProgress, 0, 1);
@@ -294,6 +295,16 @@ export class StreetBoard {
     // changes crossfade so manuals/grinds don't snap to a different deck angle.
     if (flipState || bail || !this.poseReady) this.root.quaternion.copy(this._poseQuaternion);
     else this.root.quaternion.slerp(this._poseQuaternion, 1 - Math.exp(-22 * Math.max(0, dt)));
+    const wrap = impossibleMotion(flipState, stance);
+    if (wrap && !bail) {
+      const y = (this.contactRig.deckTopY || this.deckHeight) - this.deckHeight;
+      const local = new THREE.Vector3(0, y, wrap.pivotZ * Math.cos(this._yawHold));
+      const rotated = local.clone().applyQuaternion(this.root.quaternion);
+      // Rotate around the supported back foot instead of freely tumbling around
+      // the deck centre. This offset belongs only to rendering, never collision.
+      this.root.position.addScaledVector(new THREE.Vector3(0, y, wrap.pivotZ).sub(rotated), wrap.weight);
+      this.root.position.y += wrap.lift * wrap.weight;
+    }
     this.poseReady = true;
     if (manual) this.manualSupport = true;
     if (airborne || bail || grind || wallRide || flatland) this.manualSupport = false;

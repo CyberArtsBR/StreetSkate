@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nextMenuIndex } from '../src/input/MenuNavigation.js';
+import { SessionFlow } from '../src/game/SessionFlow.js';
 import { GameShell } from '../src/game/GameShell.js';
 import { SkateAudio } from '../src/game/SkateAudio.js';
 
@@ -186,7 +187,7 @@ test('camera option persists and is retained when starting the session',()=>{
   try {
     const cameraCalls=[];
     const shell=Object.create(GameShell.prototype);
-    shell.phase='options';shell.cameraIndex=0;shell.music={unlock(){}};
+    shell.sessionFlow=new SessionFlow();shell.phase='options';shell.cameraIndex=0;shell.music={unlock(){}};
     shell.actions={
       camera:value=>cameraCalls.push(value),
       start:()=>{}

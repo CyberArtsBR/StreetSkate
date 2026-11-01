@@ -5,7 +5,7 @@
 .skate-hud .speed>span{font:400 clamp(42px,4.4vw,60px)/.9 'Bangers',Impact,sans-serif;letter-spacing:.015em;color:#fff1b5;-webkit-text-stroke:.5px #191028;text-shadow:1px 2px 0 #100816,2px 3px 0 #170828}
 .skate-hud .speed small{font:800 11px/1 'DM Sans',sans-serif;color:#a9edf1;letter-spacing:.12em;margin:0}
 #run-timer{top:22px;right:24px;min-width:106px;padding:13px 18px 10px;border:1px solid #d5dfff25;border-radius:18px;background:linear-gradient(145deg,#161a2cce,#101423a6);box-shadow:0 8px 30px #0003;backdrop-filter:blur(10px);font:400 clamp(36px,3.6vw,48px)/1 'Bangers',Impact,sans-serif;letter-spacing:.04em;color:#fff1b5;-webkit-text-stroke:.5px #191028;text-shadow:1px 2px 0 #100816,2px 3px 0 #170828}
-#run-timer::after{display:none!important}
+#run-timer::after{display:none}
 #run-timer.time-low{color:#ffc885;border-color:#f8c47266}
 #run-timer.time-critical{color:#fff4d7;background:#982143d9;border-color:#ffadb780}
 /* The title has its own visual hierarchy; skip instructions stay readable. */

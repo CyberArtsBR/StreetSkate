@@ -178,7 +178,7 @@ test('sky reflection requests without a textured sky are rejected',()=>{
 });
 function shellHarness(action) {
   const shell=Object.create(GameShell.prototype),starts=[];
-  Object.assign(shell,{phase:'options',ready:true,mapUploadGeneration:0,mapUploadBusy:false,heroes:[...DEFAULT_CHARACTERS],
+  Object.assign(shell,{phase:'creator',ready:true,mapUploadGeneration:0,mapUploadBusy:false,heroes:[...DEFAULT_CHARACTERS],
     actions:{testMap:action},render(){},start(practice){starts.push(practice);this.phase='playing';}});
   return {shell,starts};
 }
@@ -189,9 +189,9 @@ test('upload starts practice with built-in random rider and board without changi
   assert.deepEqual(starts,[true]);assert.equal(shell.mapUploadBusy,false);
   assert.equal(PARK_REGISTRY['test-map'],undefined);assert.ok(LOCATIONS.every(l=>l.id!=='test-map'));
 });
-test('load failure stays in Options with readable error and no practice start',async()=>{
+test('load failure stays in Creator tools with readable error and no practice start',async()=>{
   const {shell,starts}=shellHarness(async()=>{throw Error('Invalid map geometry');});
-  await shell.uploadTestMap({name:'bad.glb'});assert.equal(shell.phase,'options');assert.equal(shell.mapUploadBusy,false);
+  await shell.uploadTestMap({name:'bad.glb'});assert.equal(shell.phase,'creator');assert.equal(shell.mapUploadBusy,false);
   assert.match(shell.mapUploadStatus,/Invalid map geometry/);assert.deepEqual(starts,[]);
 });
 test('canceled upload cannot start practice or replace selection after completion',async()=>{

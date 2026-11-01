@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { SessionFlow } from '../src/game/SessionFlow.js';
 import { GameShell } from '../src/game/GameShell.js';
 import { calculateRunFinalScore } from '../src/game/RunFinalScore.js';
 
 function sessionHarness(run) {
-  const shell=Object.create(GameShell.prototype),calls=[];
+  const shell=Object.create(GameShell.prototype),calls=[],sessionFlow=new SessionFlow({duration:.01});
+  sessionFlow.begin({ready:false});
   Object.assign(shell,{phase:'playing',practice:false,remaining:.01,inputGrace:0,navRepeat:0,
-    songToastRemaining:0,previousPad:{},padFocused:true,padIdentity:null,selection:0,
-    music:{unlock(){},next(){calls.push('nextSong');}},
+    sessionFlow,goRemaining:0,timeupSeen:false,songToastRemaining:0,previousPad:{},padFocused:true,padIdentity:null,selection:0,
+    music:{unlock(){},duck(){},next(){calls.push('nextSong');}},
     actions:{score:()=>run.totalScore,pause:value=>calls.push(['pause',value]),
       finishRun:()=>{calls.push('finishRun');return run;}},
     updateTimer(){},setScreen(phase){this.phase=phase;calls.push(phase);},
@@ -45,7 +47,7 @@ test('session expiry freezes the summary and shows Time’s Up for three uncappe
   });
 });
 
-test('Time’s Up blocks keyboard, gamepad and direct menu navigation until results',()=>{
+test('Time’s Up consumes early input and allows skipping after its arrival beat',()=>{
   withBrowserClock(({at,pad})=>{
     const {shell,calls}=sessionHarness(Object.freeze({totalScore:0}));
     shell.update(.02);
@@ -57,11 +59,13 @@ test('Time’s Up blocks keyboard, gamepad and direct menu navigation until resu
     shell.choose('title');shell.back();
     assert.equal(shell.phase,'timeup');
     pad.buttons[0].pressed=true;pad.buttons[1].pressed=true;pad.buttons[9].pressed=true;pad.buttons[15].pressed=true;
-    at(2500);shell.update(.016);
+    at(1449);shell.update(.016);
     assert.equal(shell.phase,'timeup');
     assert.equal(calls.includes('select'),false);assert.equal(calls.includes('move'),false);
-    at(4000);shell.update(.016);
+    at(1450);shell.key({code:'Enter',target:{tagName:'BODY'},preventDefault(){},stopImmediatePropagation(){}});
     assert.equal(shell.phase,'results');
+    assert.equal(calls.includes('select'),false,'skip input cannot activate a results action');
+    shell.update(.016);
     assert.equal(calls.includes('select'),false,'holding A through the transition cannot activate results');
   });
 });
@@ -69,10 +73,10 @@ test('Time’s Up blocks keyboard, gamepad and direct menu navigation until resu
 test('session expiry exposes the immutable achievement-weighted final score',()=>{
   withBrowserClock(()=>{
     const scoreBreakdown=Object.freeze(calculateRunFinalScore({bankedScore:900,landedCombos:3,tricksLanded:7,uniqueTricks:4,bails:2}));
-    const run=Object.freeze({totalScore:900,finalScore:1150,scoreBreakdown});
+    const run=Object.freeze({totalScore:900,finalScore:580,scoreBreakdown});
     const {shell,calls}=sessionHarness(run);
     shell.update(.02);
-    assert.equal(shell.finalScore,1150,'the frozen run result replaces the banked-score snapshot');
+    assert.equal(shell.finalScore,580,'the frozen run result replaces the banked-score snapshot');
     assert.equal(shell.runSummary,run);
     assert.equal(shell.runSummary.totalScore,900,'banked gameplay score remains intact');
     assert.equal(shell.runSummary.scoreBreakdown,scoreBreakdown);
@@ -80,22 +84,24 @@ test('session expiry exposes the immutable achievement-weighted final score',()=
   });
 });
 
-test('results distinguish final points, banked points, achievement bonuses and bail penalties',()=>{
+test('results collapse v2 arithmetic and distinguish earned points, variety and bail penalties',()=>{
   const scoreBreakdown=Object.freeze(calculateRunFinalScore({bankedScore:900,landedCombos:3,tricksLanded:7,uniqueTricks:4,bails:2}));
-  const run=Object.freeze({totalScore:900,finalScore:1150,scoreBreakdown,landedCombos:3,tricksLanded:7,uniqueTricks:4,bails:2,
+  const run=Object.freeze({totalScore:900,finalScore:580,scoreBreakdown,landedCombos:3,tricksLanded:7,uniqueTricks:4,bails:2,
     bestCombo:{points:300,label:'Ollie + Kickflip',trickCount:2}});
   const {shell}=sessionHarness(run);
   Object.assign(shell,{runSummary:run,heroes:[{name:'Heretic'}],heroIndex:0,boardIndex:0,locationIndex:0});
   const html=shell.renderResults();
-  assert.ok(html.includes(`<strong data-final-score>${(1150).toLocaleString()}</strong>`));
+  assert.ok(html.includes(`<strong data-final-score>${(580).toLocaleString()}</strong>`));
   assert.match(html,/FINAL SCORE/);assert.match(html,/FINAL POINTS/);
   assert.match(html,/<dd data-banked-score>900<\/dd>/);
-  assert.match(html,/3 × 100 points/);assert.match(html,/<dd>\+300<\/dd>/);
-  assert.match(html,/7 × 25 points/);assert.match(html,/<dd>\+175<\/dd>/);
+  assert.doesNotMatch(html,/3 × 100 points|7 × 25 points/,'flat bonuses are removed in line-score-v2');
+  assert.match(html,/<details class="run-score-breakdown"[^>]*>/);
+  assert.doesNotMatch(html,/<details class="run-score-breakdown"[^>]*open/,'arithmetic starts collapsed');
+  assert.match(html,/line-score-v2/);
   assert.match(html,/4 different tricks · \+20%/);
   assert.match(html,/<dd class="score-multiplier">×1\.20<\/dd>/);
   assert.match(html,/2 × 250 point penalty/);assert.match(html,/<dd>−500<\/dd>/);
-  assert.ok(html.includes(`<dd>${(1650).toLocaleString()}</dd>`),'weighted subtotal precedes the bail deduction');
+  assert.ok(html.includes(`<dd>${(1080).toLocaleString()}</dd>`),'weighted subtotal precedes the bail deduction');
   assert.match(html,/<strong>300 <small>PTS<\/small><\/strong>/,'best combo remains the original banked highlight');
   assert.match(html,/up to ×2\.00/);assert.match(html,/Final score never falls below zero/);
 });

@@ -40,8 +40,10 @@ export class BailLiquid {
   constructor(root) {
     this.geometry = liquidGeometry();this.dropGeometry = new THREE.SphereGeometry(1, 8, 6);
     this.cursor = 0;this.transform = new THREE.Object3D();this.normal = new THREE.Vector3();
+    this.enabled = true;this.disposed = false;
+    this.basePositions = this.geometry.attributes.position.array.slice();
     this.puddles = Array.from({length:3}, () => {
-      const mesh = new THREE.Mesh(this.geometry, liquidMaterial());
+      const mesh = new THREE.Mesh(this.geometry.clone(), liquidMaterial());
       mesh.name = 'Bail liquid surface';mesh.userData.bailLiquid = true;mesh.visible = false;
       const splash = new THREE.InstancedMesh(this.dropGeometry, liquidMaterial(), DROPS);
       splash.name = 'Bail liquid droplets';splash.visible = false;splash.frustumCulled = false;
@@ -51,21 +53,52 @@ export class BailLiquid {
     });
   }
 
-  spawn(impact, performance = false) {
+  spawn(impact, performance = false, surface = null) {
+    if (!this.enabled || this.disposed || !impact?.point?.isVector3 || !impact?.normal?.isVector3
+      || !Number.isFinite(impact.point.lengthSq()) || !Number.isFinite(impact.normal.lengthSq())
+      || impact.normal.lengthSq() < .01) return false;
     const p = this.puddles[this.cursor++ % this.puddles.length];
     this.normal.copy(impact.normal).normalize();
     p.age = 0;p.count = performance ? 4 : DROPS;
     p.mesh.position.copy(impact.point).addScaledVector(this.normal, .003);
     p.mesh.quaternion.setFromUnitVectors(NORMAL, this.normal);
+    this.conformSurface(p.mesh, surface);
     p.mesh.visible = true;p.mesh.material.opacity = 1;
     p.splash.position.copy(p.mesh.position);p.splash.quaternion.copy(p.mesh.quaternion);
     p.splash.material.opacity = 1;p.splash.count = p.count;p.splash.visible = true;
     p.gravity.set(0, -9.8, 0).applyQuaternion(p.mesh.quaternion.clone().invert());
     this.updatePuddle(p, 0);
+    return true;
+  }
+
+  conformSurface(mesh, surface) {
+    const position = mesh.geometry.attributes.position;
+    position.array.set(this.basePositions);
+    // Eight bounded contact probes fit local curvature; flat slopes already
+    // follow the contact normal. No per-frame raycasts or live reflections.
+    if (surface?.ground) {
+      const point = new THREE.Vector3(), offset = new THREE.Vector3();
+      const sample = (x, y) => {
+        point.set(x, y, 0).applyQuaternion(mesh.quaternion).add(mesh.position);
+        const hit = surface.ground(point, .35, .40);
+        if (!hit?.point || !hit?.normal || hit.normal.dot(this.normal) < .8) return 0;
+        const height = offset.copy(hit.point).sub(point).dot(this.normal) + .003;
+        return Math.abs(height) <= .18 ? height : 0;
+      };
+      const xx = (sample(RADIUS_X, 0) + sample(-RADIUS_X, 0)) / (2 * RADIUS_X ** 2);
+      const yy = (sample(0, RADIUS_Y) + sample(0, -RADIUS_Y)) / (2 * RADIUS_Y ** 2);
+      const xy = (sample(RADIUS_X, RADIUS_Y) - sample(-RADIUS_X, RADIUS_Y)
+        - sample(RADIUS_X, -RADIUS_Y) + sample(-RADIUS_X, -RADIUS_Y)) / (4 * RADIUS_X * RADIUS_Y);
+      for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i), y = position.getY(i);
+        position.setZ(i, position.getZ(i) + THREE.MathUtils.clamp(xx*x*x + yy*y*y + xy*x*y, -.16, .16));
+      }
+    }
+    position.needsUpdate = true;mesh.geometry.computeVertexNormals();mesh.geometry.computeBoundingSphere();
   }
 
   updatePuddle(p, dt) {
-    p.age += dt;
+    p.age += Number.isFinite(dt) ? Math.max(0, dt) : 0;
     if (p.age >= LIFE) {p.mesh.visible = p.splash.visible = false;return;}
     p.mesh.material.opacity = Math.min(1, (LIFE - p.age) / 1.5);
     const spread = .72 + .28 * (1 - Math.exp(-p.age * 14));
@@ -89,10 +122,12 @@ export class BailLiquid {
 
   update(dt) {for (const p of this.puddles) if (p.mesh.visible) this.updatePuddle(p, dt);}
   reset() {for (const p of this.puddles) p.mesh.visible = p.splash.visible = false;}
+  setEnabled(value) {this.enabled = Boolean(value);if (!this.enabled) this.reset();}
   dispose() {
+    if (this.disposed) return;this.disposed = true;
     for (const p of this.puddles) {
       p.mesh.removeFromParent();p.splash.removeFromParent();p.splash.dispose();
-      p.mesh.material.dispose();p.splash.material.dispose();
+      p.mesh.material.dispose();p.splash.material.dispose();p.mesh.geometry.dispose();
     }
     this.geometry.dispose();this.dropGeometry.dispose();
   }

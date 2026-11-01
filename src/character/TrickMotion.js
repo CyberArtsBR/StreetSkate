@@ -51,6 +51,27 @@ export function flipTurns(flipState) {
   return turns;
 }
 
+// Reference: Nollie Skateboarding's Backfoot Impossible breakdown (2025-10-19):
+// pressure around the rear foot, front foot lifted clear, then catch. The
+// rotation stays authored by flipTurns; this is a shared visual contact pivot.
+export function impossibleMotion(flipState, stance = 1) {
+  if (!flipState || !Number.isFinite(flipState.pitch) || Math.abs(flipState.pitch) < .99
+    || flipState.roll || flipState.yaw) return null;
+  const p = safe01(flipState.progress), motion = flipMotion(p);
+  const weight = MathUtils.smoothstep(p, .08, .25) * (1 - MathUtils.smoothstep(p, .72, .84));
+  return { weight, pivotZ: (stance < 0 ? -1 : 1) * .20,
+    lift: motion.rearLift, frontLift: motion.frontLift + .08 * weight,
+    anklePitch: Math.sin(flipTurns(flipState).pitch * Math.PI * 2) * .32 * weight };
+}
+
+export function grindWeightShift(name, balance = 0, weight = 1) {
+  const w = safe01(weight), b = MathUtils.clamp(Number(balance) || 0, -1, 1);
+  const nose = ['Nosegrind', 'Noseslide', 'Crook', 'Overcrook'].includes(name);
+  const tail = ['5-0', 'Tailslide', 'Smith', 'Feeble'].includes(name);
+  return { foreAft: (nose ? -.045 : tail ? .045 : 0) * w,
+    lateral: b * .035 * w, compression: (.08 + Math.abs(b) * .04) * w };
+}
+
 // Original key poses: lift off the deck, reach beside it, drive backwards,
 // roll off the toe, then recover above the deck. Values are in the rider frame.
 const PUSH_KEYS = [

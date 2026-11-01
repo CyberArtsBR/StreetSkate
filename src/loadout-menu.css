@@ -6,6 +6,8 @@
 .graffiti-word img{width:calc(var(--letter-height)*.79);height:var(--letter-height);object-fit:contain;margin-right:calc(var(--letter-height)*-.09);filter:drop-shadow(0 3px 2px #0008)}
 .graffiti-punctuation{font:900 .7em Impact,sans-serif;color:#e5faff;-webkit-text-fill-color:#e5faff;padding:.1em}
 .graffiti-failed .graffiti-art{display:none}
+.graffiti-loading .graffiti-art{display:none!important}
+.graffiti-ready:not(.graffiti-failed)>.graffiti-fallback{display:none}
 .graffiti-fallback{font:900 1em/1.1 'Barlow Condensed',Impact,Arial,sans-serif;letter-spacing:.04em;color:#fff1b5;-webkit-text-fill-color:#fff1b5;text-shadow:0 2px 3px #101421}
 #game-shell.menu-screen .menu-card h2{font-size:clamp(30px,4vw,48px);-webkit-text-fill-color:initial;background:none;transform:none;letter-spacing:0}
 #trick-feedback{--letter-height:clamp(24px,3vw,38px);font-size:var(--letter-height);padding:0;text-shadow:none;-webkit-text-stroke:0;line-height:1.15}

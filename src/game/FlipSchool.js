@@ -1,5 +1,6 @@
 import { gameAssetUrl } from './AssetPaths.js';
-import { FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps } from './FlipLessons.js';
+import { ALL_FLIP_LESSONS as FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps } from './FlipLessons.js';
+import { readBindings, keyLabel, padLabel } from '../input/ControlBindings.js';
 
 const MODES=['xbox','playstation','keyboard'];
 const pad=`<svg class="flip-pad" viewBox="0 0 260 145" aria-hidden="true">
@@ -17,14 +18,14 @@ const pad=`<svg class="flip-pad" viewBox="0 0 260 145" aria-hidden="true">
 export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
   const lesson=FLIP_LESSONS[index]||FLIP_LESSONS[0];
   return `<article class="flip-school" aria-label="Flip trick video tutorials">
-    <header class="flip-school-header"><div><span class="flip-eyebrow">CHIMP HAWK / FIELD NOTES 01</span><h2>FLIP <em>SCHOOL.</em></h2><p>Watch the board. Learn the buttons. Find your line.</p></div><span class="flip-header-stamp">8 TRICKS<br><b>ONE CLEAN LANDING.</b></span></header>
+    <header class="flip-school-header"><div><span class="flip-eyebrow">CHIMP HAWK / FIELD NOTES 01</span><h2>FLIP <em>SCHOOL.</em></h2><p>Watch the board. Learn the buttons. Find your line.</p></div><span class="flip-header-stamp">${FLIP_LESSONS.length} TRICKS<br><b>ONE CLEAN LANDING.</b></span></header>
     <div class="flip-school-layout">
       <nav class="flip-lesson-list" aria-label="Choose a flip trick"><span class="flip-eyebrow">THE TRICK LIST</span>
         ${FLIP_LESSONS.map((entry,i)=>`<button data-menu data-action="flipLesson" data-index="${i}" aria-pressed="${i===index}" class="flip-lesson${i===index?' is-current':''}"><span class="flip-lesson-number">${String(i+1).padStart(2,'0')}</span><span>${entry.trick.name}<small>${entry.arrow} ${entry.label} + flip</small></span><span class="flip-lesson-arrow" aria-hidden="true">↗</span></button>`).join('')}
         <p class="flip-list-note">Hold a direction only for the trick tap. Holding it longer can rotate your rider.</p>
       </nav>
       <section class="flip-lesson-detail" aria-label="${lesson.trick.name} lesson">
-        <div class="flip-detail-heading"><div><span class="flip-eyebrow">LESSON ${String(index+1).padStart(2,'0')} / 08</span><h3>${lesson.trick.name}</h3></div><span class="flip-loop-label">↻ VIDEO LOOP</span></div>
+        <div class="flip-detail-heading"><div><span class="flip-eyebrow">LESSON ${String(index+1).padStart(2,'0')} / ${FLIP_LESSONS.length}</span><h3>${lesson.trick.name}</h3></div><span class="flip-loop-label">↻ VIDEO LOOP</span></div>
         <div class="flip-video-stage">
           <video data-flip-video muted loop playsinline preload="metadata" poster="${gameAssetUrl(lesson.poster)}" aria-label="${lesson.trick.name} animated demonstration"></video>
           <span class="flip-video-caption">IN-GAME ANIMATION / SIDE VIEW</span>
@@ -44,10 +45,10 @@ export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
         </div></div>
         <div class="flip-progress" role="progressbar" aria-label="Demonstration progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
         <ol class="flip-steps" aria-label="Button order" data-flip-steps></ol>
-        <div class="flip-coach-note"><span>LANDING NOTE</span><p>${lesson.tip}</p><small>Next: ${lesson.upgrade}. Tap flip again early, before the first flip finishes. Advanced flips need more airtime.</small></div>
+        <div class="flip-coach-note"><span>LANDING NOTE</span><p>${lesson.tip}</p><small>${lesson.taps===2?'TAP TIMING: the demonstration leaves 0.15 seconds between presses. Release the flip button between taps.':'Next: '+lesson.upgrade+'. Tap flip again early, before the first flip finishes.'} Advanced flips need more airtime.</small></div>
       </section>
     </div>
-    <footer class="flip-school-footer"><button data-menu data-action="back">← BACK</button><p>Left stick / D-pad to navigate · A / Cross to select · B / Circle to return</p>${tutorialFlow?'<button data-menu data-action="tutorialNext">NEXT: CONTROLS →</button>':''}<button data-menu data-action="practice" class="flip-practice">FREE PRACTICE ↗</button></footer>
+    <footer class="flip-school-footer"><button data-menu data-action="back">← BACK</button><p>Left stick / D-pad to navigate · A / Cross to select · B / Circle to return</p>${tutorialFlow?'<button data-menu data-action="tutorialNext">NEXT: CONTROLS →</button>':''}<button data-menu data-action="flipTry" data-index="${index}" class="flip-practice">TRY THIS TRICK ↗</button><button data-menu data-action="practice">FREE PRACTICE</button></footer>
   </article>`;
 }
 
@@ -79,19 +80,23 @@ export class FlipSchoolPlayer {
   }
   setInputMode(mode){
     this.mode=MODES.includes(mode)?mode:'xbox';this.key='';
+    this.bindings=readBindings();
     this.root.querySelector('.flip-input-overlay').dataset.inputMode=this.mode;
     this.root.querySelector('[data-overlay-label]').textContent=this.mode==='keyboard'?'KEYBOARD INPUT':this.mode==='playstation'?'PLAYSTATION INPUT':'XBOX INPUT';
-    this.root.querySelector('[data-pad-ollie]').textContent=this.mode==='playstation'?'✕':'A';
-    this.root.querySelector('[data-pad-flip]').textContent=this.mode==='playstation'?'□':'X';
+    this.root.querySelector('[data-pad-ollie]').textContent=this.mode==='keyboard'?'A':padLabel(this.bindings.ollie.gamepad,this.mode);
+    this.root.querySelector('[data-pad-flip]').textContent=this.mode==='keyboard'?'X':padLabel(this.bindings.flip.gamepad,this.mode);
+    this.root.querySelector('[data-key="ollie"]').textContent=keyLabel(this.bindings.ollie.keyboard[0]);
+    this.root.querySelector('[data-key="flip"]').textContent=keyLabel(this.bindings.flip.keyboard[0]);
+    this.root.querySelector('[data-key="direction"]').textContent=[...(this.lesson.y<0?['up']:this.lesson.y>0?['down']:[]),...(this.lesson.x<0?['left']:this.lesson.x>0?['right']:[])].map(action=>keyLabel(this.bindings[action].keyboard[0])).join(' + ');
     this.root.querySelectorAll('[data-action="flipInput"]').forEach((button,i)=>button.setAttribute('aria-pressed',String(MODES[i]===this.mode)));
-    this.steps=flipLessonSteps(this.lesson,this.mode);
+    this.steps=flipLessonSteps(this.lesson,this.mode,this.bindings);
     this.root.querySelector('[data-flip-steps]').innerHTML=this.steps.map((step,i)=>`<li><span class="flip-step-number">0${i+1}</span><div><b>${step.title}</b><strong>${step.input}</strong><small>${step.detail}</small></div></li>`).join('');
     this.stepNodes=[...this.root.querySelectorAll('.flip-steps li')];this.update();
   }
   update(time=this.video.currentTime){
     if(this.destroyed)return;
     const state=flipLessonFrame(this.lesson,time);
-    const key=[this.mode,state.step,state.ollie,state.flip,state.direction].join(':');
+    const key=[this.mode,state.step,state.ollie,state.flip,state.direction,state.tapNumber].join(':');
     if(key!==this.key){
       this.key=key;
       this.stepNodes.forEach((node,i)=>{node.classList.toggle('is-active',i===state.step);if(i===state.step)node.setAttribute('aria-current','step');else node.removeAttribute('aria-current');});
@@ -102,7 +107,7 @@ export class FlipSchoolPlayer {
       this.root.querySelector('[data-key="direction"]').classList.toggle('is-active',state.direction);
       this.stick.setAttribute('transform',state.direction?`translate(${this.lesson.x*10} ${this.lesson.y*10})`:'translate(0 0)');
       this.stick.classList.toggle('is-active',state.direction);
-      this.cue.textContent=state.step===2&&!state.flip?'Release · watch the catch':this.steps[state.step].input;
+      this.cue.textContent=state.step===2&&this.lesson.taps===2?(state.flip?`TAP ${state.tapNumber} / 2`:state.direction?'Release flip · tap again':'Release direction · watch the catch'):state.step===2&&!state.flip?'Release · watch the catch':this.steps[state.step].input;
     }
     const percent=Math.min(100,100*time/FLIP_LESSON_TIMING.duration);
     this.fill.style.transform=`scaleX(${percent/100})`;

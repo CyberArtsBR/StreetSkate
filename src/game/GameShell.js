@@ -1,7 +1,7 @@
 import { gameAssetUrl } from './AssetPaths.js';
 import { tutorialPages } from './TutorialPages.js';
 import { FlipSchoolPlayer, renderFlipSchool } from './FlipSchool.js';
-import { FLIP_LESSONS } from './FlipLessons.js';
+import { ALL_FLIP_LESSONS as FLIP_LESSONS } from './FlipLessons.js';
 import { nextMenuIndex } from '../input/MenuNavigation.js';
 import { MusicPlayer } from './MusicPlayer.js';
 import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
@@ -17,6 +17,9 @@ import { graffitiLettering } from './GraffitiLettering.js';
 import { GRAPHICS_PRESET_ORDER, GRAPHICS_PRESETS, GRAPHICS_DESCRIPTIONS, DEFAULT_GRAPHICS_PRESET } from '../graphics/GraphicsSettings.js';
 import { RUN_SCORE_RULES } from './RunFinalScore.js';
 import { STICK_DEAD_ZONES } from '../input/SkateInput.js';
+import { SessionFlow } from './SessionFlow.js';
+import { renderPlayerSettings, PlayerSettingsPanel } from './PlayerSettingsPanel.js';
+import { readPlayerPreferences, applyPlayerPreferences } from './PlayerPreferences.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -32,6 +35,8 @@ const meters = value => number(value)>=1000 ? `${(number(value)/1000).toFixed(2)
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
+    this.sessionFlow=new SessionFlow();this.playerPreferences=applyPlayerPreferences(readPlayerPreferences());
+    this.settingsPanel=null;this.goRemaining=0;this.timeupSeen=false;
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
     this.flipLessonIndex=0;this.flipInputMode='xbox';this.flipPlayer=null;
@@ -56,6 +61,8 @@ export class GameShell {
     document.body.append(this.root);this.content=this.root.querySelector('.shell-content');
     this.timer=document.createElement('div');this.timer.id='run-timer';this.timer.setAttribute('role','timer');
     this.timerValue=document.createElement('span');this.timer.append(this.timerValue);document.querySelector('#app').append(this.timer);
+    this.roundCue=document.createElement('aside');this.roundCue.className='round-cue';
+    this.roundCue.setAttribute('role','status');this.roundCue.hidden=true;document.querySelector('#app').append(this.roundCue);
     this.song=document.createElement('aside');this.song.id='now-playing';this.song.setAttribute('aria-label','Soundtrack');
     this.song.innerHTML='<span class="song-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 17V6l10-2v11M10 9l10-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="17" rx="3" ry="2.5" fill="currentColor"/><ellipse cx="17" cy="15" rx="3" ry="2.5" fill="currentColor"/></svg></span><div class="song-copy"><span class="song-label">NOW PLAYING</span><strong class="song-title" aria-live="polite"></strong><span class="song-skip">Press <kbd>Select</kbd> / <kbd>Backspace</kbd> to skip</span><span class="song-note" hidden></span></div>';
     document.body.append(this.song);
@@ -114,10 +121,11 @@ export class GameShell {
     this.render();
   }
   get active(){return this.phase==='playing';}
+  get simulating(){return this.active&&this.sessionFlow.snapshot().allowSimulation;}
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
   setScreen(phase){
-    if(this.phase==='options'&&phase!=='options'&&this.mapUploadBusy){
+    if(this.phase==='creator'&&phase!=='creator'&&this.mapUploadBusy){
       this.mapUploadGeneration++;this.mapUploadBusy=false;this.mapUploadStatus='';this.actions.cancelLoadout?.();
     }
     if(this.phase==='highlights'&&phase!=='highlights')this.actions.stopHighlights?.();
@@ -131,7 +139,7 @@ export class GameShell {
     }
     this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();
   }
-  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled);}
+  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled&&!b.closest?.('[hidden]'));}
   focusSelection(reveal=true){
     const buttons=this.menuButtons();
     if(!buttons.length){this.selection=0;return;}
@@ -141,7 +149,7 @@ export class GameShell {
     target?.focus({preventScroll:true});
     // Controller focus may be below the fold in the scrollable loadout.
     // Reveal it without scrolling the entire window or stealing pointer focus.
-    if(reveal&&['select','pause','options','graphics','results','flipSchool','tutorial'].includes(this.phase))
+    if(reveal&&['select','pause','options','settings','creator','graphics','results','flipSchool','tutorial'].includes(this.phase))
       target?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'auto'});
   }
   // Keyboard and gamepad share the same logical layout-aware focus route.
@@ -179,11 +187,13 @@ export class GameShell {
     </div>`;
   }
   render(){
+    this.settingsPanel?.dispose();this.settingsPanel=null;
     this.flipPlayer?.dispose();this.flipPlayer=null;
     // Keep the music panel alive while replacing menu contents; selection
     // screens give it a layout slot so it never covers their heading/cards.
     if(this.song&&this.song.parentElement!==document.body)document.body.append(this.song);
     document.body.dataset.screen=this.phase;this.root.hidden=this.active;
+    this.updateRoundCue();
     this.actions.screenChanged?.(this.phase);
     this.timer.hidden=!this.active;this.updateTimer();
     this.song.classList.remove('song-compact');this.songToastRemaining=4;
@@ -205,7 +215,7 @@ export class GameShell {
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='skate-paradise'?'SUNSET / SKATEPARK':spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
-        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><div class="music-menu-slot"></div></header>
+        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><p class="session-rule">90 seconds. Your last attempt gets up to 6 extra seconds to land. Bail or time limit loses pending points.</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
         <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}"><span class="rider-stage-number" aria-hidden="true">${String(this.heroIndex+1).padStart(2,'0')}</span>
@@ -225,8 +235,7 @@ export class GameShell {
         this.button('FLIP SCHOOL · VIDEO LESSONS','flipSchool')+this.button('TUTORIAL','tutorial')+this.button('OPTIONS & AUDIO','options')+this.button('MAIN MENU','title');
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
-        +this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
-        +`<p class="test-map-note" role="status" aria-live="polite">${safe(this.mapUploadStatus||'Local GLB · random rider & deck · unlimited practice')}</p>`
+        +this.button('PLAYER SETTINGS & CONTROLS','settings')
         +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div>'
         +this.button('STICK DEAD ZONE · '+Math.round((this.actions.getDeadZone?.() ?? .16)*100)+'%','deadZone')+'</div>'
@@ -234,7 +243,12 @@ export class GameShell {
         +this.volumeControl('effects','EFFECTS',this.effectsVolume)
         +'<div class="menu-setting-pair">'+this.button('SKATE SOUNDS · '+(this.sound?'ON':'OFF'),'sound')
         +this.button('DECK · '+BOARD_CHOICES[this.finishIndex].label,'deck')+'</div></div>'
-        +this.button('BACK','back');
+        +this.button('EXTRAS / CREATOR TOOLS','creator')+this.button('BACK','back');
+    } else if(this.phase==='settings') {
+      title='PLAYER SETTINGS';body=renderPlayerSettings(this.playerPreferences,this.actions.input,this.flipInputMode)+this.button('BACK TO OPTIONS','back');
+    } else if(this.phase==='creator') {
+      title='CREATOR TOOLS';body=this.button(this.mapUploadBusy?'LOADING TEST MAP…':'UPLOAD TEST MAP · GLB','uploadTestMap',!this.ready||this.mapUploadBusy)
+        +`<p class="test-map-note" role="status">${safe(this.mapUploadStatus||'Local GLB · unlimited practice')}</p>`+this.button('BACK TO OPTIONS','back');
     } else if(this.phase==='graphics') {
       const key=GRAPHICS_PRESET_ORDER[this.graphicsIndex];
       const preset=GRAPHICS_PRESETS[key];
@@ -249,7 +263,7 @@ export class GameShell {
         +(effective?`<details class="graphics-advanced"><summary>Rendering details</summary><p>${effective.renderWidth} × ${effective.renderHeight} internal resolution · ${effective.anisotropy}× filtering · ${effective.msaaSamples}× edge samples · 1024² local shadows${effective.postProcessingAvailable?'':' · post effects unavailable'}</p></details>`:'')
         +this.button('← BACK TO OPTIONS','back');
     } else if(this.phase==='timeup') {
-      body=`<div class="timeup-burst" role="status" aria-live="assertive"><span class="session-eyebrow">SESSION COMPLETE</span><h2>${graffitiLettering('TIME’S UP','fire')}</h2><p>YOUR RUN. YOUR LINE. YOUR SCORE.</p><div class="timeup-rule" aria-hidden="true"></div></div>`;
+      body=`<div class="timeup-burst" role="status" aria-live="assertive"><span class="session-eyebrow">SESSION COMPLETE</span><h2>${graffitiLettering('TIME’S UP','fire')}</h2><p>YOUR RUN. YOUR LINE. YOUR SCORE.</p><div class="timeup-rule" aria-hidden="true"></div>${this.button('VIEW RESULTS · ENTER / A','skipTimeup')}</div>`;
     } else if(this.phase==='results') {
       body=this.renderResults();
     } else if(this.phase==='highlights') {
@@ -265,8 +279,15 @@ export class GameShell {
     this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
     else this.content.querySelector('.menu-music-slot')?.append(this.song);
-    for(const button of this.menuButtons()) {
-      button.onclick=()=>this.choose(button.dataset.action,Number(button.dataset.index||0));
+    if(this.phase==='settings')this.settingsPanel=new PlayerSettingsPanel(this.content,{input:this.actions.input,preferences:this.playerPreferences,onChange:partial=>{
+      this.playerPreferences=applyPlayerPreferences({...this.playerPreferences,...partial});
+      if(partial.musicVolume!=null)this.music.setVolume(partial.musicVolume);
+      if(partial.effectsVolume!=null)this.effectsVolume=partial.effectsVolume;
+      if(partial.backgroundAudio!=null)this.music.setBackgroundAudio(partial.backgroundAudio);
+      this.actions.preferences?.(partial,this.playerPreferences);
+    }});
+    for(const button of this.content.querySelectorAll('button[data-menu]')) {
+      button.onclick=()=>{if(!this.settingsPanel?.handleAction(button.dataset.action,button))this.choose(button.dataset.action,Number(button.dataset.index||0));};
       // Pointer hover must NOT call focus(): it steals controller/keyboard focus,
        // especially when a vertically scrolling loadout passes under the cursor.
        button.onfocus=()=>{
@@ -277,7 +298,7 @@ export class GameShell {
        };
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
-    else if(['pause','options','graphics'].includes(this.phase))this.loadPortraits();
+    else if(['pause','options','graphics','settings','creator'].includes(this.phase))this.loadPortraits();
     if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode);
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
@@ -309,7 +330,7 @@ export class GameShell {
     const topRows=topTricks.length?topTricks.map((item,i)=>`<li><span>${String(i+1).padStart(2,'0')}</span><strong>${safe(item.label)}</strong><b>${points(item.points)} <small>PTS</small></b></li>`).join(''):'<li class="run-empty"><p>No scored tricks landed.</p></li>';
     return `<article class="run-results" aria-label="Session results">
       <header class="run-results-header"><div><span class="session-eyebrow">CHIMP HAWK / SESSION COMPLETE</span><h2>${graffitiLettering('YOUR RUN','gold')}</h2><p>${safe(run.mapName||LOCATIONS[this.locationIndex]?.name||'')} <span>·</span> ${Math.round(number(run.durationSeconds??90))} SEC SESSION</p></div><div class="run-loadout"><strong>${safe(run.riderName||this.heroes[this.heroIndex]?.name||'')}</strong><span>${safe(run.deckName||BOARD_CHOICES[this.boardIndex]?.label||'')}</span>${this.button('▶ Watch the Highlights','watchHighlights',!canReplay)}</div></header>
-      <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderScoreBreakdown(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} tricks linked</span>`:''}</div><h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
+      <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderPersonalBest(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} tricks linked</span>`:''}</div>${this.renderScoreBreakdown(run)}<h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
       <div class="run-detail-column"><section class="run-achievements"><h3>SESSION ACHIEVEMENTS</h3><ol>${achievementRows}</ol></section><section class="run-top-tricks"><h3>HIGHEST SCORING TRICKS</h3><ol>${topRows}</ol></section><section class="run-highlights"><span class="session-eyebrow">THE HIGHLIGHT REEL</span><p>${canReplay?`${highlightCount} best scored moment${highlightCount===1?'':'s'} · cinematic cameras & slow motion`:'Land a scored trick to capture your highlights.'}</p><small>${canReplay?'2.5 seconds before and after each moment, where the session allows.':'Highlights are recorded during this session only.'}</small></section></div></div>
       <footer class="run-results-actions">${this.button('RUN IT AGAIN · 90 SEC','restart')}${this.button('CHANGE RIDER / SPOT','start')}${this.button('PRACTICE','practice')}${this.button('MAIN MENU','title')}</footer></article>`;
   }
@@ -321,22 +342,30 @@ export class GameShell {
     const row=(label,detail,value,kind='',valueAttribute='')=>`<div class="run-score-row ${kind}"><dt><strong>${label}</strong>${detail?`<small>${detail}</small>`:''}</dt><dd${valueAttribute?` ${valueAttribute}`:''}>${value}</dd></div>`;
     const rows=[
       row('POINTS BANKED','Score earned during the session',points(score.bankedScore),'','data-banked-score'),
-      row('LANDED COMBOS',`${points(score.landedCombos)} × ${points(RUN_SCORE_RULES.pointsPerLandedCombo)} points`,`+${points(score.comboBonus)}`,'is-bonus'),
-      row('TRICKS LANDED',`${points(score.tricksLanded)} × ${points(RUN_SCORE_RULES.pointsPerLandedTrick)} points`,`+${points(score.trickBonus)}`,'is-bonus'),
-      row('BONUS SUBTOTAL','Banked points + landed bonuses',points(score.subtotal),'is-subtotal'),
+
+
+
       row('UNIQUE TRICKS',`${points(score.uniqueTrickCount)} different tricks · +${points(score.varietyBonusPercent)}%${varietyCap?' · cap reached':''}`,`×${multiplier}`,'is-bonus','class="score-multiplier"'),
       row('WEIGHTED SCORE',`${points(score.subtotal)} × ${multiplier} · rounded to whole points`,points(score.weightedScore),'is-subtotal'),
       row('BAILS',`${points(score.bails)} × ${points(RUN_SCORE_RULES.pointsPerBail)} point penalty`,`${number(score.bailPenalty)>0?'−':''}${points(score.bailPenalty)}`,'is-penalty'),
       row('FINAL SCORE','Weighted score − bail penalties',points(score.finalScore),'is-final')
     ].join('');
-    return `<section class="run-score-breakdown" aria-label="Final score calculation"><h3>HOW YOUR RUN ADDS UP</h3><dl>${rows}</dl><p class="run-score-rule">Trick variety boosts the subtotal up to ×${((100+RUN_SCORE_RULES.maxVarietyBonusPercent)/100).toFixed(2)}. Bails subtract points after the multiplier. Final score never falls below zero.</p></section>`;
+    return `<details class="run-score-breakdown" aria-label="Final score calculation"><summary>HOW YOUR RUN ADDS UP</summary><dl>${rows}</dl><p class="run-score-rule">Trick variety boosts the subtotal up to ×${((100+RUN_SCORE_RULES.maxVarietyBonusPercent)/100).toFixed(2)}. Bails subtract points after the multiplier. Final score never falls below zero. Record rules: ${safe(RUN_SCORE_RULES.version)}.</p></details>`;
+  }
+  renderPersonalBest(run){
+    const pb=run.parkRecord;if(!pb)return '';
+    const change=pb.firstRun?'First record for these scoring rules':`${pb.delta>=0?'+':''}${points(Math.abs(pb.delta))} ${pb.delta<0?'below':'over'} previous best`;
+    return `<div class="run-personal-best"><strong>${pb.isNewBest?'NEW PARK BEST':`PARK BEST · ${points(pb.score)}`}</strong><p>${change}</p></div>`;
   }
   finishRun(){
+    if(['timeup','results','highlights'].includes(this.phase))return;
     this.finalScore=number(this.actions.score());
     this.actions.pause(true);
     this.runSummary=this.actions.finishRun?.()||{totalScore:this.finalScore,durationSeconds:90};
     this.finalScore=number(this.runSummary.finalScore??this.runSummary.totalScore??this.finalScore);
-    this.timeupEndsAt=performance.now()+3000;
+    this.timeupStartedAt=performance.now();
+    this.timeupEndsAt=this.timeupStartedAt+(!this.timeupSeen||this.runSummary.parkRecord?.isNewBest?3000:1400);
+    this.timeupSeen=true;this.actions.cue?.('roundOver');this.music.duck(900,.5);
     this.setScreen('timeup');
   }
   showResults(){this.setScreen('results');}
@@ -384,21 +413,21 @@ export class GameShell {
   }
   setLocation(id,testMapName=null){const index=LOCATIONS.findIndex(spot=>spot.id===id);if(index>=0)this.locationIndex=index;this.testMapName=testMapName;this.root.dataset.location=id;}
   async uploadTestMap(file){
-    if(this.phase!=='options'||!this.ready||this.mapUploadBusy)return;
+    if(this.phase!=='creator'||!this.ready||this.mapUploadBusy)return;
     const generation=++this.mapUploadGeneration;
     const hero=DEFAULT_CHARACTERS[Math.floor(Math.random()*DEFAULT_CHARACTERS.length)];
     const board=BOARD_CHOICES[Math.floor(Math.random()*BOARD_CHOICES.length)];
     this.mapUploadBusy=true;this.mapUploadStatus='READING LOCAL MAP…';this.render();
     try{
       const result=await this.actions.testMap({file,hero,board,onProgress:message=>{
-        if(generation===this.mapUploadGeneration&&this.phase==='options'){this.mapUploadStatus=message;this.render();}
+        if(generation===this.mapUploadGeneration&&this.phase==='creator'){this.mapUploadStatus=message;this.render();}
       }});
-      if(!result||generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      if(!result||generation!==this.mapUploadGeneration||this.phase!=='creator')return;
       this.heroIndex=this.heroes.findIndex(h=>h.id===hero.id);this.boardIndex=board.finishIndex;this.finishIndex=board.finishIndex;
       this.mapUploadBusy=false;this.mapUploadStatus='';this.pendingMode=null;this.tutorialSeen=true;
       this.start(true);
     }catch(error){
-      if(generation!==this.mapUploadGeneration||this.phase!=='options')return;
+      if(generation!==this.mapUploadGeneration||this.phase!=='creator')return;
       this.mapUploadBusy=false;this.mapUploadStatus=error?.message||'Could not load this map.';this.render();
     }
   }
@@ -428,7 +457,9 @@ export class GameShell {
   }
   start(practice){
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
-    this.music.unlock();this.setScreen('playing');this.actions.start(practice);this.actions.camera(CAMERAS[this.cameraIndex]);
+    this.sessionFlow.begin({practice});this.goRemaining=0;
+    this.music.unlock();this.setScreen('playing');this.actions.start(practice);
+    if(!practice)this.actions.cue?.('ready');this.actions.camera(CAMERAS[this.cameraIndex]);
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
@@ -442,9 +473,10 @@ export class GameShell {
     if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup')return;else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(this.phase==='graphics')this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup'){this.skipTimeup();return;}else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(['graphics','settings','creator'].includes(this.phase))this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
-    if(this.phase==='timeup')return;
+    if(this.phase==='timeup'){this.skipTimeup();return;}
+    this.actions.cue?.(action==='back'?'back':'confirm');
     this.music.unlock();
     if(this.selectBusy&&['hero','board','location','upload','confirmLoadout'].includes(action))return;
     switch(action){
@@ -469,6 +501,9 @@ export class GameShell {
       case 'flipPlay':this.flipPlayer?.toggle();break;
       case 'flipReplay':this.flipPlayer?.replay();break;
       case 'flipSpeed':this.flipPlayer?.toggleSpeed();break;
+      case 'settings':this.setScreen('settings');break;
+      case 'creator':this.setScreen('creator');break;
+      case 'flipTry':this.start(true);this.actions.tryTrick?.(FLIP_LESSONS[this.flipLessonIndex]);break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
       case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
@@ -498,9 +533,20 @@ export class GameShell {
     else { this.effectsVolume=saveAudioVolume('effects',value);this.actions.effectsVolume?.(value); }
     this.render();
   }
+  skipTimeup(){if(this.phase==='timeup'&&performance.now()-this.timeupStartedAt>=450)this.showResults();}
+  skipReady(){if(!this.active||!this.sessionFlow.skipReady())return false;this.inputGrace=.25;this.actions.clearInput?.();return true;}
+  updateRoundCue(){
+    if(!this.roundCue)return;const phase=this.sessionFlow.phase;
+    this.roundCue.hidden=!this.active||!(phase==='ready'||phase==='overtime'||this.goRemaining>0);
+    this.roundCue.dataset.phase=phase;
+    const label=phase==='ready'?'READY · ENTER / A TO GO':phase==='overtime'?`FINISH THIS COMBO · ${Math.ceil(this.sessionFlow.overtimeRemaining)}s`:'GO';
+    if(this.roundCue.textContent!==label)this.roundCue.textContent=label;
+  }
   key(event){
+    if(this.settingsPanel?.capturing)return;
+    if(this.active&&this.sessionFlow?.phase==='ready'&&['Enter','Space'].includes(event.code)){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)this.skipReady();return;}
     if(/INPUT|TEXTAREA|SELECT/.test(event.target?.tagName))return;
-    if(this.phase==='timeup'){event.preventDefault();event.stopImmediatePropagation();return;}
+    if(this.phase==='timeup'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat&&['Enter','Space','Escape'].includes(event.code))this.skipTimeup();return;}
     if(this.phase==='highlights'&&event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();return;}
     if(event.code==='Backspace'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)this.music.next();return;}
     if(event.code==='KeyH'){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat){if(this.open)this.closeTutorial();else if(this.phase==='flipSchool')this.closeFlipSchool();else this.openTutorial();}return;}
@@ -565,6 +611,12 @@ export class GameShell {
     if(!focused){this.padFocused=false;this.previousPad=keys;this.navRepeat=.22;return;}
     if(!this.padFocused||padChanged){this.previousPad=keys;this.padFocused=true;}
     const edge=k=>keys[k]&&!this.previousPad[k];
+    const capturing=this.settingsPanel?.capturing;this.settingsPanel?.update();
+    if(capturing){this.previousPad=keys;return;}
+    if(this.phase==='timeup'&&(edge('a')||edge('start')||edge('back'))){
+      this.skipTimeup();this.previousPad=keys;return;
+    }
+    if(this.active&&this.sessionFlow.phase==='ready'&&(edge('a')||edge('start')))this.skipReady();
     if(Object.keys(keys).some(edge))this.music.unlock();
     if(edge('select'))this.music.next();
     if(!this.active&&this.phase!=='timeup'){
@@ -591,12 +643,18 @@ export class GameShell {
       }
     }
     this.previousPad=keys;
-    if(this.active&&!this.practice&&document.hasFocus()){
+    if(this.active&&document.hasFocus()){
       const before=this.remaining;
-      this.remaining=Math.max(0,this.remaining-dt);this.updateTimer();
+      const flow=this.sessionFlow.update(dt,this.actions.attemptState?.()||{});
+      this.remaining=flow.remaining;this.goRemaining=Math.max(0,this.goRemaining-dt);
+      for(const event of flow.events){
+        if(event==='go'){this.goRemaining=.65;this.inputGrace=.25;this.actions.clearInput?.();this.actions.cue?.('go');}
+        if(event==='overtime'){this.actions.overtime?.();this.music.duck(500,.65);}
+        if(event==='finish')this.finishRun();
+      }
+      this.updateRoundCue();this.updateTimer();
       const threshold=countdownCrossing(before,this.remaining,this.practice);
-      if(threshold)this.actions.countdownWarning?.(threshold);
-      if(!this.remaining)this.finishRun();
+      if(threshold){this.actions.countdownWarning?.(threshold);this.music.duck(500,.65);}
     }
   }
 }
