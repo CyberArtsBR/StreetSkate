@@ -50,5 +50,8 @@ test('Cinematic boosts authored emissive materials without compounding on repeat
   assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.35);
   pipeline.settings = resolveGraphicsSettings('high-refresh');
   pipeline.updateMaterials();
+  assert.equal(material.emissiveIntensity, 2 * 1.2);
+  pipeline.settings = resolveGraphicsSettings('high-refresh',{}, {legacyGlowDefaults:true});
+  pipeline.updateMaterials();
   assert.equal(material.emissiveIntensity, 2 * .8);
 });

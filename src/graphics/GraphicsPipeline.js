@@ -417,10 +417,11 @@ export class GraphicsPipeline {
     };
   }
 
-  setGlowTuning(value) {
+  setGlowTuning(value, {legacyGlowDefaults = this.settings?.legacyGlowDefaults} = {}) {
     if (!this.settings) return;
     const previous = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
     this.settings.glowTuning = normalizeGlowOverrides(value);
+    this.settings.legacyGlowDefaults = legacyGlowDefaults === true;
     this.configureBloom();
     const next = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
     if (previous.emissive !== next.emissive) this.updateMaterials();

@@ -30,7 +30,7 @@ import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { SkateEffects } from './graphics/SkateEffects.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
-import { normalizeGlowOverrides, readGlowPresets, saveGlowPresets } from './graphics/GlowTuning.js';
+import { normalizeGlowOverrides, readGlowPresets, saveGlowPresets, initializeGlowDefaults, useCurrentGlowDefaults } from './graphics/GlowTuning.js';
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
@@ -126,6 +126,7 @@ let effectsWereActive = false;
 const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
 let graphicsPreset = loadGraphicsPreset(graphicsStorage);
 let glowPresets = readGlowPresets(graphicsStorage);
+let legacyGlowDefaults = initializeGlowDefaults(graphicsStorage);
 
 const views = {
   overview: { position: [66, 62, 80], target: [-1, 0, 0], caption: 'The whole playground', index: '01' },
@@ -317,7 +318,7 @@ function applyGraphicsPreset(name) {
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
   }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
-    glowTuning:glowPresets[graphicsPreset] });
+    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults });
   skateEffects.setQuality(graphicsPipeline.settings);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
@@ -341,7 +342,11 @@ function resetGlowValues() {
   const next = { ...glowPresets };
   delete next[graphicsPreset];
   glowPresets = saveGlowPresets(next, graphicsStorage);
-  graphicsPipeline.setGlowTuning({});
+  if (graphicsPreset === 'high-refresh') {
+    legacyGlowDefaults = false;
+    useCurrentGlowDefaults(graphicsStorage);
+  }
+  graphicsPipeline.setGlowTuning({}, {legacyGlowDefaults});
   sceneNeedsRender = true;
   return graphicsPipeline.getStatus();
 }
