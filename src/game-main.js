@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { CAMERA_MODES, CAMERA_LABELS, CAMERA_SHORTCUTS } from './game/CameraModes.js';
 import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
@@ -408,18 +409,19 @@ function setExploreView(name, instant = false) {
 function setCameraMode(nextMode) {
   if (!followCamera) return;
   followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
-  gameShell.cameraIndex = ['follow','classic','fixed'].indexOf(followCamera.mode);
+  gameShell.cameraIndex = CAMERA_MODES.indexOf(followCamera.mode);
   const button = document.querySelector('#camera-mode');
   button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
-  button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
-  document.querySelector('#camera-label').textContent = followCamera.mode.toUpperCase();
-  // New preference version makes high follow the default even for earlier users.
-  try { localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode); } catch { /* Storage is optional. */ }
+  button.setAttribute('aria-label', `Camera: ${CAMERA_LABELS[followCamera.mode]}. Cycle camera view`);
+  document.querySelector('#camera-label').textContent = CAMERA_LABELS[followCamera.mode].toUpperCase();
+  try {
+    localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode);
+    localStorage.setItem('streetskate.camera', followCamera.mode);
+  } catch { /* Storage is optional. */ }
 }
 
 function toggleCameraMode() {
-  const modes = ['follow', 'classic', 'fixed'];
-  setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
+  setCameraMode(CAMERA_MODES[(CAMERA_MODES.indexOf(followCamera?.mode) + 1) % CAMERA_MODES.length]);
 }
 
 function goToSpot(id) {
@@ -729,7 +731,7 @@ async function loadGame() {
     skater.reset(skater.spawn, skater.spawnHeading);
     applyLighting();
     refreshLocationUi();
-    setCameraMode('follow');
+    setCameraMode(CAMERA_MODES[gameShell.cameraIndex]);
     renderer.domElement.tabIndex = 0;
     const finishes = document.querySelector('#board-finishes');
     const finishNames = ['Sunset', 'Ocean', 'Aqua', 'Lime', 'Gold', 'Nebula', 'Graphite', 'Pearl'];
@@ -895,7 +897,7 @@ renderer.setAnimationLoop(() => {
     };
     if (state.pausePressed && gameShell.active && wasPlaying) setPaused(true);
     if (state.cameraModePressed && gameShell.active) toggleCameraMode();
-    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
+    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(CAMERA_SHORTCUTS[state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.simulating) {
       if (gameShell.practice && gameShell.inputGrace <= 0) {
         if (state.practiceMark) {
@@ -930,7 +932,7 @@ renderer.setAnimationLoop(() => {
       }
       if (skater.respawnSerial !== respawn) followCamera.snap(skater);
       skateEffects.update(dt,skater);
-      followCamera.update(skater, dt, state);
+      followCamera.update(skater, dt, state, skater._smoothedVisualPosition);
       if (state.reset) followCamera.snap(skater);
     }
     updateHud();

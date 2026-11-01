@@ -20,14 +20,13 @@ import { STICK_DEAD_ZONES } from '../input/SkateInput.js';
 import { SessionFlow } from './SessionFlow.js';
 import { renderPlayerSettings, PlayerSettingsPanel } from './PlayerSettingsPanel.js';
 import { readPlayerPreferences, applyPlayerPreferences } from './PlayerPreferences.js';
+import { CAMERA_MODES, CAMERA_LABELS } from './CameraModes.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
 const persist = (key, value) => { try { localStorage.setItem(key, String(value)); } catch {} };
-const CAMERAS=['follow','classic','fixed'];
-const CAMERA_LABELS=['Follow','Classic','Fixed'];
 const number = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value)) : 0;
 const points = value => Math.round(number(value)).toLocaleString();
 const seconds = value => `${number(value).toFixed(1)} s`;
@@ -40,10 +39,10 @@ export class GameShell {
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
     this.flipLessonIndex=0;this.flipInputMode='xbox';this.flipPlayer=null;
-    this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
+    this.cameraIndex=Math.max(0,CAMERA_MODES.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
-    this.smoothEdges=stored('streetskate.smoothEdges','off')==='on';
+    this.smoothEdges=stored('streetskate.smoothEdges','on')==='on';
     this.songToastRemaining=4;
     this.sound=stored('streetskate.sound','on')!=='off';
     const savedFinish=Number(stored('streetskate.boardFinish',DEFAULT_BOARD_FINISH));
@@ -237,7 +236,7 @@ export class GameShell {
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('PLAYER SETTINGS & CONTROLS','settings')
-        +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
+        +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[CAMERA_MODES[this.cameraIndex]],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div>'
         +this.button('STICK DEAD ZONE · '+Math.round((this.actions.getDeadZone?.() ?? .16)*100)+'%','deadZone')+'</div>'
         +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
@@ -501,7 +500,7 @@ export class GameShell {
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
     this.sessionFlow.begin({practice});this.goRemaining=0;
     this.music.unlock();this.setScreen('playing');this.actions.start(practice);
-    if(!practice)this.actions.cue?.('ready');this.actions.camera(CAMERAS[this.cameraIndex]);
+    if(!practice)this.actions.cue?.('ready');this.actions.camera(CAMERA_MODES[this.cameraIndex]);
   }
   pause(){if(this.active){this.setScreen('pause');this.actions.pause(true);}}
   resume(){this.setScreen('playing');this.inputGrace=.18;this.actions.pause(false);}
@@ -548,7 +547,7 @@ export class GameShell {
       case 'flipTry':this.start(true);this.actions.tryTrick?.(FLIP_LESSONS[this.flipLessonIndex]);break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
-      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERA_MODES.length;persist('streetskate.camera',CAMERA_MODES[this.cameraIndex]);this.actions.camera(CAMERA_MODES[this.cameraIndex]);this.render();break;
       case 'deadZone':{const current=this.actions.getDeadZone?.() ?? .16;const next=STICK_DEAD_ZONES[(STICK_DEAD_ZONES.indexOf(current)+1)%STICK_DEAD_ZONES.length];this.actions.setDeadZone?.(next);persist('streetskate.stickDeadZone',next);this.render();break;}
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;

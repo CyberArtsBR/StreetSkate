@@ -306,7 +306,10 @@ export class GraphicsPipeline {
         object.material = this.blackoutMaterial;
       }
       this.bloomComposer.render();
-      this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
+      // UnrealBloomPass adds its glow over the low-resolution source buffer.
+      // Only composite its bloom texture: adding that source buffer a second
+      // time creates a soft duplicate over bright details on moving objects.
+      this.bloomComposite.uniforms.bloomTexture.value = this.bloom.renderTargetsHorizontal[0].texture;
       return true;
     } finally {
       for (let i = 0; i < replaced.length; i += 2) replaced[i].material = replaced[i + 1];

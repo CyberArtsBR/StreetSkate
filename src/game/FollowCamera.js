@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolveCameraClearance } from './CameraClearance.js';
+import { CAMERA_MODES } from './CameraModes.js';
 import {
   captureCameraState,
   resolveCameraTravelDirection,
@@ -181,7 +182,7 @@ export class FollowCamera {
   }
 
   setMode(mode, player = null) {
-    this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
+    this.mode = CAMERA_MODES.includes(mode) ? mode : 'follow';
     this.camera.fov = this.preferences.cameraFov;
     this.camera.updateProjectionMatrix();
     if (player) this.snap(player);
@@ -215,16 +216,17 @@ export class FollowCamera {
     this.update(player, 1, {});
   }
 
-  update(player, dt, input = {}) {
+  update(player, dt, input = {}, presentationPosition = null) {
     dt = THREE.MathUtils.clamp(Number(dt) || 0, 0, 0.1);
     const reducedMotion=this.motionPreference?.matches===true;
     const firstFrame = !this.initialized;
     const state = captureCameraState(player, {
       previousDirection: this.direction,
       initialized: this.initialized,
+      presentationPosition,
     });
     const classic = this.mode !== 'fixed';
-    const highFollow = this.mode === 'follow';
+    const highFollow = this.mode === 'follow' || this.mode === 'follow-close' || this.mode === 'follow-low';
     const returning = state.transitionReturning;
     this.landingSettle = Math.max(0, this.landingSettle - dt);
     if (!state.grounded && !state.grindActive && !state.bailing) this.airborneTime += dt;
@@ -346,9 +348,20 @@ export class FollowCamera {
       ? baseLead + (returning ? 0 : fastLead * (highFollow ? 1 : 0.45)) : 0;
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
+    let frameDistance = this.distance * this.preferences.cameraDistance;
+    let frameHeight = this.height + (classic ? this.lookTilt * 3 : 0);
+    if (this.mode === 'follow-close' || this.mode === 'follow-low') {
+      // Scale the whole eye-to-target vector to keep the Follow viewing angle;
+      // the low variant uses the same closer distance with a lower eye.
+      const scale = 0.72;
+      frameDistance = Math.max(2.6, (frameDistance + this.lookAhead) * scale - this.lookAhead);
+      const rise = frameHeight + THPS_CAMERA.anchorHeight - THPS_CAMERA.targetHeight;
+      frameHeight = rise * (this.mode === 'follow-low' ? 0.38 : scale)
+        - THPS_CAMERA.anchorHeight + THPS_CAMERA.targetHeight;
+    }
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
-      { ...THPS_CAMERA, distance: this.distance * this.preferences.cameraDistance,
-        height: this.height + (classic ? this.lookTilt * 3 : 0),
+      { ...THPS_CAMERA, distance: frameDistance,
+        height: frameHeight,
         lookAhead: this.lookAhead });
     this.position.copy(frame.desired);
     if (firstFrame || !this.aimTarget) this.aimTarget = frame.target.clone();
@@ -380,7 +393,8 @@ export class FollowCamera {
 
     // The tripod is intentionally smoothed, but all clearance rays originate
     // at the real rider, so follow lag never conceals a camera/character overlap.
-    const riderAnchor = state.position.clone().addScaledVector(UP, THPS_CAMERA.anchorHeight);
+    const riderAnchor = (player?.position?.clone?.() || state.position.clone())
+      .addScaledVector(UP, THPS_CAMERA.anchorHeight);
     const minArm = state.wallRideActive ? 3.3 : 2.35;
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     this.clearanceCache.minimumDistance = minArm;
