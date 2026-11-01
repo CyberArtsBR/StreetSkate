@@ -36,10 +36,10 @@ export function createTrickGuide({ button, onOpen, onClose }) {
     ['Direction', 'One press + hold', 'Two presses + hold'],
     Object.entries(GRAB_TRICKS).filter(([dir]) => dir !== 'none').map(([dir, trick]) =>
       [DIRECTIONS[dir], trick.name, DOUBLE_GRAB_TRICKS[trick.name].name]));
-  addTable('Grinds', 'Double-tap within 0.38 seconds while airborne near a rail, then hold. You can also change tricks while grinding. Keep your balance with left/right.',
+  addTable('Grinds', 'Double-tap within 0.38 seconds while airborne near a rail, then hold. You can also change tricks while grinding. Press left when the balance marker moves right, and right when it moves left.',
     ['Direction', 'One press + hold', 'Two presses + hold'],
     Object.entries(GRIND_TRICKS).map(([dir, trick]) => [DIRECTIONS[dir], trick.name, DOUBLE_GRIND_TRICKS[trick.name].name]));
-  addTable('Manuals & flatland', 'W then S: Manual. S then W: Nose Manual. During a manual, press these button pairs quickly; use up/down to balance.',
+  addTable('Manuals & flatland', 'W then S: Manual. S then W: Nose Manual. If the balance marker moves up, press S / stick down; if it moves down, press W / stick up.',
     ['Button sequence', 'Trick'], Object.entries(FLATLAND_TRICKS).map(([sequence, trick]) => [sequence.replaceAll('+', ' → '), trick.name]));
   document.body.append(dialog);
   const close = () => dialog.close();

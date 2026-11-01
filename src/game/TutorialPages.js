@@ -28,10 +28,10 @@ export function tutorialPages() {
       '<p>Double-tap within 0.38 seconds; hold the second press. Release to let go. Neutral = Indy.</p>'},
     {title:'Grinds & balance',subtitle:'Approach a rail from the air. Hold direction + ↑ / Xbox Y.',html:table(['Direction: keyboard / stick','Press + hold','Double-tap + hold'],
       Object.entries(GRIND_TRICKS).map(([d,t])=>[DIRECTIONS[d],t.name,DOUBLE_GRIND_TRICKS[t.name].name]))+
-      '<p>Boardslide: Shift + ↑ / LT + Y. Double-tap within 0.38 seconds for variants. Keep correcting left and right to center the balance marker. Reaching either end causes a fall.</p>'},
+      '<p>Boardslide: Shift + ↑ / LT + Y. Double-tap within 0.38 seconds for variants. Balance against the marker: if it leans left, press right; if it leans right, press left. Reaching either end causes a fall.</p>'},
     {title:'Manuals & flatland',subtitle:'Manual: W then S / stick Up then Down. Nose Manual: S then W / Down then Up.',html:table(['Trick','Keyboard sequence','Xbox sequence'],
       Object.entries(FLATLAND_TRICKS).map(([sequence,t])=>[t.name,sequence.split('+').map(s=>({flip:'←',grab:'→',grind:'↑'})[s]).join(' then '),sequence.split('+').map(s=>({flip:'X',grab:'B',grind:'Y'})[s]).join(' then ')]))+
-      '<p>Start a manual first, then enter the button pair quickly. Balance with W/S or stick up/down. Manuals connect landed tricks into a longer combo.</p>'},
+      '<p>Start a manual first, then enter the button pair quickly. If the vertical balance marker moves up, press S / stick down; if it moves down, press W / stick up. Manuals connect landed tricks into a longer combo.</p>'},
     {title:'Walls, cameras & your run',subtitle:'Land clean. Keep your combo going.',html:table(['Action','Keyboard','Xbox'],[
       ['Wall Ride','Hold ↑ against a wall in the air','Hold Y against a wall in the air'],['Wall Plant','Space when hitting a wall in the air','A when hitting a wall in the air'],
       ['Wallie','Space during a Wall Ride','A during a Wall Ride'],['Follow / Classic / Fixed','1 / 2 / 3','Click right stick to cycle'],

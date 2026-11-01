@@ -160,8 +160,10 @@ export function stepBalance(state, {
     // holding one direction continually overshoots and falls off the other side.
     const drift = state.bias * (0.52 + ramp * 0.24) + state.value * 1.15;
     const wave = Math.sin(duration * 4.8 + state.phase) * 0.34;
+    // Input moves the marker in the pressed direction. Push against the
+    // current lean to bring it back toward the middle.
     state.velocity += ((drift + wave) * pressure + state.bias * (state.disturbance || 0) * 0.8
-      - clamp(correction, -1, 1) * 3.4) * dt;
+      + clamp(correction, -1, 1) * 3.4) * dt;
     state.velocity *= Math.exp(-1.35 * dt);
     state.value += state.velocity * dt;
     state.disturbance *= Math.exp(-2.6 * dt);
@@ -175,7 +177,7 @@ export function stepBalance(state, {
   const wave = Math.sin(duration * 2.15 + state.phase) * 0.055 * pressure;
   const disturbance = state.bias * (state.disturbance || 0) * 0.34;
   const correctionAccel = clamp(correction, -1, 1) * 0.72;
-  const acceleration = outward + wave + disturbance - correctionAccel;
+  const acceleration = outward + wave + disturbance + correctionAccel;
   state.velocity += acceleration * dt;
   state.velocity *= Math.exp(-0.58 * dt);
   state.value += state.velocity * dt;
