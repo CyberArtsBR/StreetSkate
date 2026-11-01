@@ -24,7 +24,7 @@ import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
 import { setHudGlyphValue, preloadHudGlyphs } from './game/HudGlyphs.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
-import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
+import { graffitiLettering, graffitiPalette, installGraffitiFallback, prepareGraffitiHudGlyphs } from './game/GraffitiLettering.js';
 import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { SkateEffects } from './graphics/SkateEffects.js';
@@ -211,6 +211,8 @@ const gameShell = new GameShell({
   },
   start: practice => {
     if (!skater) return;
+    // Warm the first ollie and its common digits while the session starts.
+    prepareGraffitiHudGlyphs('OLLIE501','cyan-purple');
     practiceMarker = null;
     overtimeFirstRecord=false;
     practiceDrills.target = null;
@@ -511,21 +513,36 @@ function updateHud() {
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
   const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active':'notice';
   const comboCaption=comboPhase==='bail'?'TRY AGAIN':'';
-  // Do not reset the pop animation on every render frame.
+  // Keep the previous bitmap text until the replacement glyphs are decoded.
+  // A missing image uses the existing readable fallback instead of vanishing.
   if (trickNode.dataset.graffitiText !== trickLabel || trickNode.dataset.comboPhase!==comboPhase) {
-    trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
-      +graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
-    trickNode.dataset.comboPhase=comboPhase;
-    trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
-    trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
-    trickNode.classList.remove('graffiti-pop');
-    if (trickLabel) {
-      void trickNode.offsetWidth;
-      trickNode.classList.add('graffiti-pop');
+    const tone=graffitiToneForTrick(trickLabel);
+    const readiness=trickLabel?prepareGraffitiHudGlyphs(trickLabel,graffitiPalette(tone)):'ready';
+    // A bail cancels the combo, so do not leave its old points on screen
+    // while the red bail lettering is still downloading.
+    if(readiness==='loading'&&comboPhase==='bail'&&trickNode.dataset.comboPhase!=='bail'){
+      trickNode.replaceChildren();trickNode.dataset.graffitiText='';trickNode.dataset.comboPhase='bail';
     }
-    scheduleTrickHudFit();
-    for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
-      if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+    if(readiness!=='loading'){
+      trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
+        +graffitiLettering(trickLabel,graffitiPalette(tone)) : '';
+      if(trickLabel){
+        const lettering=trickNode.querySelector('.graffiti-lettering');
+        lettering.classList.remove('graffiti-loading');
+        lettering.classList.add(readiness==='ready'?'graffiti-ready':'graffiti-failed');
+      }
+      trickNode.dataset.comboPhase=comboPhase;
+      trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
+      trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
+      trickNode.classList.remove('graffiti-pop');
+      if (trickLabel) {
+        void trickNode.offsetWidth;
+        trickNode.classList.add('graffiti-pop');
+      }
+      scheduleTrickHudFit();
+      for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
+        if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+      }
     }
   }
   hud['state-value'].classList.toggle('air', !skater.grounded || Boolean(skater.grind));
