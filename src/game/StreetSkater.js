@@ -26,6 +26,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._presentationUp = new THREE.Vector3(0, 1, 0);
     this._basis = new THREE.Matrix4();
     this._smoothedVisualPosition = null;
+    this._previousPhysicsPosition = null;
+    this._renderPhysicsPosition = new THREE.Vector3();
     this._targetVisualRotation = new THREE.Quaternion();
     this._visualRotationInitialized = false;
     this._wallPoseQ = new THREE.Quaternion();
@@ -182,7 +184,20 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this.board?.resetPresentation();
     this.presentationNormal.copy(this.bodyUp());
     this._smoothedVisualPosition=null;
+    this._previousPhysicsPosition=null;
+    this._renderPhysicsPosition?.copy(this.position);
     this._visualRotationInitialized=false;
+  }
+
+  step(dt, input) {
+    // Save the position at the start of the final physics step in this frame.
+    // Rendering can then interpolate it without altering gameplay state.
+    const previous = this._previousPhysicsPosition ||= new THREE.Vector3();
+    previous.copy(this.position);
+    const respawn = this.respawnSerial;
+    super.step(dt, input);
+    if (this._previousPhysicsPosition && (respawn !== this.respawnSerial ||
+        previous.distanceToSquared(this.position) > 4)) previous.copy(this.position);
   }
 
   updatePresentation(delta, input, before) {
@@ -274,18 +289,23 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     const present = this.updatePresentation(delta, input, before);
 
     this.root.position.copy(this.position);
+    const renderPosition = this._renderPhysicsPosition;
+    if (this._previousPhysicsPosition) {
+      const alpha = clamp(this.accumulator / this.config.step, 0, 1);
+      renderPosition.lerpVectors(this._previousPhysicsPosition, this.position, alpha);
+    } else renderPosition.copy(this.position);
     // Gameplay collision stays authoritative on root. Only the rendered skater
-    // receives a tiny capped low-pass correction to hide high-frequency contact
-    // and fixed-step micro-jitter, especially noticeable from side cameras.
-    if(!this._smoothedVisualPosition)this._smoothedVisualPosition=this.position.clone();
+    // receives interpolation and a tiny capped low-pass correction to hide
+    // contact jitter without affecting physics or input.
+    if(!this._smoothedVisualPosition)this._smoothedVisualPosition=renderPosition.clone();
     else if(delta>0){
-      if(this._smoothedVisualPosition.distanceToSquared(this.position)>4)
-        this._smoothedVisualPosition.copy(this.position);
+      if(this._smoothedVisualPosition.distanceToSquared(renderPosition)>4)
+        this._smoothedVisualPosition.copy(renderPosition);
       else {
-        this._smoothedVisualPosition.lerp(this.position,1-Math.exp(-27*delta));
-        const lag=this._smoothedVisualPosition.clone().sub(this.position);
+        this._smoothedVisualPosition.lerp(renderPosition,1-Math.exp(-27*delta));
+        const lag=this._smoothedVisualPosition.clone().sub(renderPosition);
         if(lag.lengthSq()>0.18*0.18)
-          this._smoothedVisualPosition.copy(this.position).add(lag.setLength(0.18));
+          this._smoothedVisualPosition.copy(renderPosition).add(lag.setLength(0.18));
       }
     }
     this.visual.position.copy(this._smoothedVisualPosition).sub(this.position);

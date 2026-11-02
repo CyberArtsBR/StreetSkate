@@ -58,7 +58,7 @@ export function measureFeelFixture(kind,{speed=10,chargeFrames=29,seconds=3}={})
     if(['flat','low-ledge','stairs'].includes(kind)) {
       input.ollieHeld=i<chargeFrames;input.olliePressed=i===0;input.ollieReleased=i===chargeFrames;
     }
-    if(kind==='rail') {input.grindHeld=true;input.grindPressed=i===0;input.steer=THREE.MathUtils.clamp((p.grindBalance||0)*3+(p.grind?.balanceState?.velocity||0)*.8,-1,1);}
+    if(kind==='rail') {input.grindHeld=true;input.grindPressed=i===0;input.steer=THREE.MathUtils.clamp(-(p.grindBalance||0)*3-(p.grind?.balanceState?.velocity||0)*.8,-1,1);}
     if(kind==='transfer')input.vertExit=!!p.transitionAir?.apexPassed;
     const wasGround=p.grounded;
     p.advance(FEEL_STEP,input);

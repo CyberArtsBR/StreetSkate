@@ -149,7 +149,7 @@ test('19. manual balance drifts', () => {
 
 test('20. correction input saves balance', () => {
   const ignored = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: 0 });
-  const corrected = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: 0.28 });
+  const corrected = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: -0.28 });
   assert.ok(Math.abs(corrected.state.value) < Math.abs(ignored.state.value));
 });
 

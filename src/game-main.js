@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { CAMERA_MODES, CAMERA_LABELS, CAMERA_SHORTCUTS } from './game/CameraModes.js';
 import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
@@ -29,11 +30,12 @@ import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
 import { setHudGlyphValue, preloadHudGlyphs } from './game/HudGlyphs.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
-import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
+import { graffitiLettering, graffitiPalette, installGraffitiFallback, prepareGraffitiHudGlyphs } from './game/GraffitiLettering.js';
 import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
 import { SkateEffects } from './graphics/SkateEffects.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
+import { normalizeGlowOverrides, readGlowPresets, saveGlowPresets, initializeGlowDefaults, useCurrentGlowDefaults } from './graphics/GlowTuning.js';
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
@@ -44,6 +46,7 @@ import './session-results.css';
 import './menu-graphics.css';
 import './flip-school.css';
 import './player-settings.css';
+import './graphics-glow.css';
 import './round-flow.css';
 
 const container = document.querySelector('#viewport');
@@ -127,6 +130,8 @@ graphicsPipeline.setEffectsTarget(skateEffects.root);
 let effectsWereActive = false;
 const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
 let graphicsPreset = loadGraphicsPreset(graphicsStorage);
+let glowPresets = readGlowPresets(graphicsStorage);
+let legacyGlowDefaults = initializeGlowDefaults(graphicsStorage);
 
 const views = {
   overview: { position: [66, 62, 80], target: [-1, 0, 0], caption: 'The whole playground', index: '01' },
@@ -218,6 +223,8 @@ const gameShell = new GameShell({
   },
   start: practice => {
     if (!skater) return;
+    // Warm the first ollie and its common digits while the session starts.
+    prepareGraffitiHudGlyphs('OLLIE501','cyan-purple');
     practiceMarker = null;
     overtimeFirstRecord=false;
     practiceDrills.target = null;
@@ -243,6 +250,8 @@ const gameShell = new GameShell({
   setDeadZone: value => { input.stickDeadZone = value; },
   graphics: name => applyGraphicsPreset(name),
   graphicsStatus: () => graphicsPipeline.getStatus(),
+  graphicsGlow: (key,value) => setGlowValue(key,value),
+  graphicsGlowReset: () => resetGlowValues(),
   screenChanged: phase => {
     sceneNeedsRender=true;
     if (phase === 'results' && runFinished && !highlightRecorder.finished) {
@@ -337,7 +346,8 @@ function applyGraphicsPreset(name) {
     devicePixelRatio: window.devicePixelRatio,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
-  }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges });
+  }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
+    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults });
   skateEffects.setQuality(graphicsPipeline.settings);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
@@ -347,6 +357,27 @@ function applyGraphicsPreset(name) {
     graphicsPipeline.setWorld(currentWorld.park);
     applyLighting();
   }
+}
+
+function setGlowValue(key, value) {
+  const overrides = normalizeGlowOverrides({ ...glowPresets[graphicsPreset], [key]:value });
+  glowPresets = saveGlowPresets({ ...glowPresets, [graphicsPreset]:overrides }, graphicsStorage);
+  graphicsPipeline.setGlowTuning(glowPresets[graphicsPreset]);
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
+}
+
+function resetGlowValues() {
+  const next = { ...glowPresets };
+  delete next[graphicsPreset];
+  glowPresets = saveGlowPresets(next, graphicsStorage);
+  if (graphicsPreset === 'high-refresh') {
+    legacyGlowDefaults = false;
+    useCurrentGlowDefaults(graphicsStorage);
+  }
+  graphicsPipeline.setGlowTuning({}, {legacyGlowDefaults});
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
 }
 
 function applyLighting() {
@@ -435,18 +466,19 @@ function setExploreView(name, instant = false) {
 function setCameraMode(nextMode) {
   if (!followCamera) return;
   followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
-  gameShell.cameraIndex = ['follow','classic','fixed'].indexOf(followCamera.mode);
+  gameShell.cameraIndex = CAMERA_MODES.indexOf(followCamera.mode);
   const button = document.querySelector('#camera-mode');
   button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
-  button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
-  document.querySelector('#camera-label').textContent = followCamera.mode.toUpperCase();
-  // New preference version makes high follow the default even for earlier users.
-  try { localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode); } catch { /* Storage is optional. */ }
+  button.setAttribute('aria-label', `Camera: ${CAMERA_LABELS[followCamera.mode]}. Cycle camera view`);
+  document.querySelector('#camera-label').textContent = CAMERA_LABELS[followCamera.mode].toUpperCase();
+  try {
+    localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode);
+    localStorage.setItem('streetskate.camera', followCamera.mode);
+  } catch { /* Storage is optional. */ }
 }
 
 function toggleCameraMode() {
-  const modes = ['follow', 'classic', 'fixed'];
-  setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
+  setCameraMode(CAMERA_MODES[(CAMERA_MODES.indexOf(followCamera?.mode) + 1) % CAMERA_MODES.length]);
 }
 
 function goToSpot(id) {
@@ -540,21 +572,36 @@ function updateHud() {
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
   const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active':'notice';
   const comboCaption=comboPhase==='bail'?'TRY AGAIN':'';
-  // Do not reset the pop animation on every render frame.
+  // Keep the previous bitmap text until the replacement glyphs are decoded.
+  // A missing image uses the existing readable fallback instead of vanishing.
   if (trickNode.dataset.graffitiText !== trickLabel || trickNode.dataset.comboPhase!==comboPhase) {
-    trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
-      +graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
-    trickNode.dataset.comboPhase=comboPhase;
-    trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
-    trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
-    trickNode.classList.remove('graffiti-pop');
-    if (trickLabel) {
-      void trickNode.offsetWidth;
-      trickNode.classList.add('graffiti-pop');
+    const tone=graffitiToneForTrick(trickLabel);
+    const readiness=trickLabel?prepareGraffitiHudGlyphs(trickLabel,graffitiPalette(tone)):'ready';
+    // A bail cancels the combo, so do not leave its old points on screen
+    // while the red bail lettering is still downloading.
+    if(readiness==='loading'&&comboPhase==='bail'&&trickNode.dataset.comboPhase!=='bail'){
+      trickNode.replaceChildren();trickNode.dataset.graffitiText='';trickNode.dataset.comboPhase='bail';
     }
-    scheduleTrickHudFit();
-    for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
-      if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+    if(readiness!=='loading'){
+      trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
+        +graffitiLettering(trickLabel,graffitiPalette(tone)) : '';
+      if(trickLabel){
+        const lettering=trickNode.querySelector('.graffiti-lettering');
+        lettering.classList.remove('graffiti-loading');
+        lettering.classList.add(readiness==='ready'?'graffiti-ready':'graffiti-failed');
+      }
+      trickNode.dataset.comboPhase=comboPhase;
+      trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
+      trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
+      trickNode.classList.remove('graffiti-pop');
+      if (trickLabel) {
+        void trickNode.offsetWidth;
+        trickNode.classList.add('graffiti-pop');
+      }
+      scheduleTrickHudFit();
+      for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
+        if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+      }
     }
   }
   hud['state-value'].classList.toggle('air', !skater.grounded || Boolean(skater.grind));
@@ -747,7 +794,7 @@ async function loadGame() {
     skater.reset(skater.spawn, skater.spawnHeading);
     applyLighting();
     refreshLocationUi();
-    setCameraMode('follow');
+    setCameraMode(CAMERA_MODES[gameShell.cameraIndex]);
     renderer.domElement.tabIndex = 0;
     const finishes = document.querySelector('#board-finishes');
     const finishNames = ['Sunset', 'Ocean', 'Aqua', 'Lime', 'Gold', 'Nebula', 'Graphite', 'Pearl'];
@@ -926,7 +973,7 @@ renderer.setAnimationLoop(() => {
       else setPaused(true);
     }
     if (state.cameraModePressed && gameShell.active && !portalsOnline?.visible) toggleCameraMode();
-    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
+    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(CAMERA_SHORTCUTS[state.cameraModeIndex] || 'follow');
     if (!paused && gameShell.simulating) {
       if (gameShell.practice && gameShell.inputGrace <= 0 && !portalsOnline?.visible && !portalsOnline?.watchId) {
         if (state.practiceMark) {
@@ -961,7 +1008,7 @@ renderer.setAnimationLoop(() => {
       }
       if (skater.respawnSerial !== respawn) followCamera.snap(skater);
       skateEffects.update(dt,skater);
-      followCamera.update(skater, dt, state);
+      followCamera.update(skater, dt, state, skater._smoothedVisualPosition);
       if (state.reset) followCamera.snap(skater);
     }
     updateHud();

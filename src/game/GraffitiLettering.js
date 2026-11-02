@@ -13,6 +13,33 @@ export function graffitiLettering(text, palette = 'cyan-purple') {
 }
 export const graffitiPalette = tone => ({ aqua:'cyan-purple', purple:'cyan-purple', lime:'green', gold:'gold', fire:'fire', red:'red' })[tone] || 'cyan-purple';
 
+// Keep decoded HUD glyphs alive so a new combo can replace the previous one
+// atomically, without briefly displaying the plain-text loading fallback.
+const hudGlyphs=new Map();
+export function prepareGraffitiHudGlyphs(text, palette='cyan-purple'){
+  if(typeof Image==='undefined')return 'failed';
+  const tone=palettes.has(palette)?palette:'cyan-purple';
+  let loading=false,failed=false;
+  for(const letter of new Set([...String(text).toUpperCase()].filter(char=>/^[A-Z0-9]$/.test(char)))){
+    const url=`${gameAssetUrl('/assets/graffiti/')}${tone}/${letter}.png`;
+    let glyph=hudGlyphs.get(url);
+    if(!glyph){
+      const image=new Image();glyph={image,status:'loading'};hudGlyphs.set(url,glyph);
+      image.decoding='async';
+      image.onload=()=>{
+        if(!image.naturalWidth){glyph.status='failed';return;}
+        if(typeof image.decode!=='function'){glyph.status='ready';return;}
+        image.decode().catch(()=>{}).then(()=>{glyph.status=image.naturalWidth?'ready':'failed';});
+      };
+      image.onerror=()=>{glyph.status='failed';};
+      image.src=url;
+    }
+    loading ||= glyph.status==='loading';
+    failed ||= glyph.status==='failed';
+  }
+  return loading?'loading':failed?'failed':'ready';
+}
+
 const pending=new WeakSet(), installed=new WeakMap();
 export function prepareGraffitiLettering(lettering){
   if(!lettering||pending.has(lettering)||lettering.classList.contains('graffiti-failed'))return;

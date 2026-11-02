@@ -20,14 +20,14 @@ import { STICK_DEAD_ZONES } from '../input/SkateInput.js';
 import { SessionFlow } from './SessionFlow.js';
 import { renderPlayerSettings, PlayerSettingsPanel } from './PlayerSettingsPanel.js';
 import { readPlayerPreferences, applyPlayerPreferences } from './PlayerPreferences.js';
+import { CAMERA_MODES, CAMERA_LABELS } from './CameraModes.js';
+import { GLOW_CONTROLS, stepGlowValue } from '../graphics/GlowTuning.js';
 
 const safe = value => String(value).replace(/[&<>"']/g, ch =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 const stored = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
 const persist = (key, value) => { try { localStorage.setItem(key, String(value)); } catch {} };
-const CAMERAS=['follow','classic','fixed'];
-const CAMERA_LABELS=['Follow','Classic','Fixed'];
 const number = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value)) : 0;
 const points = value => Math.round(number(value)).toLocaleString();
 const seconds = value => `${number(value).toFixed(1)} s`;
@@ -40,10 +40,10 @@ export class GameShell {
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
     this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
     this.flipLessonIndex=0;this.flipInputMode='xbox';this.flipPlayer=null;
-    this.cameraIndex=Math.max(0,CAMERAS.indexOf(stored('streetskate.camera','follow')));
+    this.cameraIndex=Math.max(0,CAMERA_MODES.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
     this.bloomEnabled=stored('streetskate.bloomEnabled','on')!=='off';
-    this.smoothEdges=stored('streetskate.smoothEdges','off')==='on';
+    this.smoothEdges=stored('streetskate.smoothEdges','on')==='on';
     this.songToastRemaining=4;
     this.sound=stored('streetskate.sound','on')!=='off';
     const savedFinish=Number(stored('streetskate.boardFinish',DEFAULT_BOARD_FINISH));
@@ -169,6 +169,43 @@ export class GameShell {
       <button data-menu data-action="${channel}Up" aria-label="Increase ${label.toLowerCase()} volume">+</button>
       <span class="audio-meter" aria-hidden="true" style="--volume:${Math.round(value*100)}%"></span></div>`;
   }
+  glowControls(status, preset) {
+    const values = status?.glowTuning;
+    if (!values) return '';
+    const rows = GLOW_CONTROLS.map((control,index) => {
+      const value = Number(values[control.key]);
+      const disabled = preset === 'performance' && control.key !== 'emissive';
+      const position = Math.max(0, Math.min(100, (value-control.min)/(control.max-control.min)*100));
+      return `<div class="graphics-glow-row" role="group" aria-label="${control.label}">
+        <div class="graphics-glow-copy"><strong>${control.label}</strong><span>${control.hint}</span>
+          <i class="graphics-glow-meter" aria-hidden="true"><i data-glow-meter="${control.key}" style="width:${position}%"></i></i></div>
+        <div class="graphics-glow-control">
+          <button data-menu data-action="glowAdjust" data-index="${index*2}" aria-label="Decrease ${control.label}" ${disabled?'disabled':''}>−</button>
+          <output data-glow-value="${control.key}" aria-live="polite">${value.toFixed(2)}${control.suffix}</output>
+          <button data-menu data-action="glowAdjust" data-index="${index*2+1}" aria-label="Increase ${control.label}" ${disabled?'disabled':''}>+</button>
+        </div></div>`;
+    }).join('');
+    const note = preset === 'performance'
+      ? 'Performance keeps bloom off. Select another preset to adjust its glow.'
+      : 'Saved separately for this preset. World emissive affects park materials; the board has its own emission.';
+    return `<section class="graphics-glow-settings" aria-label="Light and glow settings">
+      <div class="graphics-glow-heading"><strong>LIGHT & GLOW</strong><span>FINE TUNE</span></div>
+      <p>${note}</p>${rows}
+      <button data-menu data-action="glowReset" class="graphics-glow-reset">RESET THIS PRESET’S GLOW</button>
+      <small data-glow-status role="status" aria-live="polite"></small></section>`;
+  }
+  updateGlowControls(status, message) {
+    if (!status?.glowTuning) return;
+    for (const control of GLOW_CONTROLS) {
+      const value = status.glowTuning[control.key];
+      const output = this.content.querySelector(`[data-glow-value="${control.key}"]`);
+      if (output) output.textContent = `${value.toFixed(2)}${control.suffix}`;
+      const meter = this.content.querySelector(`[data-glow-meter="${control.key}"]`);
+      if (meter) meter.style.width = `${Math.max(0,Math.min(100,(value-control.min)/(control.max-control.min)*100))}%`;
+    }
+    const messageNode = this.content.querySelector('[data-glow-status]');
+    if (messageNode) messageNode.textContent = message;
+  }
   boardLabel(){return BOARD_CHOICES[this.boardIndex]?.label||'';}
   locationName(){return this.testMapName||LOCATIONS[this.locationIndex]?.name||'';}
   loadoutStatus(){return this.selectError||(!this.heroConfirmed||!this.boardConfirmed?'Choose a rider and a deck with A / Enter / Click to unlock START SESSION.':'Rider and deck selected · Ready to start session.');}
@@ -237,7 +274,7 @@ export class GameShell {
     } else if(this.phase==='options') {
       title='OPTIONS';body='<div class="menu-control-group"><h3>SESSION</h3>'+this.button('PRACTICE · NO TIME LIMIT','practice',!this.ready)
         +this.button('PLAYER SETTINGS & CONTROLS','settings')
-        +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[this.cameraIndex],'camera')
+        +'<div class="menu-setting-pair">'+this.button('CAMERA · '+CAMERA_LABELS[CAMERA_MODES[this.cameraIndex]],'camera')
         +this.button('GRAPHICS · '+GRAPHICS_PRESETS[GRAPHICS_PRESET_ORDER[this.graphicsIndex]].label.toUpperCase(),'graphicsMenu')+'</div>'
         +this.button('STICK DEAD ZONE · '+Math.round((this.actions.getDeadZone?.() ?? .16)*100)+'%','deadZone')+'</div>'
         +'<div class="menu-control-group"><h3>SOUND & FEEL</h3>'+this.volumeControl('music','MUSIC',this.music.musicVolume)
@@ -259,6 +296,7 @@ export class GameShell {
       body='<p class="graphics-intro">Keep your line clear. Choose the detail and responsiveness that suit your display.</p>'
         +GRAPHICS_PRESET_ORDER.map((name,i)=>`<button class="graphics-preset" data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}"><strong>${i===this.graphicsIndex?'✓ ':''}${GRAPHICS_PRESETS[name].label}</strong><span>${GRAPHICS_DESCRIPTIONS[name]}</span></button>`).join('')
         +`<button class="graphics-toggle" data-menu data-action="bloomToggle" aria-pressed="${this.bloomEnabled}">NEON GLOW · ${this.bloomEnabled?'ON':'OFF'}</button>`
+        +this.glowControls(effective,key)
         +`<button class="graphics-toggle" data-menu data-action="edgeToggle" aria-pressed="${this.smoothEdges}">144 FPS EDGE SMOOTHING · ${this.smoothEdges?'ON':'OFF'}</button>`
         +'<p class="graphics-details">Optional 2× edge smoothing with glow in the 144 FPS preset; may reduce frame rate.</p>'
         +`<p class="graphics-details">${safe(effective?.label||preset.label)} · ${effective?.bloomEnabled?'Glow on':'Glow off'} · stable environment reflections.<br>144 FPS is a target; actual performance depends on your hardware and display.</p>`
@@ -503,7 +541,7 @@ export class GameShell {
     this.practice=practice;this.remaining=90;this.inputGrace=.3;this.runSummary=null;this.timeupEndsAt=0;
     this.sessionFlow.begin({practice});this.goRemaining=0;
     this.music.unlock();this.setScreen('playing');this.actions.start(practice);
-    if(!practice)this.actions.cue?.('ready');this.actions.camera(CAMERAS[this.cameraIndex]);
+    if(!practice)this.actions.cue?.('ready');this.actions.camera(CAMERA_MODES[this.cameraIndex]);
     this.actions.portalsStart?.(LOCATIONS[this.locationIndex]?.id,practice);
   }
   pause(){if(this.active){if(this.actions.portalsOnlineConnected?.()){this.actions.portalsOnlineOpen?.();return;}this.setScreen('pause');this.actions.pause(true);}}
@@ -553,11 +591,21 @@ export class GameShell {
       case 'flipTry':this.start(true);this.actions.tryTrick?.(FLIP_LESSONS[this.flipLessonIndex]);break;
       case 'options':this.optionsReturn=this.phase;this.setScreen('options');break;
       case 'uploadTestMap':if(this.ready&&!this.mapUploadBusy)this.mapInput.click();break;
-      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERAS.length;persist('streetskate.camera',CAMERAS[this.cameraIndex]);this.actions.camera(CAMERAS[this.cameraIndex]);this.render();break;
+      case 'camera':this.cameraIndex=(this.cameraIndex+1)%CAMERA_MODES.length;persist('streetskate.camera',CAMERA_MODES[this.cameraIndex]);this.actions.camera(CAMERA_MODES[this.cameraIndex]);this.render();break;
       case 'deadZone':{const current=this.actions.getDeadZone?.() ?? .16;const next=STICK_DEAD_ZONES[(STICK_DEAD_ZONES.indexOf(current)+1)%STICK_DEAD_ZONES.length];this.actions.setDeadZone?.(next);persist('streetskate.stickDeadZone',next);this.render();break;}
       case 'graphicsMenu':this.setScreen('graphics');break;
       case 'graphicsSet':this.graphicsIndex=Math.max(0,Math.min(GRAPHICS_PRESET_ORDER.length-1,index));this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'bloomToggle':this.bloomEnabled=!this.bloomEnabled;persist('streetskate.bloomEnabled',this.bloomEnabled?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
+      case 'glowAdjust':{
+        const control=GLOW_CONTROLS[Math.floor(index/2)];
+        const current=control&&this.actions.graphicsStatus?.()?.glowTuning?.[control.key];
+        if(control&&Number.isFinite(current)) {
+          const value=stepGlowValue(control,current,index%2?1:-1);
+          this.updateGlowControls(this.actions.graphicsGlow?.(control.key,value),'Saved for this preset.');
+        }
+        break;
+      }
+      case 'glowReset':this.updateGlowControls(this.actions.graphicsGlowReset?.(),'Preset glow restored.');break;
       case 'edgeToggle':this.smoothEdges=!this.smoothEdges;persist('streetskate.smoothEdges',this.smoothEdges?'on':'off');this.actions.graphics?.(GRAPHICS_PRESET_ORDER[this.graphicsIndex]);this.render();break;
       case 'musicDown':this.adjustVolume('music',-.1);break;
       case 'musicUp':this.adjustVolume('music',.1);break;

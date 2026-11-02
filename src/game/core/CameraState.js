@@ -53,8 +53,9 @@ export function resolveCameraTravelDirection(player, previousDirection = null, i
 export function captureCameraState(player, {
   previousDirection = null,
   initialized = true,
+  presentationPosition = null,
 } = {}) {
-  const position = player?.position?.clone?.() || new THREE.Vector3();
+  const position = presentationPosition?.clone?.() || player?.position?.clone?.() || new THREE.Vector3();
   const travelDirection = resolveCameraTravelDirection(
     player,
     previousDirection,

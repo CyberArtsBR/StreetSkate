@@ -72,8 +72,12 @@ test('agent07: static bloom mesh lists are reused rather than traversing scene t
     assert.strictEqual(wood.material,pipeline.blackoutMaterial);
     assert.equal(riderMesh.material.name,'rider');
   }};
+  const glowOnly = {};
+  pipeline.bloom = { renderTargetsHorizontal:[{ texture:glowOnly }] };
   pipeline.bloomComposite = {uniforms:{bloomTexture:{value:null}}};
   assert.equal(pipeline.renderSelectiveBloom(),true);
+  assert.strictEqual(pipeline.bloomComposite.uniforms.bloomTexture.value,glowOnly,
+    'composite only the glow, not a low-resolution duplicate of the source');
   assert.equal(pipeline.renderSelectiveBloom(),true);
   assert.equal(walks,1, 'static scene must be cached between frames');
   assert.equal(renders,2);

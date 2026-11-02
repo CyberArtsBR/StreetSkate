@@ -28,7 +28,7 @@ function fixture(shouldThrow = false) {
     traverse(visitor) { visitor(rider);visitor(board); }
   };
   pipeline.bloomComposer={
-    readBuffer:{texture:{id:'actor-bloom-only'}},
+    readBuffer:{texture:{id:'actor-plus-glow'}},
     render() {
       called++;
       assert.equal(scene.background,null,'HDRI must not contribute to bloom');
@@ -41,6 +41,7 @@ function fixture(shouldThrow = false) {
       if(shouldThrow) throw new Error('simulated WebGL failure');
     },
   };
+  pipeline.bloom={renderTargetsHorizontal:[{texture:{id:'actor-bloom-only'}}]};
   pipeline.bloomComposite={uniforms:{bloomTexture:{value:null}}};
   return {pipeline, scene, meshes:[warehouse,windowMesh,rider,board], materials:[concrete,glass,riderMaterial,deckMaterial], background,fog,override,called:()=>called};
 }

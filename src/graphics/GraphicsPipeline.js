@@ -8,6 +8,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { resolveGraphicsSettings, resolveRenderPixelRatio } from './GraphicsSettings.js';
+import { normalizeGlowOverrides, resolveGlowTuning } from './GlowTuning.js';
 import { MapContactDepthPass } from './MapContactDepthPass.js';
 
 // Five-tap contrast-adaptive sharpening: edge-adaptive, avoids amplifying
@@ -306,7 +307,10 @@ export class GraphicsPipeline {
         object.material = this.blackoutMaterial;
       }
       this.bloomComposer.render();
-      this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
+      // UnrealBloomPass adds its glow over the low-resolution source buffer.
+      // Only composite its bloom texture: adding that source buffer a second
+      // time creates a soft duplicate over bright details on moving objects.
+      this.bloomComposite.uniforms.bloomTexture.value = this.bloom.renderTargetsHorizontal[0].texture;
       return true;
     } finally {
       for (let i = 0; i < replaced.length; i += 2) replaced[i].material = replaced[i + 1];
@@ -323,6 +327,7 @@ export class GraphicsPipeline {
   updateMaterials() {
     if (!this.world || !this.settings) return;
     const touched = new Set(), textures = new Set();
+    const emissive = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)).emissive;
     this.world.traverse(object => {
       if (!object.isMesh) return;
       if (object.userData.visualPassCaster)
@@ -348,7 +353,7 @@ export class GraphicsPipeline {
         }
         if (m.emissive?.getHex?.() > 0 && 'emissiveIntensity' in m) {
           if (!this.emissiveBase.has(m)) this.emissiveBase.set(m, m.emissiveIntensity);
-          m.emissiveIntensity = this.emissiveBase.get(m) * this.settings.vfxScale;
+          m.emissiveIntensity = this.emissiveBase.get(m) * emissive;
         }
       }
     });
@@ -402,6 +407,7 @@ export class GraphicsPipeline {
   getStatus() {
     if (!this.settings) return null;
     return { ...this.settings,
+      glowTuning:resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)),
       bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
       postProcessingEnabled: !this.faulted && this.settings.postProcessing,
@@ -411,17 +417,30 @@ export class GraphicsPipeline {
     };
   }
 
+  setGlowTuning(value, {legacyGlowDefaults = this.settings?.legacyGlowDefaults} = {}) {
+    if (!this.settings) return;
+    const previous = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
+    this.settings.glowTuning = normalizeGlowOverrides(value);
+    this.settings.legacyGlowDefaults = legacyGlowDefaults === true;
+    this.configureBloom();
+    const next = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
+    if (previous.emissive !== next.emissive) this.updateMaterials();
+  }
+
   configureBloom() {
     if (!this.settings) return;
-    const orbit = Boolean(this.world?.userData.environmentBloom);
+    const orbit = Boolean(this.world?.userData?.environmentBloom);
+    const cinematic = this.settings.name === 'cinematic';
+    const ultra = this.settings.name === 'ultra';
     // Performance means no extra scene pass, even on emissive-heavy ORBIT.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
-    this.bloom.strength = orbit
-      ? (this.settings.name==='high-refresh' ? .2 : .24)
-      : this.settings.bloomStrength * this.settings.vfxScale;
-    this.bloom.radius = .24;
-    this.bloom.threshold = orbit ? 1.25 : .88;
-    this.bloomComposite.uniforms.bloomMix.value = orbit ? .55 : .32;
+    const tuning = resolveGlowTuning(this.settings, orbit);
+    this.bloom.strength = this.bloomComposite.enabled ? tuning.bloom : 0;
+    this.bloom.radius = tuning.radius;
+    // Only emissive meshes enter this pass, so the lower cinematic threshold
+    // can reveal colored neon without blooming ordinary faces and surfaces.
+    this.bloom.threshold = cinematic ? (orbit ? .42 : .34) : ultra ? .65 : (orbit ? .98 : .75);
+    this.bloomComposite.uniforms.bloomMix.value = tuning.glow;
   }
 
   resize(width, height) {

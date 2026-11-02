@@ -195,9 +195,11 @@ test('camera option persists and is retained when starting the session',()=>{
     shell.render=()=>{};
     shell.setScreen=phase=>{shell.phase=phase;};
     shell.choose('camera');
-    assert.equal(preferences.get('streetskate.camera'),'classic');
+    assert.equal(preferences.get('streetskate.camera'),'follow-close');
+    shell.choose('camera');
+    assert.equal(preferences.get('streetskate.camera'),'follow-low');
     shell.start(false);
     assert.equal(shell.phase,'playing');
-    assert.equal(cameraCalls.at(-1),'classic','starting a run must not reset the chosen camera');
+    assert.equal(cameraCalls.at(-1),'follow-low','starting a run must not reset the chosen camera');
   }finally{globalThis.localStorage=oldStorage;}
 });

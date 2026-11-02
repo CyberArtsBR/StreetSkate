@@ -21,7 +21,7 @@ test('high-refresh preserves High material response at lower render cost, and ex
   const caps={devicePixelRatio:2,maxAnisotropy:16,maxSamples:4};
   const fast=resolveGraphicsSettings('high-refresh',caps);
   const high=resolveGraphicsSettings('high',caps);
-  assert.equal(fast.pixelRatio,1);
+  assert.equal(fast.pixelRatio,2);
   assert.equal(fast.environmentIntensity,high.environmentIntensity);
   assert.equal(fast.metalReflectionStrength,high.metalReflectionStrength);
   assert.ok(fast.bloomScale<high.bloomScale);
@@ -88,17 +88,16 @@ test('144 FPS is the new default while subsequent explicit quality choices persi
   assert.equal(loadGraphicsPreset(storage),'high');
 });
 
-test('144 FPS bounds render pixels on high-DPI and 4K displays without changing aspect ratio', () => {
-  for (const [width,height,dpr] of [[1280,720,2],[1920,1080,2],[2560,1440,1],[3840,2160,2],[3440,1440,1]]) {
+test('144 FPS retains native detail on high-DPI and 4K displays', () => {
+  for (const [width,height,dpr] of [[1280,720,2],[1920,1080,2],[2560,1440,1],[3840,2160,2],[3440,1440,1],[1280,720,3]]) {
     const fast=resolveGraphicsSettings('high-refresh',{width,height,devicePixelRatio:dpr});
-    assert.ok(width*height*fast.pixelRatio**2<=1920*1080+1);
-    assert.ok(fast.pixelRatio<=1);
+    assert.equal(fast.pixelRatio,dpr);
     assert.equal(fast.postProcessing,true);
     assert.ok(fast.bloomStrength>0);
     assert.equal(fast.contactDepth,false);
     assert.equal(fast.targetFrameRate,144);
   }
-  assert.equal(resolveGraphicsSettings('high-refresh',{width:3840,height:2160}).pixelRatio,.5);
+  assert.equal(resolveGraphicsSettings('high-refresh',{width:3840,height:2160}).pixelRatio,1);
   assert.equal(resolveGraphicsSettings('high-refresh',{width:1280,height:720}).pixelRatio,1);
 });
 
