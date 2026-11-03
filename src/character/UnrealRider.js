@@ -377,7 +377,7 @@ export class UnrealRider {
     // deck and original Hollow motion continue to use their existing weights.
     const gather = calibratedGrab ? C(springStep(this.scalar.grabGather,
       requestedSides?.length ? grab : 0, 8, dt), 0, 1) : grab;
-    if (requestedSides?.length && this.grabReachName !== grabState.name) {
+    if (calibratedGrab && requestedSides?.length && this.grabReachName !== grabState.name) {
       const target = this.root.worldToLocal(this.grabTarget(grabState.name, requestedSides[0], stance, board));
       const pelvis = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V()));
       this.grabReachDirection = target.clone().sub(pelvis).dot(this.kneeForward) < -.025 ? -1 : 1;
