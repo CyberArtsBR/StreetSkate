@@ -136,20 +136,31 @@ export class MusicPlayer {
 
   duck(durationMs = 550, amount = .6) {
     if (this.disposed) return;
-    clearTimeout(this.duckTimer);
-    this.duckAmount = Math.max(.25, Math.min(1, Number(amount) || .6));
-    this.audio.volume = this.musicVolume * this.duckAmount;
-    this.duckTimer = setTimeout(() => {
-      this.duckTimer = null; this.duckAmount = 1;
-      if (!this.disposed) this.audio.volume = this.musicVolume;
-    }, Math.max(80, Math.min(1600, Number(durationMs) || 550)));
+    const now = Date.now(), hold = Math.max(80, Math.min(3200, Number(durationMs) || 550));
+    const depth = Math.max(.25, Math.min(1, Number(amount) || .6));
+    // Stronger overlapping reactions retain priority until their own hold expires.
+    (this.duckRequests ||= []).push({ until: now + hold, amount: depth });
+    if (this.duckTimer) return;
+    let previous = now;
+    const step = () => {
+      if (this.disposed) return;
+      const time = Date.now(), dt = Math.min(100, Math.max(1, time - previous)); previous = time;
+      this.duckRequests = this.duckRequests.filter(request => request.until > time);
+      const target = Math.min(1, ...this.duckRequests.map(request => request.amount));
+      const tau = target < this.duckAmount ? 25 : 120;
+      this.duckAmount += (target - this.duckAmount) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - this.duckAmount) < .002) this.duckAmount = target;
+      this.audio.volume = this.musicVolume * this.duckAmount;
+      if (!this.duckRequests.length && this.duckAmount === 1) { clearInterval(this.duckTimer); this.duckTimer = null; }
+    };
+    this.duckTimer = setInterval(step, 16);
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
     this.generation++;
-    clearTimeout(this.duckTimer); this.duckTimer = null;
+    clearInterval(this.duckTimer); this.duckTimer = null; this.duckRequests = [];
     this.audio.pause();
     this.audio.removeEventListener('ended', this._ended);
     this.audio.removeEventListener('error', this._error);

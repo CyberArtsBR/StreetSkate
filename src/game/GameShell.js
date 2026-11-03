@@ -174,7 +174,7 @@ export class GameShell {
     if (!values) return '';
     const rows = GLOW_CONTROLS.map((control,index) => {
       const value = Number(values[control.key]);
-      const disabled = preset === 'performance' && control.key !== 'emissive';
+      const disabled = false;
       const position = Math.max(0, Math.min(100, (value-control.min)/(control.max-control.min)*100));
       return `<div class="graphics-glow-row" role="group" aria-label="${control.label}">
         <div class="graphics-glow-copy"><strong>${control.label}</strong><span>${control.hint}</span>
@@ -185,9 +185,7 @@ export class GameShell {
           <button data-menu data-action="glowAdjust" data-index="${index*2+1}" aria-label="Increase ${control.label}" ${disabled?'disabled':''}>+</button>
         </div></div>`;
     }).join('');
-    const note = preset === 'performance'
-      ? 'Performance keeps bloom off. Select another preset to adjust its glow.'
-      : 'Saved separately for this preset. World emissive affects park materials; the board has its own emission.';
+    const note = 'Shared glow defaults across presets. Your adjustments are saved per preset; the board has its own emission.';
     return `<section class="graphics-glow-settings" aria-label="Light and glow settings">
       <div class="graphics-glow-heading"><strong>LIGHT & GLOW</strong><span>FINE TUNE</span></div>
       <p>${note}</p>${rows}
@@ -253,7 +251,7 @@ export class GameShell {
         data-location="${safe(spot.id)}" class="loadout-location ${i===this.locationIndex?'is-chosen':''}" ${spot.available?'':'disabled'} aria-pressed="${i===this.locationIndex}">
         <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='skate-paradise'?'SUNSET / SKATEPARK':spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
-        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><p class="session-rule">90 seconds. Your last attempt gets up to 6 extra seconds to land. Bail or time limit loses pending points.</p><div class="music-menu-slot"></div></header>
+        <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><p class="session-rule">${this.pendingMode==='practice'?'Unlimited practice. Save a marker, retry your line, and work through drills at your own pace.':'90 seconds. Your last attempt gets up to 6 extra seconds to land. Bail or time limit loses pending points.'}</p><div class="music-menu-slot"></div></header>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
         <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}"><span class="rider-stage-number" aria-hidden="true">${String(this.heroIndex+1).padStart(2,'0')}</span>
@@ -369,8 +367,8 @@ export class GameShell {
     const topRows=topTricks.length?topTricks.map((item,i)=>`<li><span>${String(i+1).padStart(2,'0')}</span><strong>${safe(item.label)}</strong><b>${points(item.points)} <small>PTS</small></b></li>`).join(''):'<li class="run-empty"><p>No scored tricks landed.</p></li>';
     return `<article class="run-results" aria-label="Session results">
       <header class="run-results-header"><div><span class="session-eyebrow">CHIMP HAWK / SESSION COMPLETE</span><h2>${graffitiLettering('YOUR RUN','gold')}</h2><p>${safe(run.mapName||LOCATIONS[this.locationIndex]?.name||'')} <span>·</span> ${Math.round(number(run.durationSeconds??90))} SEC SESSION</p></div><div class="run-loadout"><strong>${safe(run.riderName||this.heroes[this.heroIndex]?.name||'')}</strong><span>${safe(run.deckName||BOARD_CHOICES[this.boardIndex]?.label||'')}</span>${this.button('▶ Watch the Highlights','watchHighlights',!canReplay)}</div></header>
-      <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderPersonalBest(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} tricks linked</span>`:''}</div>${this.renderScoreBreakdown(run)}<h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
-      <div class="run-detail-column"><section class="run-achievements"><h3>SESSION ACHIEVEMENTS</h3><ol>${achievementRows}</ol></section><section class="run-top-tricks"><h3>HIGHEST SCORING TRICKS</h3><ol>${topRows}</ol></section><section class="run-highlights"><span class="session-eyebrow">THE HIGHLIGHT REEL</span><p>${canReplay?`${highlightCount} best scored moment${highlightCount===1?'':'s'} · cinematic cameras & slow motion`:'Land a scored trick to capture your highlights.'}</p><small>${canReplay?'2.5 seconds before and after each moment, where the session allows.':'Highlights are recorded during this session only.'}</small></section></div></div>
+      <div class="run-results-grid"><section class="run-score-panel"><span class="session-eyebrow">FINAL SCORE</span><p class="run-total-score result-score"><strong data-final-score>${points(finalScore)}</strong><span>FINAL POINTS${run.scoreBreakdown?' · RUN WEIGHTS APPLIED':''}</span></p>${this.renderPersonalBest(run)}<div class="run-best-combo"><span class="session-eyebrow">BEST COMBO</span><strong>${points(best.points)} <small>PTS</small></strong><p>${number(best.points)>0?safe(best.label||'Landed combo'):'No combo banked this run'}</p>${number(best.trickCount)>0?`<span>${points(best.trickCount)} ${number(best.trickCount)===1?'trick':'tricks'} linked</span>`:''}</div>${this.renderScoreBreakdown(run)}<h3>THE RUN IN NUMBERS</h3><dl class="run-stats">${stats}</dl></section>
+      <div class="run-detail-column"><section class="run-achievements"><h3>SESSION ACHIEVEMENTS</h3><ol>${achievementRows}</ol></section><section class="run-top-tricks"><h3>HIGHEST SCORING TRICK MOMENTS</h3><ol>${topRows}</ol></section><section class="run-highlights"><span class="session-eyebrow">THE HIGHLIGHT REEL</span><p>${canReplay?`${highlightCount} best scored moment${highlightCount===1?'':'s'} · cinematic cameras & slow motion`:'Land a scored trick to capture your highlights.'}</p><small>${canReplay?'2.5 seconds before and after each moment, where the session allows.':'Highlights are recorded during this session only.'}</small></section></div></div>
       <footer class="run-results-actions">${this.button('RUN IT AGAIN · 90 SEC','restart')}${this.button('CHANGE RIDER / SPOT','start')}${this.button('PRACTICE','practice')}${this.button('MAIN MENU','title')}</footer></article>`;
   }
   renderScoreBreakdown(run){

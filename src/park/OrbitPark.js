@@ -6,6 +6,7 @@ import { batchWarehouseVisuals } from './WarehouseVariants.js';
 import { warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
 import { createOrbitVisualPass } from '../graphics/OrbitVisualPass.js';
+import { applyOrbitFloorFinish } from '../graphics/OrbitSurfaceMaterials.js';
 import { shippingSurfaceTag } from '../game/SurfaceAudio.js';
 
 const authoredName = warehouseObjectName;
@@ -57,8 +58,7 @@ function prepareOrbitMaterials(object) {
       material.roughnessMap = null;
       material.metalnessMap = null;
       material.color.set('#52677b');
-      material.roughness = .48;
-      material.metalness = .12;
+      applyOrbitFloorFinish(material);
     }
     // Preserve neon color and shape without saturating the ramps around it.
     if (/^(LED|Grind) \/ /.test(material.name)) {

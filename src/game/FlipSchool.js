@@ -1,5 +1,5 @@
 import { gameAssetUrl } from './AssetPaths.js';
-import { ALL_FLIP_LESSONS as FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps } from './FlipLessons.js';
+import { ALL_FLIP_LESSONS as FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps, flipLessonInput } from './FlipLessons.js';
 import { readBindings, keyLabel, padLabel } from '../input/ControlBindings.js';
 
 const MODES=['xbox','playstation','keyboard'];
@@ -21,7 +21,7 @@ export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
     <header class="flip-school-header"><div><span class="flip-eyebrow">CHIMP HAWK / FIELD NOTES 01</span><h2>FLIP <em>SCHOOL.</em></h2><p>Watch the board. Learn the buttons. Find your line.</p></div><span class="flip-header-stamp">${FLIP_LESSONS.length} TRICKS<br><b>ONE CLEAN LANDING.</b></span></header>
     <div class="flip-school-layout">
       <nav class="flip-lesson-list" aria-label="Choose a flip trick"><span class="flip-eyebrow">THE TRICK LIST</span>
-        ${FLIP_LESSONS.map((entry,i)=>`<button data-menu data-action="flipLesson" data-index="${i}" aria-pressed="${i===index}" class="flip-lesson${i===index?' is-current':''}"><span class="flip-lesson-number">${String(i+1).padStart(2,'0')}</span><span>${entry.trick.name}<small>${entry.arrow} ${entry.label} + flip</small></span><span class="flip-lesson-arrow" aria-hidden="true">↗</span></button>`).join('')}
+        ${FLIP_LESSONS.map((entry,i)=>`<button data-menu data-action="flipLesson" data-index="${i}" aria-pressed="${i===index}" class="flip-lesson${i===index?' is-current':''}"><span class="flip-lesson-number">${String(i+1).padStart(2,'0')}</span><span>${entry.trick.name}${entry.taps===2?'<b class="flip-tap-badge">DOUBLE TAP</b>':''}<small>${flipLessonInput(entry)}</small></span><span class="flip-lesson-arrow" aria-hidden="true">${i===index?'✓':'↗'}</span></button>`).join('')}
         <p class="flip-list-note">Hold a direction only for the trick tap. Holding it longer can rotate your rider.</p>
       </nav>
       <section class="flip-lesson-detail" aria-label="${lesson.trick.name} lesson">

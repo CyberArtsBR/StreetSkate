@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyOrbitFloorFinish } from './OrbitSurfaceMaterials.js';
 import {MeshBVH,acceleratedRaycast} from 'three-mesh-bvh';
 
 export const ORBIT_VISUAL_LIMITS=Object.freeze({textureSize:512,patches:42,drawCalls:3,triangles:9000,lights:6});
@@ -102,6 +103,7 @@ export function createOrbitVisualPass(world) {
         material.roughnessMap ||= textures.roughness;
         material.roughness=/Plywood/.test(material.name)?.88:.72;material.metalness=.12;
       }
+      applyOrbitFloorFinish(material);
       material.needsUpdate=true;
     }
     if(isSurface(mesh)) {

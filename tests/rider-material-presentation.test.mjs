@@ -9,8 +9,8 @@ test('known fully metallic Heretic costume gains diffuse response without replac
   const material=new THREE.MeshStandardMaterial({map,metalness:1,roughness:.4});
   root.add(new THREE.Mesh(new THREE.BoxGeometry(),material));
   calibrateRiderMaterials(root,'/assets/rider/The_Heretic.glb');
-  assert.equal(material.metalness,.22);
-  assert.equal(material.roughness,.58);
+  assert.equal(material.metalness,.08);
+  assert.equal(material.roughness,.72);
   assert.strictEqual(material.map,map);
 });
 

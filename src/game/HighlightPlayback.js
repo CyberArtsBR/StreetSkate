@@ -16,12 +16,13 @@ function applyPose(nodes, pose) {
 
 /** Cinematic presentation of recorded visual poses, with live state untouched. */
 export class HighlightPlayback {
-  constructor({ camera, surface = null, getSurface = null, onFinish = null, onMoment = null } = {}) {
+  constructor({ camera, surface = null, getSurface = null, onFinish = null, onMoment = null, onEvent = null } = {}) {
     this.camera = camera;
     this.surface = surface;
     this.getSurface = getSurface;
     this.onFinish = onFinish;
     this.onMoment = onMoment;
+    this.onEvent = onEvent;
     this.active = false;
     this._anchor = new THREE.Vector3();
     this._eye = new THREE.Vector3();
@@ -54,6 +55,7 @@ export class HighlightPlayback {
   _beginMoment() {
     this.clip = this.clips[this.index];
     this.time = this.clip.start;
+    this.eventIndex = 0;
     this._cameraCache = { minimumDistance: 2.2 };
     this.onMoment?.({ index: this.index, count: this.clips.length, points: this.clip.points, label: this.clip.label });
   }
@@ -71,9 +73,11 @@ export class HighlightPlayback {
       const wallSeconds = Math.max(0, (boundary - this.time) / rate);
       if (remaining < wallSeconds) {
         this.time += remaining * rate;
+        this._events();
         remaining = 0;
       } else {
         this.time = boundary;
+        this._events();
         remaining -= wallSeconds;
         if (this.time >= this.clip.end - 1e-8) {
           this.index++;
@@ -121,6 +125,12 @@ export class HighlightPlayback {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  _events() {
+    const events=this.clip.events||[];
+    while(this.eventIndex<events.length&&events[this.eventIndex].time<=this.time)
+      this.onEvent?.(events[this.eventIndex++]);
   }
 
   stop() {

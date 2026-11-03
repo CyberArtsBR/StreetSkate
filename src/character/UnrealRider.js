@@ -11,6 +11,7 @@ import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 import { SkateRagdoll } from './SkateRagdoll.js';
+import { calibrateFootSupportBounds } from './FootSupportClearance.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -226,6 +227,7 @@ export class UnrealRider {
       this.kneeForward.negate();
     this.root.userData.rigAudit = this.rigAudit;
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
+    calibrateFootSupportBounds(this);
     return this;
   }
 
@@ -275,7 +277,9 @@ export class UnrealRider {
   handstandTarget(side, board) { return handstandTarget.call(this, side, board); }
 
   grabTarget(name, side, stance, board) {
-    const sign = this.outward[side] || (side === 'l' ? -1 : 1);
+    // Toe/heel edges belong to the rider's anatomical facing, not to which
+    // hand is reaching. Per-foot signs inverted Indy/Stalefish in one stance.
+    const sign = Math.sign(this.kneeForward.x) || 1;
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const width = Math.max(.15, board?.contactRig?.deckWidth || .42) / .42;
     const length = Math.max(.6, board?.contactRig?.deckLength || 1.1) / 1.1;
@@ -350,7 +354,7 @@ export class UnrealRider {
     // it, so the arms do not drop as soon as vertical velocity turns negative.
     const airBalance = C(springStep(this.scalar.airBalance,
       inAir ? 1 : 0, inAir ? 3.5 : 2.6, dt), 0, 1);
-    this.root.position.y = wrap ? (board?.riderHeight ?? this.deckHeight) : (board?.root.position.y ?? this.deckHeight);
+    this.root.position.y = wrap || grab > .01 ? (board?.riderHeight ?? board?.root.position.y ?? this.deckHeight) : (board?.root.position.y ?? this.deckHeight);
     // Sit the hips back while the chest leans forward. The actual vertical
     // crouch is solved from each leg's lengths after foot targets are known.
     const hipSetback = compression * .09 * this.poseCalibration.crouchScale;
@@ -377,7 +381,7 @@ export class UnrealRider {
       this.rotate(name, V(0, 1, 0), (.075 * stance + balance * .07
         + (push?.armSwing || 0) * pushAmount * .065) / 3, rootQ);
       const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
-      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025 + supportShift * .10) / 3, rootQ);
+      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .24 + pump * .025 + supportShift * .10) / 3, rootQ);
       this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
@@ -493,6 +497,7 @@ export class UnrealRider {
     // The target is absolute from rest each frame, so it cannot accumulate.
     if (!bail && !flatland) {
       let hipCorrection = Infinity;
+      let grabMinimumHipCorrection = -Infinity;
       for (const side of SIDES) {
         const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side],
           foot = this.bones['foot_' + side];
@@ -502,7 +507,14 @@ export class UnrealRider {
         const upperLength = hip.distanceTo(knee), lowerLength = knee.distanceTo(ankle);
         const hipLocal = this.root.worldToLocal(hip.clone()), target = this.ft[side];
         const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
-        const ridingFlex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        if (grab > .01) {
+          const minimumReach = safeLimbReach(upperLength,lowerLength,0,2.50);
+          const minimumHeight = Math.sqrt(Math.max(0,minimumReach*minimumReach-horizontalSquared));
+          grabMinimumHipCorrection = Math.max(grabMinimumHipCorrection,target.y+minimumHeight-hipLocal.y);
+        }
+        // Pull the knees toward the chest for a grab instead of extending a
+        // short cartoon arm past its bone length to reach the board.
+        const ridingFlex = .45 + compression * 1.65 + grab * .38 + (side === rear ? air * .08 : 0);
         // The drive leg extends while the support knee absorbs the drop to
         // the pavement. Applying the same crouch to both caused a deep bob.
         const flex = side === rear && push
@@ -511,6 +523,10 @@ export class UnrealRider {
         hipCorrection = Math.min(hipCorrection, target.y + wantedHeight - hipLocal.y);
       }
       if (Number.isFinite(hipCorrection)) {
+        // Keep the pelvis steady while the grabbed deck and both knees rise.
+        // The following clearance guard still prevents torso/deck overlap.
+        hipCorrection -= grab > .01 ? (board?.grabLift || 0) : 0;
+        hipCorrection = Math.max(hipCorrection,grabMinimumHipCorrection);
         this.model.position.y += hipCorrection;
         this.root.updateWorldMatrix(true, true);
         // Guard both short and tall rigs from dipping the pelvis into the deck

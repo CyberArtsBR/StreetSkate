@@ -157,7 +157,9 @@ test('synthesized pop, rail and landing voices remain gated and respect pause',a
   try {
     await fx.unlock();
     const c=fx.context;
-    assert.equal(c.sources.length,5);
+    const loops=['roll','texture','grind','brake','wind','concreteScrape','metalScrape','ambience'];
+    assert.equal(c.sources.length,loops.length);
+    for(const name of loops)assert.ok(fx[name]?.source,`${name}: persistent gated layer`);
     const player={
       velocity:{length:()=>12},grounded:true,grind:null,bailTime:0,
       presentation:{landingSeverity:0.8}
@@ -165,15 +167,15 @@ test('synthesized pop, rail and landing voices remain gated and respect pause',a
     fx.update(player,true);
     assert.ok(fx.roll.gain.gain.target>0);
     player.grounded=false;player.presentation.popTime=.12;c.currentTime+=.2;fx.update(player,true);
-    assert.equal(c.sources.length,6,'ollie pop is a distinct transient');
+    assert.equal(c.sources.length,loops.length+1,'ollie pop is a distinct transient');
     player.grind={};c.currentTime+=.2;fx.update(player,true);
     assert.ok(fx.grind.gain.gain.target>0);
     assert.equal(fx.roll.gain.gain.target,0,'grind masks wheel hiss');
     player.grind=null;player.grounded=true;c.currentTime+=.2;fx.update(player,true);
-    assert.equal(c.sources.length,8,'rail contact and truck landing each produce their own voice');
-    assert.ok(c.sources.at(-1).buffer.duration>c.sources[5].buffer.duration,'landing has a longer resonant decay than pop');
+    assert.equal(c.sources.length,loops.length+3,'rail contact and truck landing each produce their own voice');
+    assert.ok(c.sources.at(-1).buffer.duration>c.sources[loops.length].buffer.duration,'landing has a longer resonant decay than pop');
     fx.update(player,false);
-    assert.equal(fx.roll.gain.gain.target,0,'pause silences rolling layer');
+    for(const name of loops)assert.equal(fx[name].gain.gain.target,0,`${name}: pause silences loop`);
   }finally{await fx.dispose();globalThis.window=oldWindow;}
 });
 

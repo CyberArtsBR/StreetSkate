@@ -14,16 +14,11 @@ function profile(name, orbit, bloomEnabled = true) {
     enabled:pipeline.bloomComposite.enabled };
 }
 
-test('Cinematic gives emissive sources a visibly stronger glow in both ORBIT and other parks', () => {
-  for (const orbit of [false,true]) {
-    const fast = profile('high-refresh',orbit);
-    const ultra = profile('ultra',orbit);
-    const cinematic = profile('cinematic',orbit);
-    assert.ok(cinematic.enabled);
-    assert.ok(cinematic.strength * cinematic.mix > ultra.strength * ultra.mix * 1.5);
-    assert.ok(cinematic.strength * cinematic.mix > fast.strength * fast.mix * 2);
-    assert.ok(cinematic.threshold < ultra.threshold && cinematic.threshold < fast.threshold);
-    assert.ok(cinematic.radius > fast.radius);
+test('every tier renders the same glow response while retaining its own sampling budget', () => {
+  for(const orbit of [false,true]) {
+    const baseline=profile('high-refresh',orbit);
+    for(const name of ['performance','balanced','high','ultra','cinematic'])assert.deepEqual(profile(name,orbit),baseline,name);
+    assert.equal(baseline.strength,1.09);assert.equal(baseline.mix,.1);assert.equal(baseline.radius,.11);assert.equal(baseline.enabled,true);
   }
 });
 
@@ -37,21 +32,15 @@ test('the glow switch still disables bloom in every preset', () => {
   }
 });
 
-test('Cinematic boosts authored emissive materials without compounding on repeated updates', () => {
+test('shared emission survives tier switches and repeated updates without compounding', () => {
   const material = {emissive:{getHex:()=>0x4488ff}, emissiveIntensity:2};
   const pipeline = Object.create(GraphicsPipeline.prototype);
   pipeline.world = {traverse(visitor){visitor({isMesh:true, userData:{}, material});}};
   pipeline.emissiveBase = new WeakMap();
   pipeline.reflectionBase = new WeakMap();
-  pipeline.settings = resolveGraphicsSettings('cinematic');
-  pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.35);
-  pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * 1.25 * 1.35);
-  pipeline.settings = resolveGraphicsSettings('high-refresh');
-  pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * 1.2);
-  pipeline.settings = resolveGraphicsSettings('high-refresh',{}, {legacyGlowDefaults:true});
-  pipeline.updateMaterials();
-  assert.equal(material.emissiveIntensity, 2 * .8);
+  for(const name of ['cinematic','performance','high-refresh','balanced','ultra','high']) {
+    pipeline.settings = resolveGraphicsSettings(name,{}, {legacyGlowDefaults:true});
+    pipeline.updateMaterials();assert.equal(material.emissiveIntensity,3,name);
+    pipeline.updateMaterials();assert.equal(material.emissiveIntensity,3,'repeated update remains based on authored emission');
+  }
 });

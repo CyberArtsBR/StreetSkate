@@ -235,7 +235,8 @@ export class StreetPhysics {
     }
     if (events.grab && !this.flipState && !this.grounded && !this.grind && !this.wallRide) {
       this.grabState = { ...events.grab, heldTime: 0 };
-      this.grabState.scoreEntry = this.recordTrick(events.grab.name, events.grab.points);
+      this.grabState.scoreEntry = this.tricks.recordAirGrab(events.grab.name, events.grab.points,{stance:this.stance});
+      this.feedback=this.tricks.comboText();this.feedbackTime=2.2;
     }
     if (events.grind && !this.grounded && !this.grind) {
       this.pendingGrindTrick = events.grind; this.grindIntentTime = 0.18;

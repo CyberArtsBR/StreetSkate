@@ -337,9 +337,15 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     if (this.bailTime > 0) p.grabWeight = 0;
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
+    this._supportPlaneNormal ||= new THREE.Vector3();
+    this._supportPlaneRotation ||= new THREE.Quaternion();
+    this._supportPlaneNormal.copy(this.normal).applyQuaternion(
+      this.visual.getWorldQuaternion(this._supportPlaneRotation).invert());
+    const supportOffset=this.normal.dot(this._smoothedVisualPosition)-this.normal.dot(this.position);
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;
     const bailProgress = this.bailTime > 0 ? clamp(1 - this.bailTime / this.bailDuration, 0, 1) : 0;
     const common = {
+      supportPlane:{normal:this._supportPlaneNormal,offset:supportOffset},
       presentation: this.presentation,
       flipState: this.flipState,
       flipPhase: this.presentation.flipPhase,

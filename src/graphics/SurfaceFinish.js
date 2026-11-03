@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+import { applyOrbitFloorFinish } from './OrbitSurfaceMaterials.js';
+
 // Low-frequency variation breaks up repeated source textures without new image
 // downloads, UV edits, or geometry/collision changes. Color stays close to the
 // artist's original; roughness carries most of the variation.
@@ -82,9 +85,12 @@ export function refineMapSurfaces(root, id) {
           addSurfaceVariation(m, { tone: .13, roughness: .12, scale: .24 });
         }
       } else if (id === 'orbit' && /^Ceramic \/ /.test(m.name)) {
-        m.metalness = .12;
-        m.roughness = Math.max(m.roughness, .48);
-        addSurfaceVariation(m, { tone: .07, roughness: .15, scale: .45 });
+        if(applyOrbitFloorFinish(m))addSurfaceVariation(m,{tone:.025,roughness:.025,scale:.28});
+        else {
+          m.metalness = .12;
+          m.roughness = Math.max(m.roughness, .48);
+          addSurfaceVariation(m, { tone: .07, roughness: .15, scale: .45 });
+        }
       }
     }
   });
@@ -93,12 +99,22 @@ export function refineMapSurfaces(root, id) {
   // a bounded set of opaque ramp/structure batches, never the enclosing roof.
   // Performance can disable these through GraphicsPipeline.updateMaterials.
   if (!['orbit', 'grand-warehouse'].includes(id)) return;
-  const candidates = [];
+  const candidates = [],bounds=new THREE.Box3(),size=new THREE.Vector3();
   root.traverse(mesh => {
     if (!mesh.isMesh || mesh.userData.cameraRoof || Array.isArray(mesh.material)) return;
     const m = mesh.material;
     if (!m?.isMeshStandardMaterial || m.transparent || m.opacity < 1) return;
     if (!/^(Foundry_(Dark_Timber|Plywood)|Frame \/|Panel \/|Ceramic \/)/.test(m.name)) return;
+    if(id==='orbit'&&/^Ceramic \/ /.test(m.name)) {
+      bounds.setFromObject(mesh).getSize(size);
+      // The broad coplanar deck self-shadowed into dense repeated bands in
+      // Follow. It still receives rider/ramp shadows; only its own casting is
+      // suppressed. Slope/obstacle geometry and every collision buffer stay.
+      if(size.y<.03&&Math.max(size.x,size.z)>2) {
+        mesh.userData.visualPassCaster=false;mesh.userData.castShadow=false;mesh.castShadow=false;
+        return;
+      }
+    }
     candidates.push(mesh);
   });
   candidates.sort((a, b) => b.geometry.attributes.position.count - a.geometry.attributes.position.count);

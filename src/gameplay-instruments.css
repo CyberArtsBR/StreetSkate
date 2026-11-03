@@ -79,3 +79,8 @@ body[data-screen='playing'] .skate-hud{
 }
 #run-timer.time-low::before{color:#ffd18a}
 #run-timer.time-critical::before{color:#ff9eae}
+
+/* Local score accent: preserve camera and lettering metrics. */
+#trick-feedback.exceptional-line{animation:landed-line-accent .65s ease-out}
+@keyframes landed-line-accent{from{filter:drop-shadow(0 0 10px #91f7dc)}to{filter:drop-shadow(0 0 0 transparent)}}
+@media(prefers-reduced-motion:reduce){#trick-feedback.exceptional-line{animation:none}}

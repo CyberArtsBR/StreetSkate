@@ -3,6 +3,9 @@ import { ParkCollision } from '../game/ParkCollision.js';
 import { SkateboardContactRig } from '../game/SkateboardContactRig.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Aim the entrance into the open plaza instead of the tall wooden wall.
+// The imported layout's verified 20-second approach stays clear at this angle.
+export const GRAND_ENTRANCE_HEADING = .5;
 
 /** Reject discontinuous stair/ledge height support masquerading as a flat spawn. */
 export function isSafeGrandSpawnSupport(support, preferredHeight) {
@@ -66,11 +69,12 @@ export function ensureGrandWarehouseSpawns(world) {
   };
   // Transactional: never leave half-repaired spawn positions if a later spot
   // has no viable placement. Visual GLB transforms are never changed.
-  const entrance = place(manifest.spawn, manifest.spawnHeading || 0, 'entrance');
+  const entrance = place(manifest.spawn, GRAND_ENTRANCE_HEADING, 'entrance');
   const spots = manifest.spots.map(spot => ({
     ...spot, position: place(spot.position, spot.heading || 0, spot.id),
   }));
   manifest.spawn = entrance;
+  manifest.spawnHeading = GRAND_ENTRANCE_HEADING;
   manifest.spots = spots;
   manifest.statistics = { ...manifest.statistics, grandValidatedSpawns: spots.length + 1 };
 }

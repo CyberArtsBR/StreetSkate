@@ -135,7 +135,10 @@ export function safeArmGoal(shoulder, requested, outward, head, armLength,
   const goal = requested.clone();
   const relative = goal.clone().sub(shoulder);
   // Keep normal movement hands beside the torso, not across the chest.
-  const minimumOut = armLength * (neutral ? 0.42 : crossBody ? -0.03 : 0.24);
+  // A low deck grab must reach inward from the shoulder to the board centre.
+  // The old 3% allowance stopped the wrist alongside the knee even when the
+  // named pose requested a reachable rail. Skull and arm-length guards remain.
+  const minimumOut = armLength * (neutral ? 0.42 : crossBody ? -0.65 : 0.24);
   const currentOut = relative.dot(side);
   if (currentOut < minimumOut) goal.addScaledVector(side, minimumOut - currentOut);
   // On ordinary rolling and airborne recovery poses, arms should remain

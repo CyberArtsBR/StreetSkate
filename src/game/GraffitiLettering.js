@@ -25,19 +25,27 @@ export function prepareGraffitiHudGlyphs(text, palette='cyan-purple'){
     let glyph=hudGlyphs.get(url);
     if(!glyph){
       const image=new Image();glyph={image,status:'loading'};hudGlyphs.set(url,glyph);
+      let settle;glyph.ready=new Promise(resolve=>{settle=resolve;});
       image.decoding='async';
       image.onload=()=>{
-        if(!image.naturalWidth){glyph.status='failed';return;}
-        if(typeof image.decode!=='function'){glyph.status='ready';return;}
-        image.decode().catch(()=>{}).then(()=>{glyph.status=image.naturalWidth?'ready':'failed';});
+        if(!image.naturalWidth){glyph.status='failed';settle();return;}
+        if(typeof image.decode!=='function'){glyph.status='ready';settle();return;}
+        image.decode().catch(()=>{}).then(()=>{glyph.status=image.naturalWidth?'ready':'failed';settle();});
       };
-      image.onerror=()=>{glyph.status='failed';};
+      image.onerror=()=>{glyph.status='failed';settle();};
       image.src=url;
     }
     loading ||= glyph.status==='loading';
     failed ||= glyph.status==='failed';
   }
   return loading?'loading':failed?'failed':'ready';
+}
+
+/** Warm only the common menu headings while the title and park are loading. */
+export function prepareMenuGraffitiLettering(){
+  prepareGraffitiHudGlyphs('BUILD YOUR LINE');
+  prepareGraffitiHudGlyphs('RIDER DECK SPOT','gold');
+  return Promise.all([...hudGlyphs.values()].map(glyph=>glyph.ready));
 }
 
 const pending=new WeakSet(), installed=new WeakMap();
@@ -57,6 +65,7 @@ export function prepareGraffitiLettering(lettering){
 /** Reveal a whole decoded heading at once; slow/missing glyphs keep readable text. */
 export function installGraffitiFallback(root=document){
   if(installed.has(root))return installed.get(root);
+  prepareMenuGraffitiLettering();
   const load=event=>{if(event.target?.tagName==='IMG')prepareGraffitiLettering(event.target.closest?.('.graffiti-lettering'));};
   const error=event=>{
     const lettering=event.target?.closest?.('.graffiti-lettering');

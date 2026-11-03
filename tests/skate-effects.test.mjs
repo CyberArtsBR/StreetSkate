@@ -31,7 +31,7 @@ test('ramp reentry tangent speed does not create a heavy impact cloud',()=>{
 });
 
 test('grind particles stay within the fixed pool; performance removes sparks and traces',()=>{
-  const scene=new THREE.Scene(),fx=new SkateEffects(scene),s=rider();s.grind={};
+  const scene=new THREE.Scene(),fx=new SkateEffects(scene),s=rider();s.grind={rail:{audioSurfaceTag:"metal"}};
   assert.equal(scene.children.length,1);
   const positionBuffer=fx.glints.arrays.position;
   for(let i=0;i<600;i++)fx.update(1/60,s);
@@ -64,4 +64,30 @@ test('bail liquid waits for ragdoll contact, emits once, fades and clears on res
   for(let i=0;i<310;i++)fx.update(1/60,s);
   assert.equal(fx.puddles.some(p=>p.mesh.visible),false);
   fx.reset(s);assert.equal(count(fx.dust),0);fx.dispose();
+});
+
+
+test('only authored metal contact makes luminous grind sparks; clean metal has no landing dirt',()=>{
+  for(const tag of ['wood','concrete','metal','rubber']) {
+    const fx=new SkateEffects(),s=rider();s.grind={rail:{audioSurfaceTag:tag}};
+    for(let i=0;i<90;i++)fx.update(1/60,s);
+    assert.equal(count(fx.glints)>0,tag==='metal',`${tag}: luminous spark contract`);
+    if(tag==='wood'||tag==='concrete')assert.ok(fx.dust.cursor>0,`${tag}: restrained contact debris`);
+    fx.clearPool(fx.dust);fx.origin.copy(s.position);fx.normal.copy(s.normal);fx.forward.copy(s.forward);
+    fx.landing({...s,grind:null,audioSurfaceTag:tag},9);
+    if(tag==='metal'||tag==='rubber')assert.equal(count(fx.dust),0,'clean finish stays free of dirt cloud');
+    fx.dispose();
+  }
+});
+
+test('recorded replay particles consume events without touching a player and expire on replay time',()=>{
+  const fx=new SkateEffects();
+  assert.equal(fx.playRecordedEvent({kind:'landing',point:[1,2,3],normal:[0,1,0],surface:'concrete',strength:.8}),true);
+  assert.ok(count(fx.dust)>0);
+  assert.equal(fx.playRecordedEvent({kind:'grind',point:[1,2,3],surface:'metal'}),true);assert.ok(count(fx.glints)>0);
+  assert.equal(fx.playRecordedEvent({kind:'bail',point:[1,2,3],normal:[0,1,0]}),true);assert.ok(fx.puddles.some(p=>p.mesh.visible));
+  assert.equal(fx.playRecordedEvent({kind:'bail',point:[NaN,0,0]}),false);
+  for(let i=0;i<330;i++)fx.updateReplay(1/60);
+  assert.equal(count(fx.dust),0);assert.equal(count(fx.glints),0);assert.equal(fx.puddles.some(p=>p.mesh.visible),false);
+  fx.reset();fx.dispose();
 });
