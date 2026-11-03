@@ -15,15 +15,15 @@ const validManifest = () => ({
 });
 const root = () => ({ traverse() {} });
 
-test('Rooftop, Urban and independent Grand Warehouse remain selectable with stable IDs', () => {
+test('Skate Paradise replaces Map 1 while archived parks retain stable IDs', () => {
   const registry = createDefaultParkRegistry({
     rooftopLoader: () => ({ id: 'roof' }),
     legacyLoader: () => ({ id: 'old' }),
   });
   assert.deepEqual(registry.list({ selectableOnly: true }).map(p => p.id),
-    ['rooftop', 'orbit', 'grand-warehouse']);
+    ['skate-paradise', 'orbit', 'grand-warehouse']);
   assert.deepEqual(PARK_DEFINITIONS.map(p => p.id),
-    ['rooftop', 'orbit', 'grand-warehouse', 'legacy']);
+    ['skate-paradise', 'rooftop', 'orbit', 'grand-warehouse', 'legacy']);
   assert.deepEqual(PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.number),[1,2,3]);
   assert.equal(registry.get('legacy').available, true);
   assert.equal(registry.get('legacy').selectable, false);

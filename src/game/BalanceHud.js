@@ -9,8 +9,12 @@ export function ensureBalanceHud() {
     #balance-hud .balance-label{margin-bottom:7px;text-shadow:0 2px 6px #000}
     #balance-hud .balance-track{height:8px;border:1px solid rgba(255,255,255,.58);background:linear-gradient(90deg,rgba(255,90,70,.8),rgba(255,255,255,.22) 26%,rgba(255,255,255,.22) 74%,rgba(255,90,70,.8));border-radius:99px;position:relative;overflow:visible}
     #balance-hud .balance-center{position:absolute;left:50%;top:-3px;width:1px;height:12px;background:rgba(255,255,255,.62)}
-    #balance-hud .balance-marker{position:absolute;left:50%;top:50%;width:13px;height:18px;border-radius:4px;background:#fff;box-shadow:0 0 12px rgba(255,255,255,.78);transform:translate(-50%,-50%);transition:left .045s linear}
+    #balance-hud .balance-marker{position:absolute;left:50%;top:50%;width:13px;height:18px;border-radius:4px;background:#fff;box-shadow:0 0 12px rgba(255,255,255,.78);transform:translate(-50%,-50%);transition:left .045s linear,top .045s linear}
     #balance-hud.danger .balance-marker{box-shadow:0 0 16px rgba(255,120,75,.95)}
+    #balance-hud[data-axis="vertical"]{left:calc(50% + min(23vw,180px));width:130px}
+    #balance-hud[data-axis="vertical"] .balance-track{width:8px;height:120px;margin:0 auto;background:linear-gradient(0deg,rgba(255,90,70,.8),rgba(255,255,255,.22) 26%,rgba(255,255,255,.22) 74%,rgba(255,90,70,.8))}
+    #balance-hud[data-axis="vertical"] .balance-center{left:-3px;top:50%;width:12px;height:1px}
+    #balance-hud[data-axis="vertical"] .balance-marker{width:18px;height:13px}
   `;
   document.head.appendChild(style);
   const root = document.createElement('div');
@@ -33,7 +37,10 @@ export function ensureBalanceHud() {
       // that value to CSS or leave stale danger lighting on the HUD.
       const normalized = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
       this.label.textContent = mode;
-      this.marker.style.left = `${50 + normalized * 47}%`;
+      const vertical=mode!=='GRIND';
+      root.dataset.axis=vertical?'vertical':'horizontal';
+      this.marker.style.left=vertical?'50%':`${50 + normalized * 47}%`;
+      this.marker.style.top=vertical?`${50 - normalized * 47}%`:'50%';
       root.setAttribute('aria-valuenow', String(Math.round(normalized * 100)));
       root.classList.toggle('danger', Math.abs(normalized) > 0.72);
     },

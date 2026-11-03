@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 import { LOCATION_IDS } from './agent10-release-utils.mjs';
 
@@ -10,7 +11,10 @@ const base = process.env.STREETSKATE_URL || 'http://127.0.0.1:4173';
 const out = process.env.AGENT10_ARTIFACT_DIR || 'artifacts/agent10';
 await mkdir(out, { recursive: true });
 const result = { url:base, checks:[], errors:[], failedRequests:[], started:new Date().toISOString() };
-const browser = await chromium.launch({ headless:true, args:[
+const localChrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const executablePath = process.env.STREETSKATE_BROWSER_EXECUTABLE
+  || (process.platform === 'win32' && existsSync(localChrome) ? localChrome : undefined);
+const browser = await chromium.launch({ headless:true, ...(executablePath ? { executablePath } : {}), args:[
   '--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist',
   '--disable-background-timer-throttling','--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',

@@ -20,8 +20,8 @@ export const MOVEMENT_STATE = Object.freeze({
 });
 
 export const PHYSICS = Object.freeze({
-  step: 1 / 120, push: 8.5, maxSpeed: 17, gravity: 20, brake: 16,
-  minJump: 5.4, maxJump: 7.6, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
+  step: 1 / 120, push: 8.5, maxSpeed: 18, gravity: 21, brake: 16,
+  minJump: 5.6, maxJump: 7.9, chargeTime: 0.24, coyoteTime: 0.09, jumpBuffer: 0.12,
   vertOllieBuffer: 0.9, maxLandingCorrection: 0.22,
 });
 const UP = new THREE.Vector3(0, 1, 0);
@@ -67,12 +67,13 @@ export class StreetPhysics {
     this.airHeading = heading;
     this.setMovementState(support ? MOVEMENT_STATE.GROUND : MOVEMENT_STATE.AIR);
     this.speed = 0; this.charge = 0; this.airSpin = 0;
-    this.flipState = null; this.grabState = null; this.manual = null; this.flatland = null;
+    this.flipState = null; this.lastCaughtFlip = null; this.grabState = null; this.manual = null; this.flatland = null;
     this.grind = null; this.wallRide = null; this.stance = 1;
     this.airTime = 0; this.accumulator = 0; this.coyote = 0; this.jumpBuffer = 0; this.jumpCharge = 0;
     this.pendingStepInput = { olliePressed: false, grindPressed: false, directionTaps: [] };
     this.distance = 0; this.justLanded = false; this.steer = 0; this.bailTime = 0;
     this.respawnTimer = 0; this.bailDuration = 1.25;
+    this.bailLaunchVelocity = null; this.bailSeverity = 0;
     this.score = 0; this.feedback = ''; this.feedbackTime = 0; this.stableGroundTime = 0;
     this.transitionAir = null; this.pendingGrindTrick = null;
     this.vertJumpPending = 0; this.vertJumpTimer = 0;
@@ -197,8 +198,8 @@ export class StreetPhysics {
     const result = this.tricks.settle();
     if (!result) return;
     this.score += result.points;
-    this.feedback = `${result.names} · ${result.multiplier}X · +${result.points}`;
-    this.feedbackTime = 2.6;
+    this.feedback = `${result.names} · +${result.points}`;
+    this.feedbackTime = 3.2;
   }
 
   handleEvents(events) {
@@ -234,7 +235,8 @@ export class StreetPhysics {
     }
     if (events.grab && !this.flipState && !this.grounded && !this.grind && !this.wallRide) {
       this.grabState = { ...events.grab, heldTime: 0 };
-      this.grabState.scoreEntry = this.recordTrick(events.grab.name, events.grab.points);
+      this.grabState.scoreEntry = this.tricks.recordAirGrab(events.grab.name, events.grab.points,{stance:this.stance});
+      this.feedback=this.tricks.comboText();this.feedbackTime=2.2;
     }
     if (events.grind && !this.grounded && !this.grind) {
       this.pendingGrindTrick = events.grind; this.grindIntentTime = 0.18;
@@ -304,8 +306,16 @@ export class StreetPhysics {
       this.bailVelocity ||= new THREE.Vector3();
       this.bailVelocity.y -= PHYSICS.gravity * dt;
       const next = this.position.clone().addScaledVector(this.bailVelocity, dt);
-      const support = this.surface.ground(this.position, 0.3, Math.max(0.4, this.position.y - next.y + 0.2));
-      if (support && next.y <= support.point.y + 0.015) {
+      const hitPoint = new THREE.Vector3(), hitNormal = new THREE.Vector3();
+      const crossed = this.surface.sweepRideable(this.position, next, hitPoint, hitNormal);
+      if (crossed) {
+        next.copy(hitPoint).addScaledVector(hitNormal, .018);
+        const into = this.bailVelocity.dot(hitNormal);
+        if (into < 0) this.bailVelocity.addScaledVector(hitNormal, -into);
+        this.bailVelocity.multiplyScalar(Math.exp(-5 * dt));
+      }
+      const support = this.surface.ground(next, 0.3, Math.max(0.4, this.position.y - next.y + 0.2));
+      if (!crossed && support && next.y <= support.point.y + 0.015) {
         next.y = support.point.y + 0.015; this.bailVelocity.y = 0;
         this.bailVelocity.x *= Math.exp(-5 * dt); this.bailVelocity.z *= Math.exp(-5 * dt);
       }
@@ -642,8 +652,13 @@ export class StreetPhysics {
 
   bail(message) {
     if (this.bailTime > 0 || this.respawnTimer > 0) return;
-    this.bailVelocity = this.velocity.clone().clampLength(0, 8);
-    this.velocity.set(0, 0, 0); this.bailDuration = 1.25; this.bailTime = this.bailDuration;
+    const impactSpeed = this.velocity.length();
+    this.bailSeverity = clamp((impactSpeed - 2) / 16, .08, 1);
+    this.bailVelocity = this.velocity.clone().clampLength(0, 10);
+    this.bailLaunchVelocity = this.bailVelocity.clone();
+    this.velocity.set(0, 0, 0);
+    this.bailDuration = 1.35 + .55 * this.bailSeverity;
+    this.bailTime = this.bailDuration;
     this.flipState = null; this.grabState = null;
     this.transitionAir = null; this.grind = null; this.wallRide = null; this.manual = null; this.flatland = null;
     this.setMovementState(MOVEMENT_STATE.BAIL);

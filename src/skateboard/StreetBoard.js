@@ -1,9 +1,12 @@
+import { FlatlandMotion, flatlandDeckPose } from '../character/FlatlandMotion.js';
+import { FlipWind } from './FlipWind.js';
 import { installHalfPipeFinish } from './HalfPipeFinish.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from '../game/SkateboardContactRig.js';
-import { flipTurns, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
+import { flipTurns, impossibleMotion, popMotion, GRAB_POSES } from '../character/TrickMotion.js';
 import { DEFAULT_BOARD_FINISH, SKATEBOARD_FINISHES } from './BoardFinishes.js';
+import { deckEmissionForGlow } from './BoardGlow.js';
 
 const clamp = THREE.MathUtils.clamp;
 
@@ -12,6 +15,8 @@ export class StreetBoard {
     this.url = url;
     this.root = new THREE.Group();
     this.root.name = 'street-board';
+    this.wind = new FlipWind(this.root);
+    this.flatlandMotion = new FlatlandMotion();
     this._rotation = new THREE.Euler();
     this._poseQuaternion = new THREE.Quaternion();
     this.poseReady = false;
@@ -21,6 +26,7 @@ export class StreetBoard {
     this._lastFlipYaw = 0;
     this._lastFlipProgress = 0;
     this.contactRig = { ...PRODUCTION_BOARD_CONTACT_RIG };
+    this.deckGlowMaterials = new Set();
   }
 
   deriveContactRig() {
@@ -70,8 +76,8 @@ export class StreetBoard {
     };
   }
 
-  async load({ persist = true } = {}) {
-    this.model = (await new GLTFLoader().loadAsync(this.url)).scene;
+  prepareContactGeometry(model) {
+    this.model = model;
     // Match Half Pipe's deck-only 18% extension: trucks/wheelbase stay intact.
     this.model.traverse(o => { if (o.isMesh && /^Board1/i.test(o.name)) o.scale.x *= 1.18; });
     const original = new THREE.Box3().setFromObject(this.model);
@@ -85,6 +91,20 @@ export class StreetBoard {
     this.model.position.set(-center.x, -box.min.y - this.deckHeight, -center.z);
     this.model.updateMatrixWorld(true);
     this.contactRig = this.deriveContactRig();
+    // Cache a conservative rigid envelope once, rather than rescanning mesh
+    // vertices in every manual/handstand frame. Coordinates are board-root local.
+    this.supportCorners=[];
+    this.model.traverse(mesh=>{
+      if(!mesh.isMesh||!mesh.geometry?.attributes.position)return;
+      mesh.geometry.computeBoundingBox();const box=mesh.geometry.boundingBox;
+      for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])
+        this.supportCorners.push(new THREE.Vector3(x,y,z).applyMatrix4(mesh.matrixWorld));
+    });
+    return this.contactRig;
+  }
+
+  async load({ persist = true } = {}) {
+    this.prepareContactGeometry((await new GLTFLoader().loadAsync(this.url)).scene);
     this.root.add(this.model);
     // A board must never inherit transparent/blended faces from the imported
     // GLB. Both sides of the deck, trucks and wheels must write real depth;
@@ -127,6 +147,7 @@ export class StreetBoard {
     this.finishIndex = ((Math.trunc(index) % SKATEBOARD_FINISHES.length) + SKATEBOARD_FINISHES.length) % SKATEBOARD_FINISHES.length;
     const finish = SKATEBOARD_FINISHES[this.finishIndex];
     if (!this.model) return;
+    this.deckGlowMaterials.clear();
     this.root.updateWorldMatrix(true, true);
     const inverse = this.root.matrixWorld.clone().invert();
     this.model.traverse(mesh => {
@@ -172,7 +193,8 @@ export class StreetBoard {
         // Keep the full-gradient deck opaque in every preset. Emission follows
         // the selected finish; its contrast remains visible even without bloom.
         material.emissive.setHex(finish.stops[1]);
-        material.emissiveIntensity = 0.42;
+        material.emissiveIntensity = deckEmissionForGlow(this.wheelGlowAmount);
+        this.deckGlowMaterials.add(material);
         material.transparent = false; material.opacity = 1;
         material.depthWrite = true; material.side = THREE.DoubleSide;
         material.needsUpdate = true;
@@ -187,6 +209,9 @@ export class StreetBoard {
   }
 
   resetPresentation() {
+    this.wind.reset();
+    this.flatlandMotion.reset();
+    this.manualSupport = false;
     this.poseReady = false;
     this._yawHold = 0;
     this._wasFlipping = false;
@@ -194,9 +219,17 @@ export class StreetBoard {
     this._lastFlipProgress = 0;
   }
 
+  catchFlip(flip) {
+    if(!flip)return;
+    this._lastFlipYaw=flipTurns({...flip,progress:1}).yaw*Math.PI*2;
+    this._lastFlipProgress=1;
+    this._wasFlipping=true;
+  }
+
   update({ presentation = null, airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grind = null, grindBalance = 0, wallRide = null, bail = false, bailProgress = 0,
-    stance = 1, flatland = null, time = 0, speedRatio = 0, dt = 1 / 60 }) {
+    stance = 1, flatland = null, time = 0, speedRatio = 0, dt = 1 / 60, supportPlane = null }) {
+    this.supportPlane=supportPlane;
     const glowTarget = bail ? 0 : THREE.MathUtils.smoothstep(clamp(speedRatio, 0, 1), .25, .85);
     this.wheelGlowAmount = (this.wheelGlowAmount || 0) + (glowTarget - (this.wheelGlowAmount || 0)) * (1 - Math.exp(-8 * Math.max(0, dt)));
     const glowColor = new THREE.Color(SKATEBOARD_FINISHES[this.finishIndex || 0].stops[1]);
@@ -204,6 +237,10 @@ export class StreetBoard {
       entry.material.emissive.copy(entry.base).lerp(glowColor, this.wheelGlowAmount);
       entry.material.emissiveIntensity = entry.intensity + 2.4 * this.wheelGlowAmount;
     }
+    // The same smoothed speed envelope brightens the opaque deck without
+    // touching the wheel effect or the board's collision representation.
+    const deckGlow = deckEmissionForGlow(this.wheelGlowAmount);
+    for (const material of this.deckGlowMaterials) material.emissiveIntensity = deckGlow;
     const grindPose = grind?.profile?.presentation;
     this.root.position.set(0,
       this.deckHeight + (airborne ? 0.025 : 0) + (grindPose?.visualLift || 0), 0);
@@ -232,9 +269,10 @@ export class StreetBoard {
     } else if (airborne && !grabState && !bail) {
       x += popMotion(presentation?.popProgress ?? 1);
     }
-    // Readable nose/tail lift while respecting short-deck ground clearance.
-    if (manual === 'manual') x -= 0.225 + clamp(manualBalance, -1, 1) * 0.018;
-    if (manual === 'noseManual') x += 0.225 - clamp(manualBalance, -1, 1) * 0.018;
+    // Keep the approved flatland support angle while raising the plain manual.
+    const flatlandWeight = Object.values(this.flatlandMotion.weights).reduce((sum, weight) => sum + weight, 0);
+    if (manual === 'manual') x -= 0.30 - 0.14 * flatlandWeight + clamp(manualBalance, -1, 1) * 0.035;
+    if (manual === 'noseManual') x += 0.30 - clamp(manualBalance, -1, 1) * 0.035;
     if (grindPose) {
       x += grindPose.pitch || 0;
       y += grindPose.yaw || 0;
@@ -243,21 +281,17 @@ export class StreetBoard {
     }
     if (wallRide) z += 0.12;
 
-    if (flatland) {
-      const wave = Math.sin(time * 7) * 0.08;
-      switch (flatland) {
-        case 'Pogo': x -= 0.48; break;
-        case 'Wrap Around': y += wave * 2.4; break;
-        case 'Handstand': x += 0.11; break;
-        case 'Casper': z += Math.PI; x -= 0.12; break;
-        case 'Truck Stand': y += Math.PI * 0.5; x -= 0.2; break;
-        case 'Anti Casper': z += Math.PI; x += 0.12; break;
-        case 'To Rail': y -= Math.PI * 0.5; break;
-        case 'Switch Foot Pogo': x += 0.48; break;
-        case 'One Foot Manual': x += stance > 0 ? -0.18 : 0.18; break;
-        default: break;
-      }
-    }
+    this.flatlandMotion.update(bail || airborne ? null : flatland, dt);
+    const flatPose = flatlandDeckPose(this.flatlandMotion);
+    x += flatPose.pitch;
+    y += flatPose.yaw;
+    z += flatPose.roll;
+    this.root.position.y += flatPose.lift;
+    this.riderHeight = this.root.position.y;
+    // A grab gathers the deck toward the chest. The rider keeps its body
+    // reference while foot IK follows this cosmetic lift; physics is untouched.
+    this.grabLift = !bail && !flipState && airborne && grabState ? .18 * clamp(grabWeight,0,1) : 0;
+    this.root.position.y += this.grabLift;
 
     if (bail) {
       const p = clamp(bailProgress, 0, 1);
@@ -275,6 +309,43 @@ export class StreetBoard {
     // changes crossfade so manuals/grinds don't snap to a different deck angle.
     if (flipState || bail || !this.poseReady) this.root.quaternion.copy(this._poseQuaternion);
     else this.root.quaternion.slerp(this._poseQuaternion, 1 - Math.exp(-22 * Math.max(0, dt)));
+    const wrap = impossibleMotion(flipState, stance);
+    if (wrap && !bail) {
+      const y = (this.contactRig.deckTopY || this.deckHeight) - this.deckHeight;
+      const local = new THREE.Vector3(0, y, wrap.pivotZ * Math.cos(this._yawHold));
+      const rotated = local.clone().applyQuaternion(this.root.quaternion);
+      // Rotate around the supported back foot instead of freely tumbling around
+      // the deck centre. This offset belongs only to rendering, never collision.
+      this.root.position.addScaledVector(new THREE.Vector3(0, y, wrap.pivotZ).sub(rotated), wrap.weight);
+      this.root.position.y += wrap.lift * wrap.weight;
+    }
     this.poseReady = true;
+    if (manual) this.manualSupport = true;
+    if (airborne || bail || grind || wallRide || flatland) this.manualSupport = false;
+    if (this.manualSupport && !this.supportCorners?.length) {
+      // Lift around the supporting truck rather than sinking the lower wheels
+      // through the ground when increasing the presentation angle.
+      const pitch = this.root.rotation.x;
+      const supportZ = pitch < 0 ? this.contactRig.frontTruckZ : this.contactRig.rearTruckZ;
+      this.root.position.y += Math.abs(Math.sin(pitch)) * Math.abs(supportZ)
+        + (Math.cos(pitch) - 1) * this.deckHeight;
+      // Keep support during the return to level instead of dropping the board
+      // immediately while its rotation is still blending out of the manual.
+      if (!manual && Math.abs(pitch) < 0.0001) this.manualSupport = false;
+    }
+    const flatResidual=Object.values(this.flatlandMotion.weights).some(weight=>weight>.000001);
+    if(!airborne&&!bail&&!grind&&!wallRide&&!flipState&&(supportPlane||manual||flatland||flatResidual||this.manualSupport)) {
+      this._supportScratch ||= new THREE.Vector3();
+      const n=supportPlane?.normal||THREE.Object3D.DEFAULT_UP;
+      let minimum=Infinity;
+      for(const corner of this.supportCorners||[]) {
+        this._supportScratch.copy(corner).applyQuaternion(this.root.quaternion).add(this.root.position);
+        minimum=Math.min(minimum,this._supportScratch.dot(n)+(supportPlane?.offset||0));
+      }
+      if(minimum<0&&n.y>.25)this.root.position.y+=-minimum/n.y;
+      if(!manual&&!flatland&&!flatResidual&&this.root.quaternion.angleTo(this._poseQuaternion)<.0001)this.manualSupport=false;
+    }
+    this.wind.update(flipState, airborne, bail, dt);
+
   }
 }

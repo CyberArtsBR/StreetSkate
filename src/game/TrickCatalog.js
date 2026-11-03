@@ -26,9 +26,9 @@ export const FLIP_TRICKS = Object.freeze({
   [DIR.UP]:         { name: 'Impossible', points: 250, roll: 0, pitch: 1, yaw: 0, duration: 0.55 },
   [DIR.DOWN]:       { name: 'Pop Shove-It', points: 150, roll: 0, pitch: 0, yaw: 0.5, duration: 0.43 },
   [DIR.UP_LEFT]:    { name: 'Hardflip', points: 300, roll: 1, pitch: 0, pitchArc: 0.22, yaw: -0.5, duration: 0.40 },
-  [DIR.UP_RIGHT]:   { name: 'Inward Heelflip', points: 325, roll: -1, pitch: 0.55, yaw: 0, duration: 0.6 },
+  [DIR.UP_RIGHT]:   { name: 'Inward Heelflip', points: 325, roll: -1, pitch: 0, pitchArc: 0.22, yaw: 0.5, duration: 0.6 },
   [DIR.DOWN_LEFT]:  { name: 'Varial Kickflip', points: 250, roll: 1, pitch: 0, yaw: 0.5, duration: 0.54 },
-  [DIR.DOWN_RIGHT]: { name: 'Varial Heelflip', points: 275, roll: -1, pitch: 0, yaw: 0.5, duration: 0.56 },
+  [DIR.DOWN_RIGHT]: { name: 'Varial Heelflip', points: 275, roll: -1, pitch: 0, yaw: -0.5, duration: 0.56 },
 });
 
 // Double taps extend the matching flip; a different direction queues a new trick.
@@ -38,9 +38,9 @@ export const DOUBLE_FLIP_TRICKS = Object.freeze({
   Impossible: { name: 'Double Impossible', points: 550, roll: 0, pitch: 2, yaw: 0, duration: 0.78 },
   'Pop Shove-It': { name: '360 Shove-It', points: 350, roll: 0, pitch: 0, yaw: 1, duration: 0.60 },
   Hardflip: { name: 'Double Hardflip', points: 650, roll: 2, pitch: 0, pitchArc: 0.22, yaw: -0.5, duration: 0.56 },
-  'Inward Heelflip': { name: 'Double Inward Heelflip', points: 675, roll: -2, pitch: 0.55, yaw: 0, duration: 0.80 },
+  'Inward Heelflip': { name: 'Double Inward Heelflip', points: 675, roll: -2, pitch: 0, pitchArc: 0.22, yaw: 0.5, duration: 0.80 },
   'Varial Kickflip': { name: '360 Flip', points: 500, roll: 1, pitch: 0, yaw: 1, duration: 0.70 },
-  'Varial Heelflip': { name: 'Laser Flip', points: 550, roll: -1, pitch: 0, yaw: 1, duration: 0.72 },
+  'Varial Heelflip': { name: 'Laser Flip', points: 550, roll: -1, pitch: 0, yaw: -1, duration: 0.72 },
   'Double Kickflip': { name: 'Triple Kickflip', points: 600, roll: 3, pitch: 0, yaw: 0, duration: 0.86 },
   'Double Heelflip': { name: 'Triple Heelflip', points: 625, roll: -3, pitch: 0, yaw: 0, duration: 0.88 },
 });
@@ -96,15 +96,8 @@ export const DOUBLE_GRIND_TRICKS = Object.freeze({
 });
 
 export const FLATLAND_TRICKS = Object.freeze({
-  'grind+grind': { name: 'Pogo', points: 200, instability: 0.34 },
-  'flip+flip': { name: 'Wrap Around', points: 225, instability: 0.30 },
   'grab+grab': { name: 'Handstand', points: 300, instability: 0.48 },
   'flip+grind': { name: 'Casper', points: 250, instability: 0.40 },
-  'grind+flip': { name: 'Truck Stand', points: 300, instability: 0.46 },
-  'flip+grab': { name: 'Anti Casper', points: 275, instability: 0.42 },
-  'grab+flip': { name: 'To Rail', points: 250, instability: 0.38 },
-  'grind+grab': { name: 'Switch Foot Pogo', points: 325, instability: 0.52 },
-  'grab+grind': { name: 'One Foot Manual', points: 325, instability: 0.50 },
 });
 
 export const MANUALS = Object.freeze({

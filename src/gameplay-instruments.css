@@ -16,7 +16,7 @@ body:not([data-screen='playing']) .hud-total{display:none}
 #run-timer .hud-glyph-value{justify-content:center}
 #run-timer.time-low{border-color:#ffb770;background:#362322ed}
 #run-timer.time-critical{border-color:#ffa0ae;background:#79243de8}
-#run-timer::after{display:none!important}
+#run-timer::after{display:none}
 body[data-screen='playing'] .skate-hud{position:fixed;left:max(24px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom))!important;z-index:9;display:flex;align-items:center;gap:17px;padding:13px 17px;border:1px solid #9acbd13d;border-left:3px solid #87f1f0;border-radius:4px 15px 15px 4px;background:linear-gradient(130deg,#151d2ef0,#141a29d6);box-shadow:0 6px 24px #0003;backdrop-filter:none;transition:none}
 .skate-hud .speed{display:flex;align-items:center;gap:10px}
 .skate-hud .speed>#speed-value{--glyph-height:54px;font-size:54px;line-height:1;letter-spacing:0;color:#ffeaa1;text-shadow:none;-webkit-text-stroke:0}
@@ -79,3 +79,8 @@ body[data-screen='playing'] .skate-hud{
 }
 #run-timer.time-low::before{color:#ffd18a}
 #run-timer.time-critical::before{color:#ff9eae}
+
+/* Local score accent: preserve camera and lettering metrics. */
+#trick-feedback.exceptional-line{animation:landed-line-accent .65s ease-out}
+@keyframes landed-line-accent{from{filter:drop-shadow(0 0 10px #91f7dc)}to{filter:drop-shadow(0 0 0 transparent)}}
+@media(prefers-reduced-motion:reduce){#trick-feedback.exceptional-line{animation:none}}

@@ -6,6 +6,14 @@ const safe01 = value => MathUtils.clamp(Number.isFinite(value) ? value : 0, 0, 1
 
 export const FLIP_TIMING = Object.freeze({ pop: 0.14, flick: 0.34, rotationEnd: 0.82, catchEnd: 0.94 });
 
+// Use the authored rotation, not the display name: 360 Flip is a kickflip
+// family trick and Laser Flip is a heelflip family trick. Both names omit
+// those words. Stance mirroring remains the rider's anatomical responsibility.
+export function flipFlickOffset(flipState) {
+  const roll = Number.isFinite(flipState?.roll) ? flipState.roll : 0;
+  return roll < 0 ? -.19 : roll > 0 ? .22 : .06;
+}
+
 export function flipMotion(progress = 0) {
   const p = safe01(progress);
   const rotation = MathUtils.smoothstep(p, 0.12, FLIP_TIMING.rotationEnd);
@@ -41,6 +49,27 @@ export function flipTurns(flipState) {
   const arc = rotation > 0 && rotation < 1 ? Math.sin(Math.PI * rotation) ** 2 : 0;
   turns.pitch += pitchArc * arc * (upgrading ? blend : 1);
   return turns;
+}
+
+// Reference: Nollie Skateboarding's Backfoot Impossible breakdown (2025-10-19):
+// pressure around the rear foot, front foot lifted clear, then catch. The
+// rotation stays authored by flipTurns; this is a shared visual contact pivot.
+export function impossibleMotion(flipState, stance = 1) {
+  if (!flipState || !Number.isFinite(flipState.pitch) || Math.abs(flipState.pitch) < .99
+    || flipState.roll || flipState.yaw) return null;
+  const p = safe01(flipState.progress), motion = flipMotion(p);
+  const weight = MathUtils.smoothstep(p, .08, .25) * (1 - MathUtils.smoothstep(p, .72, .84));
+  return { weight, pivotZ: (stance < 0 ? -1 : 1) * .20,
+    lift: motion.rearLift, frontLift: motion.frontLift + .08 * weight,
+    anklePitch: Math.sin(flipTurns(flipState).pitch * Math.PI * 2) * .32 * weight };
+}
+
+export function grindWeightShift(name, balance = 0, weight = 1) {
+  const w = safe01(weight), b = MathUtils.clamp(Number(balance) || 0, -1, 1);
+  const nose = ['Nosegrind', 'Noseslide', 'Crook', 'Overcrook'].includes(name);
+  const tail = ['5-0', 'Tailslide', 'Smith', 'Feeble'].includes(name);
+  return { foreAft: (nose ? -.045 : tail ? .045 : 0) * w,
+    lateral: b * .035 * w, compression: (.08 + Math.abs(b) * .04) * w };
 }
 
 // Original key poses: lift off the deck, reach beside it, drive backwards,

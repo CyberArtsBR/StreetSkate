@@ -112,7 +112,7 @@ export function characterPortrait(url) {
     if(baked){
       try{
         await new Promise((resolve,reject)=>{
-          const image=new Image();image.onload=resolve;image.onerror=reject;image.src=baked;
+          const image=new Image();image.onload=()=>Promise.resolve(image.decode?.()).then(resolve,reject);image.onerror=reject;image.src=baked;
         });
         return baked;
       }catch{ /* A missing static asset falls back to the real GLB preview. */ }

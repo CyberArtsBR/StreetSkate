@@ -99,13 +99,15 @@ export function neutralArmIKTargets(shoulder, outward, forward, armLength) {
  * angle slightly, never shortens the arm chain into a backwards elbow bend. */
 export function skatingArmIKTargets(shoulder, outward, forward, armLength, {
   front = false, balance = 0, balancePose = 0,
+  airBalance = 0,
   breathing = 0, up = new THREE.Vector3(0, 1, 0),
 } = {}) {
   const side = outward.clone().normalize();
   const face = forward.clone().addScaledVector(side, -forward.dot(side)).normalize();
   const lead = front ? 1 : -1;
-  const spread = THREE.MathUtils.degToRad(33 + 6 * C(balancePose, 0, 1)
-    + 3 * lead * C(balance, -1, 1));
+  const restingAngle = 33 + 6 * C(balancePose, 0, 1) + 3 * lead * C(balance, -1, 1);
+  const flightAngle = THREE.MathUtils.lerp(restingAngle, 90, THREE.MathUtils.smoothstep(airBalance, 0, 1));
+  const spread = THREE.MathUtils.degToRad(flightAngle);
   const direction = side.clone().multiplyScalar(Math.sin(spread))
     .addScaledVector(face, .025)
     .addScaledVector(up, -Math.cos(spread) + breathing).normalize();
@@ -133,7 +135,10 @@ export function safeArmGoal(shoulder, requested, outward, head, armLength,
   const goal = requested.clone();
   const relative = goal.clone().sub(shoulder);
   // Keep normal movement hands beside the torso, not across the chest.
-  const minimumOut = armLength * (neutral ? 0.42 : crossBody ? -0.03 : 0.24);
+  // A low deck grab must reach inward from the shoulder to the board centre.
+  // The old 3% allowance stopped the wrist alongside the knee even when the
+  // named pose requested a reachable rail. Skull and arm-length guards remain.
+  const minimumOut = armLength * (neutral ? 0.42 : crossBody ? -0.65 : 0.24);
   const currentOut = relative.dot(side);
   if (currentOut < minimumOut) goal.addScaledVector(side, minimumOut - currentOut);
   // On ordinary rolling and airborne recovery poses, arms should remain

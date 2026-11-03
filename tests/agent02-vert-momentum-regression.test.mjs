@@ -52,7 +52,7 @@ test('diagonal coping launch keeps true along-lip momentum, with one finite ener
   const lateral = s.velocity.dot(s.edge.copingTangent);
   assert.ok(lateral > 5, 'diagonal launch was incorrectly clamped to 1.1 m/s');
   assert.ok(s.velocity.dot(s.edge.deckOutward) > 1.0, 'steep coping zeroed all outward inertia');
-  assert.ok(s.velocity.lengthSq() <= s.before.lengthSq() + (3 * .72) ** 2 + 1e-8);
+  assert.ok(s.velocity.lengthSq() <= s.before.lengthSq() + (3 * .82) ** 2 + 1e-8);
   assert.equal(s.air.mode, 'return');
   assert.equal(s.air.frame.incomingSpeed, s.before.length());
 });

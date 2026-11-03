@@ -6,6 +6,8 @@ export const CAMERA_CLEARANCE = Object.freeze({
   radius: 0.28,
   // Start finding alternate sightlines before the camera becomes a face close-up.
   comfortMargin: 1.3,
+  comfortArmFraction: 0.6,
+  recoveryMargin: 0.35,
   sideOffsets: [1.5, 3.5],
   verticalOffsets: [0, 2.6, 5.2],
 });
@@ -26,10 +28,15 @@ export function resolveCameraClearance(surface, anchor, desired, previousEye = n
   const arm = desired.clone().sub(anchor);
   if (arm.lengthSq() < 1e-8) arm.set(0, 2, minimum + 1);
   const armDistance = arm.length();
-  const comfort = Math.max(minimum + CAMERA_CLEARANCE.comfortMargin, armDistance * 0.48);
+  const comfort = Math.max(minimum + CAMERA_CLEARANCE.comfortMargin,
+    armDistance * CAMERA_CLEARANCE.comfortArmFraction);
   const direct = probe(desired);
   const directDistance = direct.distanceTo(anchor);
-  if (directDistance >= comfort) {
+  // A coping edge can alternately cover and uncover the direct arm by a few
+  // centimetres. Keep a proven side until the direct sightline has recovered
+  // decisively, rather than switching back and forth at the same threshold.
+  const recovery = cache?.side ? CAMERA_CLEARANCE.recoveryMargin : 0;
+  if (directDistance >= comfort + recovery) {
     if (cache) {
       cache.arm = direct.clone().sub(anchor);
       cache.side = 0;

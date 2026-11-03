@@ -73,10 +73,10 @@ test('8. valid aligned approach captures', () => {
   assert.equal(validCapture().eligible, true);
 });
 
-test('9. low-speed capture receives the requested minimum grind speed', () => {
-  assert.equal(projectedGrindSpeed(0.21), GRIND_CAPTURE.antiStallSpeed);
-  assert.equal(projectedGrindSpeed(0.03), GRIND_CAPTURE.antiStallSpeed);
-  assert.ok(GRIND_CAPTURE.antiStallSpeed >= 3);
+test('9. low-speed capture preserves the incoming speed', () => {
+  assert.equal(projectedGrindSpeed(0.21), 0.21);
+  assert.equal(projectedGrindSpeed(0.03), 0.03);
+  assert.equal(projectedGrindSpeed(0), 0);
 });
 
 test('10. rail-end exit is detected', () => {
@@ -149,7 +149,7 @@ test('19. manual balance drifts', () => {
 
 test('20. correction input saves balance', () => {
   const ignored = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: 0 });
-  const corrected = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: 0.28 });
+  const corrected = simulateBalance({ seconds: 5.5, difficulty: 1.25, correction: -0.28 });
   assert.ok(Math.abs(corrected.state.value) < Math.abs(ignored.state.value));
 });
 

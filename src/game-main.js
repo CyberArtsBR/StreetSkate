@@ -1,13 +1,19 @@
+import { surfaceTagFor } from './game/SurfaceAudio.js';
+import { installModuleLoadRecovery } from './game/ModuleLoadRecovery.js';
+import { freezeStaticParkTransforms } from './graphics/StaticParkTransforms.js';
+import { warmScenePrograms } from './graphics/ShaderWarmup.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { StreetSkater } from './game/StreetSkater.js';
 import { SkateInput } from './input/SkateInput.js';
 import { FollowCamera } from './game/FollowCamera.js';
+import { CAMERA_MODES, CAMERA_LABELS, CAMERA_SHORTCUTS } from './game/CameraModes.js';
 import { createDebugOverlay, captureAuditTelemetry } from './game/DebugOverlay.js';
 import { captureGameplayState } from './game/core/GameplayStateSnapshot.js';
 import { TransitionDebugVisualizer, transitionDebugSummary } from './game/transitions/TransitionDebugVisualizer.js';
 import { createParkWorld, prepareParkRuntime, bindParkRuntime, disposeParkWorld } from './game/ParkRegistry.js';
+import { createTestMapWorld } from './game/TestMapLoader.js';
 import { SkateAudio } from './game/SkateAudio.js';
 import { SKATEBOARD_FINISHES } from './skateboard/BoardFinishes.js';
 import { loadSolarSky, createCloudBackdrop } from './park/SolarSky.js';
@@ -16,15 +22,23 @@ import { gameAssetUrl } from './game/AssetPaths.js';
 import { PortalsPhase1 } from './portals/PortalsPhase1.js';
 import { PortalsOnlineBeta } from './portals/PortalsOnlineBeta.js';
 import './portals/portals-phase1.css';
+import { CopingTrace } from './game/CopingTrace.js';
 import { RunSummary } from './game/RunSummary.js';
+import { sessionAttemptState } from './game/SessionFlow.js';
+import { ScoreRecords } from './game/ScoreRecords.js';
+import { readPlayerPreferences, applyPlayerPreferences } from './game/PlayerPreferences.js';
+import { FrameMetrics } from './graphics/FrameMetrics.js';
+import { PracticeDrills } from './game/PracticeDrills.js';
 import { HighlightRecorder } from './game/HighlightRecorder.js';
 import { HighlightPlayback } from './game/HighlightPlayback.js';
 import { setHudGlyphValue, preloadHudGlyphs } from './game/HudGlyphs.js';
 import { graffitiToneForTrick } from './game/GraffitiTypography.js';
-import { graffitiLettering, graffitiPalette, installGraffitiFallback } from './game/GraffitiLettering.js';
+import { graffitiLettering, graffitiPalette, installGraffitiFallback, prepareGraffitiHudGlyphs } from './game/GraffitiLettering.js';
 import { fitGraffitiHud } from './game/GraffitiHudLayout.js';
 import { GraphicsPipeline } from './graphics/GraphicsPipeline.js';
+import { SkateEffects } from './graphics/SkateEffects.js';
 import { GRAPHICS_PRESET_ORDER, loadGraphicsPreset, storeGraphicsPreset, normalizedGraphicsPreset, qualityFogDistance } from './graphics/GraphicsSettings.js';
+import { normalizeGlowOverrides, readGlowPresets, saveGlowPresets, initializeGlowDefaults, useCurrentGlowDefaults } from './graphics/GlowTuning.js';
 import './style.css';
 import './game-shell.css';
 import './loadout-menu.css';
@@ -32,8 +46,14 @@ import './game-hud.css';
 import './menu-presentation.css';
 import './gameplay-instruments.css';
 import './session-results.css';
+import './menu-graphics.css';
+import './flip-school.css';
+import './player-settings.css';
+import './graphics-glow.css';
+import './round-flow.css';
 
 const container = document.querySelector('#viewport');
+installModuleLoadRecovery();
 installGraffitiFallback();
 const app = document.querySelector('#app');
 let sceneNeedsRender=true;
@@ -53,8 +73,8 @@ scene.background = new THREE.Color('#25363d');
 scene.fog = new THREE.FogExp2('#25363d', 0.005);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.7));
-renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight, false);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -89,6 +109,11 @@ sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.07;
 sun.shadow.radius = 2;
 scene.add(sun);
+// Broad reflected skylight keeps costumes legible without making them glow.
+// One non-shadowed fill is shared by all maps; the key retains the 1024 atlas.
+const fill = new THREE.DirectionalLight('#bfd8ff', .4);
+fill.name = 'Map skylight fill';
+scene.add(fill, fill.target, sun.target);
 
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(2000, 2000),
@@ -100,8 +125,17 @@ floor.receiveShadow = true;
 scene.add(floor);
 
 const graphicsPipeline = new GraphicsPipeline(renderer, scene, camera);
+const performanceHud=document.createElement('div');performanceHud.className='frame-metrics';performanceHud.hidden=true;app.append(performanceHud);
+const frameMetrics=new FrameMetrics(renderer,performanceHud);
+let playerPreferences=applyPlayerPreferences(readPlayerPreferences());
+frameMetrics.setEnabled(playerPreferences.performance);
+const skateEffects = new SkateEffects(scene);
+graphicsPipeline.setEffectsTarget(skateEffects.root);
+let effectsWereActive = false;
 const graphicsStorage = (() => { try { return window.localStorage; } catch { return null; } })();
 let graphicsPreset = loadGraphicsPreset(graphicsStorage);
+let glowPresets = readGlowPresets(graphicsStorage);
+let legacyGlowDefaults = initializeGlowDefaults(graphicsStorage);
 
 const views = {
   overview: { position: [66, 62, 80], target: [-1, 0, 0], caption: 'The whole playground', index: '01' },
@@ -138,6 +172,8 @@ window.addEventListener('pointerdown', () => skateAudio.unlock(), { passive: tru
 window.addEventListener('keydown', () => skateAudio.unlock(), { passive: true });
 const legacyPark = new URLSearchParams(location.search).get('park') === 'legacy';
 const runSummary = new RunSummary();
+const scoreRecords=new ScoreRecords(graphicsStorage);
+let overtimeFirstRecord=false;
 const highlightRecorder = new HighlightRecorder();
 let runInProgress = false;
 let runFinished = false;
@@ -148,15 +184,61 @@ let comboStartTime = 0;
 let pendingReplayMoments = [];
 let portalsPhase1 = null;
 let portalsOnline = null;
+let previousPresentationEvent = null;
+let practiceMarker = null;
+const practiceDrills = new PracticeDrills();
+let practiceInputsEnabled = false, practiceInputText = '', practiceInputTime = 0;
+const drillHud = document.createElement('div');
+drillHud.className = 'practice-drill';
+drillHud.setAttribute('role','status');
+drillHud.setAttribute('aria-live','polite');
+drillHud.hidden = true;
+app.appendChild(drillHud);
+const inputHud = document.createElement('div');
+inputHud.className = 'practice-input';inputHud.hidden = true;app.appendChild(inputHud);
+function updateDrillHud() {
+  const visible = practiceDrills.enabled && gameShell.practice && gameShell.active;
+  if (drillHud.hidden === visible) drillHud.hidden = !visible;
+  if (visible && drillHud.textContent !== practiceDrills.label) drillHud.textContent = practiceDrills.label;
+}
 const highlightPlayback = new HighlightPlayback({
   camera,
   getSurface: () => collision,
   onFinish: () => gameShell.showResults(),
+  onEvent:event=>{skateAudio.impact(event.strength||.4,event.kind==='grind',event.kind);skateEffects.playRecordedEvent?.(event);},
   onMoment: moment => { highlightStatus = { ...moment, total: moment.count }; },
 });
 const gameShell = new GameShell({
+  input,
+  clearInput:()=>input.suppressHeldInputs(),
+  attemptState:()=>sessionAttemptState(skater),
+  overtime:()=>{overtimeFirstRecord=!skater.tricks.combo.length&&sessionAttemptState(skater).eligibleAttempt;},
+  cue:kind=>skateAudio.cue(kind),
+  preferences:(partial,all)=>{
+    playerPreferences=all;followCamera?.setPreferences(all);sceneNeedsRender=true;
+    skateEffects.setLiquidEnabled(all.liquid);frameMetrics.setEnabled(all.performance);
+    if(partial.effectsVolume!=null)skateAudio.setEffectsVolume(partial.effectsVolume);
+    if(partial.crowdVolume!=null)skateAudio.setCrowdVolume(partial.crowdVolume);
+    if(partial.voiceVolume!=null)skateAudio.setVoiceVolume(partial.voiceVolume);
+    if(partial.renderScale!=null)applyGraphicsPreset(graphicsPreset);
+    if(partial.announcerVolume!=null)skateAudio.setAnnouncerVolume(partial.announcerVolume);
+    if(partial.backgroundAudio!=null)skateAudio.setBackgroundAudio(partial.backgroundAudio);
+  },
+  tryTrick:lesson=>{
+    if(!skater?.grounded||skater.bailTime)return;
+    practiceMarker={position:skater.position.clone(),heading:skater.heading,stance:skater.stance,location:currentWorld.id};
+    practiceDrills.selectTrick(lesson.trick.name,lesson.id);practiceInputsEnabled=true;
+    updateDrillHud();
+  },
   start: practice => {
     if (!skater) return;
+    // Warm the first ollie and its common digits while the session starts.
+    prepareGraffitiHudGlyphs('OLLIE501','cyan-purple');
+    practiceMarker = null;
+    overtimeFirstRecord=false;
+    practiceDrills.target = null;
+    practiceDrills.reset();
+    practiceInputText = ''; practiceInputTime = 0;
     highlightPlayback.stop();
     skater.spawn.set(...manifest.spawn); skater.spawnHeading = Number(manifest.spawnHeading) || 0;
     skater.reset(skater.spawn, skater.spawnHeading);
@@ -165,12 +247,20 @@ const gameShell = new GameShell({
       deckName: gameShell.boardLabel(), mapName: gameShell.locationName() }, skater);
     highlightRecorder.reset(skater);
     runInProgress = true; runFinished = false; highlightClips = []; highlightStatus = null;
-    sessionEventTime = 0; comboStartTime = 0; pendingReplayMoments = [];
+    sessionEventTime = 0; comboStartTime = 0; pendingReplayMoments = []; previousPresentationEvent=null;
   },
   pause: value => setPaused(value),
+  drillsEnabled: () => practiceDrills.enabled,
+  toggleDrills: () => practiceDrills.toggle(),
+  practiceInputsEnabled: () => practiceInputsEnabled,
+  togglePracticeInputs: () => { practiceInputsEnabled = !practiceInputsEnabled; },
   camera: mode => setCameraMode(mode),
+  getDeadZone: () => input.stickDeadZone,
+  setDeadZone: value => { input.stickDeadZone = value; },
   graphics: name => applyGraphicsPreset(name),
   graphicsStatus: () => graphicsPipeline.getStatus(),
+  graphicsGlow: (key,value) => setGlowValue(key,value),
+  graphicsGlowReset: () => resetGlowValues(),
   screenChanged: phase => {
     sceneNeedsRender=true;
     if (phase === 'results' && runFinished && !highlightRecorder.finished) {
@@ -180,13 +270,16 @@ const gameShell = new GameShell({
   },
   score: () => skater?.score || 0,
   finishRun: () => {
+    if(runFinished)return gameShell.runSummary;
     runInProgress = false; runFinished = true;
-    return runSummary.finish({ totalScore: skater?.score || 0,
-      durationSeconds: gameShell.practice ? runSummary.elapsedSeconds : 90 });
+    if(gameShell.sessionFlow.finishReason!=='landed')skater?.tricks.cancelCombo();
+    const run=runSummary.finish({ totalScore: skater?.score || 0,
+      durationSeconds: gameShell.practice ? runSummary.elapsedSeconds : gameShell.sessionFlow.elapsed });
+    return {...run,parkRecord:scoreRecords.record(currentWorld.id,run)};
   },
   canWatchHighlights: () => highlightClips.length > 0,
   watchHighlights: () => highlightPlayback.start(highlightClips),
-  stopHighlights: () => { highlightPlayback.stop(); sceneNeedsRender = true; },
+  stopHighlights: () => { highlightPlayback.stop(); skateAudio.silence(); skateEffects.reset(skater); sceneNeedsRender = true; },
   replayStatus: () => highlightStatus,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
   sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
@@ -207,6 +300,7 @@ const gameShell = new GameShell({
   portalsStart: (mapId, practice) => portalsPhase1?.gateway.track('skate_run_start', { map: mapId || 'rooftop', practice }),
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
+  testMap: ({file,hero,board,onProgress}) => selectLocation('test-map', {file,hero,finish:board.finishIndex,onProgress}),
 });
 portalsPhase1 = new PortalsPhase1(gameShell);
 void portalsPhase1.start();
@@ -225,17 +319,30 @@ function observeRunScoring(controller) {
   const originalSettle = scorer.settle;
   scorer.record = function (...args) {
     const first = !this.combo.length;
+    if(runInProgress&&!gameShell.sessionFlow.snapshot().allowNewCombo&&first&&!overtimeFirstRecord)return null;
+    if(runFinished)return null;
     const entry = originalRecord.apply(this, args);
+    if(entry)overtimeFirstRecord=false;
     if (runInProgress && entry && first) comboStartTime = sessionEventTime;
     return entry;
   };
   scorer.settle = function (...args) {
+    if(this.combo.length&&runInProgress&&!gameShell.sessionFlow.acceptSettlement()){this.cancelCombo();return null;}
+    if(runFinished){this.cancelCombo();return null;}
     const entries = runInProgress && this.combo.length ? this.combo.map(entry => ({ ...entry })) : [];
     const durationSeconds = this.comboDuration();
     const result = originalSettle.apply(this, args);
     if (runInProgress && result) {
+      if (gameShell.practice){practiceDrills.observe(controller,1/120);practiceDrills.accept(entries);updateDrillHud();}
       const moment = runSummary.recordCombo({ ...result, entries, durationSeconds,
         startTime: comboStartTime, endTime: sessionEventTime });
+      if(moment){
+        const oldBest=scoreRecords.get(currentWorld.id)?.bestCombo;
+        if(skateAudio.onComboSettled?.({points:moment.points,id:currentWorld.id+':'+sessionEventTime,location:currentWorld.id,
+          personalBest:!gameShell.practice&&oldBest>0&&moment.points>oldBest}))gameShell.music.duck(900,.65);
+        if(moment.points>=1200){const node=document.getElementById('trick-feedback');node?.classList.remove('exceptional-line');
+          requestAnimationFrame(()=>node?.classList.add('exceptional-line'));}
+      }
       if (moment) pendingReplayMoments.push({ start: moment.startTime, end: moment.endTime,
         points: moment.points, label: moment.label });
     }
@@ -244,6 +351,7 @@ function observeRunScoring(controller) {
 }
 gameShell.sound = skateAudio.enabled;
 skateAudio.setEffectsVolume(gameShell.effectsVolume);
+skateEffects.setLiquidEnabled(playerPreferences.liquid);
 applyGraphicsPreset(graphicsPreset);
 document.querySelector('#trick-guide-button').onclick = () => gameShell.openTutorial();
 
@@ -254,13 +362,38 @@ function applyGraphicsPreset(name) {
     devicePixelRatio: window.devicePixelRatio,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
-  }, { bloomEnabled: gameShell.bloomEnabled });
+  }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
+    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults, renderScale:playerPreferences.renderScale });
+  skateEffects.setQuality(graphicsPipeline.settings);
+  skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
   storeGraphicsPreset(graphicsStorage, graphicsPreset);
   if (currentWorld) {
+    currentWorld.surfaceDetail?.setQuality(graphicsPipeline.settings);
     graphicsPipeline.setWorld(currentWorld.park);
     applyLighting();
   }
+}
+
+function setGlowValue(key, value) {
+  const overrides = normalizeGlowOverrides({ ...glowPresets[graphicsPreset], [key]:value });
+  glowPresets = saveGlowPresets({ ...glowPresets, [graphicsPreset]:overrides }, graphicsStorage);
+  graphicsPipeline.setGlowTuning(glowPresets[graphicsPreset]);
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
+}
+
+function resetGlowValues() {
+  const next = { ...glowPresets };
+  delete next[graphicsPreset];
+  glowPresets = saveGlowPresets(next, graphicsStorage);
+  if (graphicsPreset === 'high-refresh') {
+    legacyGlowDefaults = false;
+    useCurrentGlowDefaults(graphicsStorage);
+  }
+  graphicsPipeline.setGlowTuning({}, {legacyGlowDefaults});
+  sceneNeedsRender = true;
+  return graphicsPipeline.getStatus();
 }
 
 function applyLighting() {
@@ -274,6 +407,11 @@ function applyLighting() {
   ambient.color.set(settings.ambientSky);
   ambient.groundColor.set(settings.ambientGround);
   ambient.intensity = dusk ? 0.4 : settings.ambientIntensity;
+  fill.color.set(settings.fillColor || '#bfd8ff');
+  fill.intensity = (settings.fillIntensity || 0) * (dusk ? .55 : 1);
+  fill.position.set(...(settings.fillPosition || [35, 25, -45]));
+  fill.target.position.set(...settings.center);
+  fill.target.updateMatrixWorld();
   renderer.toneMappingExposure = settings.exposure * (graphicsPipeline.settings?.exposureMultiplier || 1);
   scene.environment = currentWorld.environment || sky?.environment?.texture || environment.texture;
   scene.environmentIntensity = (dusk ? 0.22 : settings.environmentIntensity) *
@@ -344,18 +482,19 @@ function setExploreView(name, instant = false) {
 function setCameraMode(nextMode) {
   if (!followCamera) return;
   followCamera.setMode(nextMode, mode === 'skate' ? skater : null);
-  gameShell.cameraIndex = ['follow','classic','fixed'].indexOf(followCamera.mode);
+  gameShell.cameraIndex = CAMERA_MODES.indexOf(followCamera.mode);
   const button = document.querySelector('#camera-mode');
   button.setAttribute('aria-pressed', String(followCamera.mode === 'follow'));
-  button.setAttribute('aria-label', `Camera: ${followCamera.mode}. Cycle camera view`);
-  document.querySelector('#camera-label').textContent = followCamera.mode.toUpperCase();
-  // New preference version makes high follow the default even for earlier users.
-  try { localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode); } catch { /* Storage is optional. */ }
+  button.setAttribute('aria-label', `Camera: ${CAMERA_LABELS[followCamera.mode]}. Cycle camera view`);
+  document.querySelector('#camera-label').textContent = CAMERA_LABELS[followCamera.mode].toUpperCase();
+  try {
+    localStorage.setItem('streetskate.cameraMode.v2', followCamera.mode);
+    localStorage.setItem('streetskate.camera', followCamera.mode);
+  } catch { /* Storage is optional. */ }
 }
 
 function toggleCameraMode() {
-  const modes = ['follow', 'classic', 'fixed'];
-  setCameraMode(modes[(modes.indexOf(followCamera?.mode) + 1) % modes.length]);
+  setCameraMode(CAMERA_MODES[(CAMERA_MODES.indexOf(followCamera?.mode) + 1) % CAMERA_MODES.length]);
 }
 
 function goToSpot(id) {
@@ -380,6 +519,12 @@ function setPaused(value) {
   input.clear();
   gameShell.syncPause(paused);
   if (paused) {
+    if (import.meta.env.DEV && skater?.copingTrace?.size) {
+      let capture=document.getElementById('local-coping-capture');
+      if(!capture){capture=document.createElement('script');capture.type='application/json';capture.id='local-coping-capture';document.body.append(capture);}
+      capture.textContent=JSON.stringify({location:currentWorld?.id,rig:skater.contactRig,
+        camera:followCamera?.mode,trace:skater.copingTrace.snapshot()});
+    }
     skateAudio.silence();
     input.clear();
     if (skater) {
@@ -441,19 +586,38 @@ function updateHud() {
   setHudGlyphValue(hud['score-value'],scoreText);
   const trickNode = hud['trick-feedback'];
   const trickLabel = skater.feedbackTime > 0 ? skater.feedback : skater.tricks.comboText();
-  // Do not reset the pop animation on every render frame.
-  if (trickNode.dataset.graffitiText !== trickLabel) {
-    trickNode.innerHTML = trickLabel ? graffitiLettering(trickLabel,graffitiPalette(graffitiToneForTrick(trickLabel))) : '';
-    trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
-    trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
-    trickNode.classList.remove('graffiti-pop');
-    if (trickLabel) {
-      void trickNode.offsetWidth;
-      trickNode.classList.add('graffiti-pop');
+  const comboPhase=skater.bailTime>0?'bail':skater.tricks.combo.length?'active':'notice';
+  const comboCaption=comboPhase==='bail'?'TRY AGAIN':'';
+  // Keep the previous bitmap text until the replacement glyphs are decoded.
+  // A missing image uses the existing readable fallback instead of vanishing.
+  if (trickNode.dataset.graffitiText !== trickLabel || trickNode.dataset.comboPhase!==comboPhase) {
+    const tone=graffitiToneForTrick(trickLabel);
+    const readiness=trickLabel?prepareGraffitiHudGlyphs(trickLabel,graffitiPalette(tone)):'ready';
+    // A bail cancels the combo, so do not leave its old points on screen
+    // while the red bail lettering is still downloading.
+    if(readiness==='loading'&&comboPhase==='bail'&&trickNode.dataset.comboPhase!=='bail'){
+      trickNode.replaceChildren();trickNode.dataset.graffitiText='';trickNode.dataset.comboPhase='bail';
     }
-    scheduleTrickHudFit();
-    for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
-      if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+    if(readiness!=='loading'){
+      trickNode.innerHTML = trickLabel ? `<span class="combo-caption">${comboCaption}</span>`
+        +graffitiLettering(trickLabel,graffitiPalette(tone)) : '';
+      if(trickLabel){
+        const lettering=trickNode.querySelector('.graffiti-lettering');
+        lettering.classList.remove('graffiti-loading');
+        lettering.classList.add(readiness==='ready'?'graffiti-ready':'graffiti-failed');
+      }
+      trickNode.dataset.comboPhase=comboPhase;
+      trickNode.dataset.graffitiText = trickLabel; // exact same text for safe gradient overlay
+      trickNode.dataset.tone = graffitiToneForTrick(trickLabel);
+      trickNode.classList.remove('graffiti-pop');
+      if (trickLabel) {
+        void trickNode.offsetWidth;
+        trickNode.classList.add('graffiti-pop');
+      }
+      scheduleTrickHudFit();
+      for (const image of trickNode.querySelectorAll('.graffiti-word img')) {
+        if (!image.complete) image.addEventListener('load', scheduleTrickHudFit, { once: true });
+      }
     }
   }
   hud['state-value'].classList.toggle('air', !skater.grounded || Boolean(skater.grind));
@@ -461,12 +625,6 @@ function updateHud() {
 
 function showError(error) {
   gameShell.loadError = true;
-  gameShell.loadErrorDetail = String(error?.message || 'Check the browser console for the failing asset.').slice(0,220);
-  console.error('StreetSkate startup failure; resolved game asset URLs:', {
-    sampleTrack: gameAssetUrl('/media/808-bas.mp3'),
-    rider: gameAssetUrl('/assets/rider/TheanchoURi.glb'),
-    orbit: gameAssetUrl('/assets/spacepark/orbit.glb'),
-  }, error);
   gameShell.render();
   const loading = document.querySelector('#loading');
   loading.querySelector('p').innerHTML = 'The game could not continue.<span id="load-progress"></span>';
@@ -494,6 +652,7 @@ async function ensureWorldEnvironment(world) {
 }
 
 function prepareWorldVisuals(world) {
+  world.surfaceDetail?.setQuality(graphicsPipeline.settings);
   const anisotropy = graphicsPipeline.settings?.anisotropy || Math.min(8, renderer.capabilities.getMaxAnisotropy());
   world.park.traverse(object => {
     if (!object.isMesh) return;
@@ -504,6 +663,8 @@ function prepareWorldVisuals(world) {
     }
   });
   world.park.updateMatrixWorld(true);
+  if(['orbit','grand-warehouse','skate-paradise'].includes(world.id))
+    world.staticTransformCount=freezeStaticParkTransforms(world.park);
 }
 
 function refreshLocationUi() {
@@ -527,12 +688,13 @@ function refreshLocationUi() {
     spotNav.append(button);
   }
   spotNav.hidden = !manifest.spots?.length;
-  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'MAP 1 / SKYLINE ROOFTOP',
+  const locationTitle = { legacy: 'LEGACY PARK', rooftop: 'IRON DISTRICT', 'skate-paradise':'MAP 1 / SKATE PARADISE',
     'orbit': 'MAP 2 / ORBIT',
     'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
   document.querySelector('.edition').textContent = locationTitle;
-  gameShell.setLocation(currentWorld.id);
+  skateAudio.setLocation?.(currentWorld.id);
+  gameShell.setLocation(currentWorld.id, currentWorld.id === 'test-map' ? manifest.name : null);
   transitionDebug?.dispose();
   transitionDebug = null;
   if (new URLSearchParams(window.location.search).get('debug') === '1') {
@@ -555,6 +717,7 @@ function commitWorld(world, runtime) {
   const previousPosition = skater.position.clone(), previousHeading = skater.heading, previousScore = skater.score;
   try {
     bindParkRuntime(skater, runtime);
+    skateEffects.reset(skater);
     currentWorld = world;
     ({ park, collision, manifest } = world);
     scene.add(park);
@@ -579,7 +742,7 @@ function commitWorld(world, runtime) {
   if (previousWorld && previousWorld !== world) disposeParkWorld(previousWorld, world);
 }
 
-async function selectLocation(id, { hero, finish } = {}) {
+async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
   if (!loaded || !skater) throw new Error('Wait for the game to finish loading.');
   if (switchingWorld) throw new Error('A location is already loading.');
   switchingWorld = true;
@@ -587,12 +750,13 @@ async function selectLocation(id, { hero, finish } = {}) {
   setPaused(true);
   let nextWorld;
   const progress = message => {
+    onProgress?.(message);
     gameShell.selectError = message;
     if (gameShell.phase === 'select') gameShell.render();
   };
   try {
-    if (id !== currentWorld.id) {
-      nextWorld = await createParkWorld(id, progress);
+    if (file || id !== currentWorld.id) {
+      nextWorld = file ? await createTestMapWorld(file, progress) : await createParkWorld(id, progress);
       prepareWorldVisuals(nextWorld);
       await ensureWorldEnvironment(nextWorld);
     }
@@ -602,12 +766,15 @@ async function selectLocation(id, { hero, finish } = {}) {
     const runtime = nextWorld ? prepareParkRuntime(candidate, skater.board.contactRig) : null;
     if (hero?.url) {
       progress('LOADING YOUR CHARACTER…');
-      await skater.setRiderModel(hero.url);
+      await skater.setRiderModel(hero.url, { uploadFilename: hero.id === 'custom' ? hero.uploadFilename : '' });
     }
     if (request !== loadoutRequest) { if (nextWorld) disposeParkWorld(nextWorld, currentWorld); return false; }
     if (runtime) commitWorld(candidate, runtime);
     if (finish != null) skater.board.setFinish(finish);
     followCamera.snap(skater);
+    progress('PREPARING PARK LIGHTING…');
+    await warmScenePrograms(renderer,scene,camera);
+    if(request!==loadoutRequest)return false;
     return { locationId: currentWorld.id, manifest };
   } catch (error) {
     if (nextWorld && nextWorld !== currentWorld) disposeParkWorld(nextWorld, currentWorld);
@@ -620,7 +787,7 @@ async function selectLocation(id, { hero, finish } = {}) {
 async function loadGame() {
   let initialWorld;
   try {
-    initialWorld = await createParkWorld(legacyPark ? 'legacy' : 'rooftop', message => {
+    initialWorld = await createParkWorld(legacyPark ? 'legacy' : 'skate-paradise', message => {
       document.querySelector('#load-progress').textContent = message;
     });
     prepareWorldVisuals(initialWorld);
@@ -634,6 +801,7 @@ async function loadGame() {
     // Keeping the group reference automatically tracks later character hot-swaps.
     graphicsPipeline.setGlowTarget(skater.visual);
     followCamera = new FollowCamera(camera);
+    followCamera.setPreferences(playerPreferences);
     currentWorld = initialWorld;
     ({ park, collision, manifest } = initialWorld);
     scene.add(park, sun.target);
@@ -642,7 +810,7 @@ async function loadGame() {
     skater.reset(skater.spawn, skater.spawnHeading);
     applyLighting();
     refreshLocationUi();
-    setCameraMode('follow');
+    setCameraMode(CAMERA_MODES[gameShell.cameraIndex]);
     renderer.domElement.tabIndex = 0;
     const finishes = document.querySelector('#board-finishes');
     const finishNames = ['Sunset', 'Ocean', 'Aqua', 'Lime', 'Gold', 'Nebula', 'Graphite', 'Pearl'];
@@ -650,26 +818,29 @@ async function loadGame() {
       const button = document.createElement('button'); button.style.background = finish.cssGradient;
       button.title = finishNames[i]; button.setAttribute('aria-label', `Skate ${finishNames[i]}`);
       button.setAttribute('aria-pressed', String(skater.board.finishIndex === i));
-      button.onclick = () => { skater.board.setFinish(i); gameShell.boardIndex=i; portalsPhase1?.settingsChanged(); finishes.querySelectorAll('button').forEach((b,j) => b.setAttribute('aria-pressed',String(i===j))); button.blur(); };
+      button.onclick = () => { skater.board.setFinish(i); finishes.querySelectorAll('button').forEach((b,j) => b.setAttribute('aria-pressed',String(i===j))); button.blur(); };
       finishes.append(button);
     });
     const soundButton = document.querySelector('#sound-toggle');
     soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
     soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
-    soundButton.onclick = () => { const enabled = skateAudio.toggle(); gameShell.sound=enabled; portalsPhase1?.settingsChanged(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
+    soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
     setPaused(true);
     gameShell.setReady();
-    portalsPhase1.onGameReady();
     window.streetSkate = {
       ready: true, scene, renderer, camera, manifest, park, collision, skater,
       currentLocation: currentWorld.id, selectLocation,
+      graphicsStatus: () => graphicsPipeline.getStatus(),
+      performanceMetrics:()=>({...frameMetrics.value}),
       setMode, setExploreView, setPaused, setCameraMode, goToSpot, controlsVersion: 'thug-controls-v2',
       rampTuning: { factor: manifest.transitionScale, baked: true },
       captureState: () => captureGameplayState(skater),
       captureInput: () => ({ ...lastInputState }),
+      setCopingTrace: (enabled, capacity = 720) => { skater.copingTrace = enabled ? new CopingTrace(capacity) : null; },
+      captureCopingTrace: () => skater.copingTrace?.snapshot() || [],
       toggleDebugOverlay: () => debugOverlay.toggle(),
       captureAuditTelemetry: () => captureAuditTelemetry({
         skater, followCamera, camera, input: lastInputState,
@@ -678,11 +849,21 @@ async function loadGame() {
       transitionDebug,
       captureTransitionDebug: () => transitionDebugSummary(skater.transitions),
     };
+    if(import.meta.env.DEV)skater.copingTrace=new CopingTrace();
+    if(import.meta.env.DEV)window.streetSkate.audioStatus=()=>({
+      recorded:[...skateAudio.recordedFoley],enabled:skateAudio.enabled,
+      effectsVolume:skateAudio.effectsVolume,announcerVolume:skateAudio.announcerVolume,
+    });
     // Local art-director capture route; Vite removes this block from production.
     if(import.meta.env.DEV){
       const captureMap=new URLSearchParams(location.search).get('art-capture');
-      if(['rooftop','orbit','grand-warehouse'].includes(captureMap)){
+      if(['skate-paradise','rooftop','orbit','grand-warehouse'].includes(captureMap)){
         if(captureMap!==currentWorld.id)await selectLocation(captureMap);
+        // Reproducible art reviews use the requested tier, independent of a
+        // previous session's saved settings. This route is development-only.
+        const captureTier=normalizedGraphicsPreset(new URLSearchParams(location.search).get('art-quality')||'cinematic');
+        applyGraphicsPreset(captureTier);
+        document.title+=` · ${captureTier.toUpperCase()}${graphicsPipeline.getStatus().contactDepthEnabled?' · contact shading':''}`;
         setMode('explore');setExploreView('overview',true);
         const center=currentWorld.presentation.center;
         camera.position.set(center[0]+88,center[1]+55,center[2]+100);
@@ -739,8 +920,8 @@ window.addEventListener('resize', () => {
   sceneNeedsRender=true;
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
   graphicsPipeline.resize(innerWidth, innerHeight);
+  skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   scheduleTrickHudFit();
 });
 function suspendSkating() {
@@ -769,38 +950,89 @@ renderer.setAnimationLoop(() => {
   if (document.hidden) return;
   const wasPlaying = gameShell.active;
   gameShell.update(realDelta);
+  updateDrillHud();
 
   // Never silently freeze on the last airborne frame when another overlay/window
   // takes focus. Make the suspension explicit and require a deliberate resume.
   if (loaded && mode === 'skate' && !document.hasFocus() && !paused && !portalsOnline?.connected) setPaused(true);
   if (loaded && mode === 'skate' && document.hasFocus() && !document.hidden) {
-    const state = input.read();
+    const state = input.read({practice:gameShell.practice && gameShell.active && !paused});
+    const inputDisplayActive=practiceInputsEnabled && gameShell.practice && gameShell.active && !paused;
+    if (inputDisplayActive) {
+      const actions=[];
+      if(state.ollieReleased)actions.push('POP');else if(state.ollieHeld)actions.push('CHARGE');
+      if(state.flipPressed)actions.push('FLIP');if(state.grabPressed)actions.push('GRAB');
+      if(state.grindPressed)actions.push('GRIND');if(state.brake)actions.push('BRAKE');
+      if(Math.abs(state.steer)>.32)actions.push(state.steer<0?'LEFT':'RIGHT');
+      if(Math.abs(state.drive)>.32)actions.push(state.drive>0?'UP':'DOWN');
+      if(actions.length){practiceInputText='INPUT · '+actions.join(' + ');practiceInputTime=1.2;}
+      else practiceInputTime=Math.max(0,practiceInputTime-realDelta);
+    }
+    const showInput=inputDisplayActive && practiceInputTime>0;
+    if(inputHud.hidden===showInput)inputHud.hidden=!showInput;
+    if(showInput&&inputHud.textContent!==practiceInputText)inputHud.textContent=practiceInputText;
     lastInputState = {
       ...state,
       directionTaps: [...(state.directionTaps || [])],
     };
-    if (state.pausePressed && gameShell.active && wasPlaying) {
-      if (portalsOnline?.connected) { portalsOnline.open(); input.clear(); }
-      else setPaused(true);
-    }
+    if (state.pausePressed && gameShell.active && wasPlaying) { if(portalsOnline?.connected){portalsOnline.open();input.clear();}else setPaused(true); }
     if (state.cameraModePressed && gameShell.active && !portalsOnline?.visible) toggleCameraMode();
-    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(['follow','classic','fixed'][state.cameraModeIndex] || 'follow');
-    if (!paused && gameShell.active) {
+    if (state.cameraModeIndex != null && gameShell.active) setCameraMode(CAMERA_SHORTCUTS[state.cameraModeIndex] || 'follow');
+    if (!paused && gameShell.simulating) {
+      if (gameShell.practice && gameShell.inputGrace <= 0) {
+        if (state.practiceMark) {
+          if (skater.grounded && !skater.bailTime) {
+            practiceMarker = { position: skater.position.clone(), heading: skater.heading,
+              stance: skater.stance, location: currentWorld.id };
+            skater.feedback = 'PRACTICE MARKER SAVED';
+          } else skater.feedback = 'LAND BEFORE SAVING A MARKER';
+          skater.feedbackTime = 2;
+        }
+        if (state.practiceReturn) {
+          if (practiceMarker?.location === currentWorld.id) {
+            const score = skater.score;
+            skater.reset(practiceMarker.position.clone(), practiceMarker.heading);
+            skater.score = score; skater.stance = practiceMarker.stance;
+            practiceDrills.retry();
+            followCamera.snap(skater);
+            skater.feedback = 'RETURNED TO MARKER';
+          } else skater.feedback = 'SAVE A PRACTICE MARKER FIRST';
+          skater.feedbackTime = 2;
+        }
+      }
       const respawn = skater.respawnSerial;
       sessionEventTime = highlightRecorder.time + realDelta;
       skater.update(dt, gameShell.inputGrace > 0 || portalsOnline?.visible || portalsOnline?.watchId ? {} : state, elapsed);
+      if(gameShell.practice)practiceDrills.observe(skater,dt);
       if (runInProgress) {
         runSummary.update(skater, realDelta);
         highlightRecorder.record(skater, realDelta);
+        const eventState={grounded:skater.grounded,pop:skater.presentation?.popTime>0,grind:!!skater.grind,
+          catch:skater.presentation?.flipPhase==='CATCH',impact:skater.rider?.ragdoll?.groundImpact,respawn:skater.respawnSerial};
+        if(previousPresentationEvent&&eventState.respawn===previousPresentationEvent.respawn){
+          const emit=(kind,strength)=>highlightRecorder.markEvent({kind,strength,surface:surfaceTagFor(skater),
+            point:(kind==='bail'?eventState.impact.point:skater.position).toArray(),
+            normal:(kind==='bail'?eventState.impact.normal:skater.normal).toArray()});
+          if(eventState.impact&&eventState.impact!==previousPresentationEvent.impact)emit('bail',Math.min(1,(eventState.impact.speed||4)/10));
+          if(!skater.bailTime){
+            if(eventState.pop&&!previousPresentationEvent.pop)emit('pop',.5);
+            if(eventState.grind&&!previousPresentationEvent.grind)emit('grind',.5);
+            if(eventState.grounded&&!previousPresentationEvent.grounded&&!eventState.grind)emit('landing',.5);
+            if(eventState.catch&&!previousPresentationEvent.catch)emit('catch',.2);
+          }
+        }
+        previousPresentationEvent=eventState;
         for (const moment of pendingReplayMoments) highlightRecorder.markMoment(moment);
         pendingReplayMoments.length = 0;
       }
       if (skater.respawnSerial !== respawn) followCamera.snap(skater);
-      followCamera.update(skater, dt, state);
+      skateEffects.update(dt,skater);
+      followCamera.update(skater, dt, state, skater._smoothedVisualPosition);
       if (state.reset) followCamera.snap(skater);
     }
     updateHud();
   } else {
+    if(!inputHud.hidden)inputHud.hidden=true;
     if (tween) {
       const t = Math.min((performance.now() - tween.start) / 1100, 1);
       const smooth = t * t * (3 - 2 * t);
@@ -820,14 +1052,22 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
-  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus());
+  if(gameShell.phase==='highlights'&&highlightPlayback.active)skateEffects.updateReplay?.(realDelta);
+  const vocalDuck=skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
+  if(vocalDuck)gameShell.music.duck(650,.7);
+  const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
+  if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
+  skateEffects.root.visible = Boolean(effectsActive||(gameShell.phase==='highlights'&&highlightPlayback.active));
+  effectsWereActive = Boolean(effectsActive);
   portalsOnline?.tick(dt);
   updateWorldVisibility();
   // Session menus use the supplied sunset artwork and need no hidden park render.
   // Menus show a static park frame. Redraw on settings/screen/viewport changes,
   // rather than running HDR and bloom behind an opaque title/options screen.
   if(gameShell.phase!=='select'&&(gameShell.active||(gameShell.phase==='highlights'&&document.hasFocus())||mode==='explore'||sceneNeedsRender)){
-    graphicsPipeline.render();sceneNeedsRender=false;
+    if(gameShell.simulating)frameMetrics.begin();
+    graphicsPipeline.render({ contactSource: gameShell.phase === 'highlights' ? null : skater });sceneNeedsRender=false;
+    if(gameShell.simulating)frameMetrics.end();else frameMetrics.suspend();
     if(import.meta.env.DEV&&artCaptureMap&&!document.getElementById('art-thumbnail')){
       // Bake a compact WebP directly from the rendered canvas, after this frame.
       const thumbnail=document.createElement('canvas');thumbnail.width=768;thumbnail.height=432;

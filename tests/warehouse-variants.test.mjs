@@ -24,9 +24,9 @@ function readGlb(file) {
   const json=JSON.parse(bytes.subarray(20,20+length).toString('utf8'));
   return {bytes,json};
 }
-test('only Skyline Rooftop, ORBIT and Grand Warehouse are selectable maps 1–3',()=>{
+test('only Skate Paradise, ORBIT and Grand Warehouse are selectable maps 1–3',()=>{
   const ids=PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.id);
-  assert.deepEqual(ids,['rooftop','orbit','grand-warehouse']);
+  assert.deepEqual(ids,['skate-paradise','orbit','grand-warehouse']);
   assert.deepEqual(PARK_DEFINITIONS.filter(p=>p.selectable).map(p=>p.number),[1,2,3]);
   assert.equal(PARK_REGISTRY['urban-warehouse'],undefined);
   assert.equal(PARK_REGISTRY['tron-warehouse'],undefined);

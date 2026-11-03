@@ -1,11 +1,15 @@
 import * as THREE from 'three';
+import { WheelContactShadows } from './WheelContactShadows.js';
+import { createBloomOccluderMaterial } from './BloomOccluderMaterial.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { resolveGraphicsSettings } from './GraphicsSettings.js';
+import { resolveGraphicsSettings, resolveRenderPixelRatio } from './GraphicsSettings.js';
+import { normalizeGlowOverrides, resolveGlowTuning } from './GlowTuning.js';
+import { MapContactDepthPass } from './MapContactDepthPass.js';
 
 // Five-tap contrast-adaptive sharpening: edge-adaptive, avoids amplifying
 // flat-area noise, and is deliberately cheaper than a full extra AA algorithm.
@@ -87,6 +91,7 @@ export class GraphicsPipeline {
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
     this.ssr = null; // Heavy pass is allocated only on an SSR-enabled preset.
+    this.contactDepth = null;
 
     // A separate HDR composer isolates actor glow and ORBIT's emissive fixtures.
     // Other geometry stays black in this pass while preserving occlusion.
@@ -98,8 +103,9 @@ export class GraphicsPipeline {
     this.bloomComposer.addPass(new RenderPass(scene, camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1,1), .25, .24, .88);
     this.bloomComposer.addPass(this.bloom);
-    this.blackoutMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.blackoutMaterial = createBloomOccluderMaterial();
     this.glowRoot = null;
+    this.effectsRoot = null;
     this.bloomSceneMeshes = null;
     this.bloomEnvironmentEmissives = [];
     this.bloomSceneChildCount = -1;
@@ -107,6 +113,8 @@ export class GraphicsPipeline {
     this.bloomCacheAge = 0;
     this.shadowAnchor = null;
     this.shadowWorldPosition = new THREE.Vector3();
+    this.wheelContactShadows = new WheelContactShadows();
+    scene.add(this.wheelContactShadows.mesh);
 
     this.bloomComposite = new ShaderPass(SELECTIVE_BLOOM_COMPOSITE);
     this.bloomComposite.enabled = false;
@@ -158,6 +166,7 @@ export class GraphicsPipeline {
     this.world = world;
     this.bloomSceneMeshes = null;
     this.shadowAnchor = null;
+    this.configureContactDepth();
     this.configureBloom();
     this.refreshSSRTargets();
     this.updateMaterials();
@@ -169,6 +178,25 @@ export class GraphicsPipeline {
   setGlowTarget(root) {
     this.glowRoot = root;
     this.bloomSceneMeshes = null;
+  }
+
+  setEffectsTarget(root) {
+    this.effectsRoot = root;
+  }
+
+  configureContactDepth() {
+    const enabled=this.world?.userData?.contactDepth===true&&this.settings?.contactDepth===true;
+    if(!enabled&&this.contactDepth) {
+      this.composer.removePass(this.contactDepth);this.contactDepth.dispose();this.contactDepth=null;
+    } else if(enabled&&!this.contactDepth) {
+      this.contactDepth=new MapContactDepthPass(this.scene,this.camera);
+      this.composer.insertPass(this.contactDepth,1);
+    }
+    if(this.contactDepth) {
+      this.contactDepth.resolutionScale=this.settings.name==='cinematic'?.65:.5;
+      this.contactDepth.setSize(this.width*this.settings.pixelRatio,this.height*this.settings.pixelRatio);
+      this.contactDepth.exclusionsAge=120;
+    }
   }
 
   refreshBloomSceneCache() {
@@ -249,11 +277,16 @@ export class GraphicsPipeline {
     this.bloomCacheAge++;
     for (const object of this.bloomEnvironmentEmissives) allowed.add(object);
     if (!allowed.size) return false;
-    const replaced = [];
+    // Reuse flat scratch storage: a park can contain thousands of meshes, so
+    // allocating one [mesh, material] pair per mesh at 144 Hz creates needless GC.
+    const replaced = this.bloomReplacements ??= [];
     const originalBackground = this.scene.background;
     const originalFog = this.scene.fog;
     const originalOverride = this.scene.overrideMaterial;
     const shadowAutoUpdate = this.renderer.shadowMap.autoUpdate;
+    const contactMesh = this.wheelContactShadows?.mesh;
+    const contactVisible = contactMesh?.visible;
+    const effectsVisible = this.effectsRoot?.visible;
     try {
       // Reuse the preceding shadow atlas; do not recalculate costly maps twice
       // per frame merely to produce a small actor-only glow mask.
@@ -261,34 +294,52 @@ export class GraphicsPipeline {
       this.scene.background = null;
       this.scene.fog = null;
       this.scene.overrideMaterial = null;
+      // Contact patches darken receivers only. Their quad must not become an
+      // opaque depth-writing square when the bloom mask blacks out the scene.
+      if (contactMesh) contactMesh.visible = false;
+      // Dust and spark Points are already shaded in the base pass. Keeping them
+      // out of the glow pass prevents additive halos around ordinary wheel dust.
+      if (this.effectsRoot) this.effectsRoot.visible = false;
       // Dark geometry still writes depth: rider bloom cannot appear through walls.
       for (const object of this.bloomSceneMeshes) {
         if (allowed.has(object)) continue;
-        replaced.push([object, object.material]);
+        replaced.push(object, object.material);
         object.material = this.blackoutMaterial;
       }
       this.bloomComposer.render();
-      this.bloomComposite.uniforms.bloomTexture.value = this.bloomComposer.readBuffer.texture;
+      // UnrealBloomPass adds its glow over the low-resolution source buffer.
+      // Only composite its bloom texture: adding that source buffer a second
+      // time creates a soft duplicate over bright details on moving objects.
+      this.bloomComposite.uniforms.bloomTexture.value = this.bloom.renderTargetsHorizontal[0].texture;
       return true;
     } finally {
-      for (const [object, material] of replaced) object.material = material;
+      for (let i = 0; i < replaced.length; i += 2) replaced[i].material = replaced[i + 1];
+      replaced.length = 0;
       this.scene.background = originalBackground;
       this.scene.fog = originalFog;
       this.scene.overrideMaterial = originalOverride;
       this.renderer.shadowMap.autoUpdate = shadowAutoUpdate;
+      if (contactMesh) contactMesh.visible = contactVisible;
+      if (this.effectsRoot) this.effectsRoot.visible = effectsVisible;
     }
   }
 
   updateMaterials() {
     if (!this.world || !this.settings) return;
     const touched = new Set(), textures = new Set();
+    const emissive = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)).emissive;
     this.world.traverse(object => {
       if (!object.isMesh) return;
+      if (object.userData.visualPassCaster)
+        object.castShadow = this.settings.name !== 'performance';
       for (const m of Array.isArray(object.material) ? object.material : [object.material]) {
         if (!m || touched.has(m)) continue;
         touched.add(m);
-        for (const key of ['map','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap','emissiveMap','alphaMap']) {
-          const map = m[key];
+        const maps=['map','normalMap','bumpMap','roughnessMap','metalnessMap','aoMap','emissiveMap','alphaMap','warehouseGrainMap'].map(key=>m[key]);
+        // World-projected detail layers own their textures through uniforms.
+        // Apply the same quality cap as ordinary PBR maps when tiers change.
+        for(const uniform of Object.values(m.uniforms||{}))if(uniform?.value?.isTexture)maps.push(uniform.value);
+        for (const map of maps) {
           if (!map?.isTexture || textures.has(map)) continue;
           textures.add(map);
           if (map.anisotropy !== this.settings.anisotropy) {
@@ -302,14 +353,15 @@ export class GraphicsPipeline {
         }
         if (m.emissive?.getHex?.() > 0 && 'emissiveIntensity' in m) {
           if (!this.emissiveBase.has(m)) this.emissiveBase.set(m, m.emissiveIntensity);
-          m.emissiveIntensity = this.emissiveBase.get(m) * this.settings.vfxScale;
+          m.emissiveIntensity = this.emissiveBase.get(m) * emissive;
         }
       }
     });
   }
 
   setQuality(key, capabilities, overrides) {
-    const settings = resolveGraphicsSettings(key, capabilities, overrides);
+    this.capabilities = capabilities;
+    const settings = resolveGraphicsSettings(key, { ...capabilities, width:this.width, height:this.height }, overrides);
     this.settings = settings;
     this.renderer.setPixelRatio(settings.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
@@ -344,6 +396,7 @@ export class GraphicsPipeline {
     }
     this.configureBloom();
     this.cas.enabled = settings.sharpen > 0;
+    this.configureContactDepth();
     this.cas.uniforms.strength.value = settings.sharpen;
     this.shadowAnchor = null;
     this.updateMaterials();
@@ -354,34 +407,51 @@ export class GraphicsPipeline {
   getStatus() {
     if (!this.settings) return null;
     return { ...this.settings,
-      bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
+      glowTuning:resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)),
+      bloomEnabled: !this.faulted && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
+      postProcessingEnabled: !this.faulted && this.settings.postProcessing,
+      contactDepthEnabled: !this.faulted&&Boolean(this.contactDepth?.enabled),
       renderWidth: Math.round(this.width * this.settings.pixelRatio),
       renderHeight: Math.round(this.height * this.settings.pixelRatio),
     };
   }
 
+  setGlowTuning(value, {legacyGlowDefaults = this.settings?.legacyGlowDefaults} = {}) {
+    if (!this.settings) return;
+    const previous = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
+    this.settings.glowTuning = normalizeGlowOverrides(value);
+    this.settings.legacyGlowDefaults = legacyGlowDefaults === true;
+    this.configureBloom();
+    const next = resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom));
+    if (previous.emissive !== next.emissive) this.updateMaterials();
+  }
+
   configureBloom() {
     if (!this.settings) return;
-    const orbit = Boolean(this.world?.userData.environmentBloom);
-    // Performance means no extra scene pass, even on emissive-heavy ORBIT.
+    const orbit = Boolean(this.world?.userData?.environmentBloom);
+    // Every tier honors the glow switch; quality changes bloom resolution.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
-    this.bloom.strength = orbit
-      ? (this.settings.name==='high-refresh' ? .2 : .24)
-      : this.settings.bloomStrength * this.settings.vfxScale;
-    this.bloom.radius = .24;
-    this.bloom.threshold = orbit ? 1.25 : .88;
-    this.bloomComposite.uniforms.bloomMix.value = orbit ? .55 : .32;
+    const tuning = resolveGlowTuning(this.settings, orbit);
+    this.bloom.strength = this.bloomComposite.enabled ? tuning.bloom : 0;
+    this.bloom.radius = tuning.radius;
+    // Shared thresholds keep the glow response consistent across quality tiers.
+    this.bloom.threshold = orbit ? .98 : .75;
+    this.bloomComposite.uniforms.bloomMix.value = tuning.glow;
   }
 
   resize(width, height) {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     if (!this.settings) return;
-    this.composer.setPixelRatio(this.settings.pixelRatio);
-    this.composer.setSize(this.width, this.height);
-    // Performance runs without bloom: shrink its HDR buffers to 1px rather
-    // than retaining offscreen textures at full display resolution.
+    this.settings.pixelRatio = resolveRenderPixelRatio(this.settings,
+      { ...this.capabilities, width:this.width, height:this.height }) * (this.settings.renderScale||1);
+    this.renderer.setPixelRatio(this.settings.pixelRatio);
+    this.renderer.setSize(this.width, this.height, false);
+    const postProcessing = this.settings.postProcessing;
+    this.composer.setPixelRatio(postProcessing ? this.settings.pixelRatio : 1);
+    this.composer.setSize(postProcessing ? this.width : 1, postProcessing ? this.height : 1);
+    // Disabled glow releases the bloom render-size budget even on Performance.
     const bloomEnabled = this.settings.bloomStrength > 0;
     this.bloomComposer.setPixelRatio(bloomEnabled
       ? this.settings.pixelRatio * this.settings.bloomScale : 1);
@@ -389,21 +459,28 @@ export class GraphicsPipeline {
     const sw = Math.max(1, Math.round(this.width * this.settings.pixelRatio));
     const sh = Math.max(1, Math.round(this.height * this.settings.pixelRatio));
     const samples = this.settings.msaaSamples;
-    this.composer.renderTarget1.samples = samples;
-    this.composer.renderTarget2.samples = samples;
+    for(const target of [this.composer.renderTarget1,this.composer.renderTarget2]) {
+      if(target.samples!==samples) {
+        target.samples=samples;
+        // Existing framebuffer storage must be rebuilt when sample count
+        // changes, even if a 1× DPR display keeps the same dimensions.
+        target.dispose();
+      }
+    }
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
   }
 
-  render() {
+  render({ contactSource = null } = {}) {
+    this.wheelContactShadows?.update(contactSource);
     if (!this.settings || this.faulted) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
     try {
       this.updateContactShadows();
-      // Skip both HDR composer targets and all fullscreen post effects on the
-      // lowest tier. Three's direct renderer retains ACES/output color-space.
-      if (this.settings.name === 'performance') {
+      // Performance and 144 FPS with glow disabled use one scene pass. The
+      // canvas retains hardware AA, ACES tone mapping and output conversion.
+      if (!this.settings.postProcessing) {
         this.renderer.render(this.scene, this.camera);
         return;
       }
@@ -423,7 +500,9 @@ export class GraphicsPipeline {
   }
 
   dispose() {
+    this.wheelContactShadows?.dispose();
     this.ssr?.dispose();
+    this.contactDepth?.dispose();
     this.bloom.dispose();
     this.bloomComposite.dispose();
     this.bloomComposer.dispose();

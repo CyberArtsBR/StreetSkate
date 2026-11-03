@@ -166,10 +166,39 @@ export class RampWallSafetySkillStreetPhysics extends MomentumRollSkillStreetPhy
       }
     }
 
-    const support = this.ensureBoardContact().solveLanding(
-      before, this.position, this.heading, UP, this.velocity,
-    );
-    if (support) this.land(support);
+    const contact = this.ensureBoardContact();
+    const support = contact.solveLanding(before, this.position, this.heading, UP, this.velocity);
+    const impact = contact.landingImpact;
+    if (support && this.land(support)) return;
+    if (impact && !this.grounded && !this.grind && !this.wallRide) {
+      // The outer coping layer must receive the unmodified swept trajectory.
+      // Clamping/projecting here first removed its re-entry crossing and left
+      // the rider airborne with no downhill momentum on the transition.
+      // Only a same-wall return has a second sweep in the outer coping layer.
+      // Deck transfers skip that path, so deferring their impacts here lets a
+      // partial truck catch pass through the deck and even the floor below it.
+      if (this.deferTransitionImpact?.(impact) && this.bailTime <= 0) return;
+      // Generic ramps also need a contact basis aligned to the actual face,
+      // rather than the world-UP wheel rig used for the initial air sweep.
+      const touchdown = impact.position.clone();
+      const contactNormal = impact.normal.clone();
+      if (this.bailTime <= 0) {
+        const aligned = contact.solveGround(touchdown, before, this.heading, contactNormal, false);
+        if (aligned.supported && this.land(aligned)) return;
+      }
+      // A failed trick/partial edge catch still collides with the terrain.
+      this.position.copy(touchdown);
+      const motion = this.bailTime > 0 ? this.bailVelocity : this.velocity;
+      const into = motion.dot(contactNormal);
+      if (into < 0) motion.addScaledVector(contactNormal, -into);
+      // A rejected descent has still struck real terrain. Finish it as ordinary
+      // air contact instead of letting an obsolete ramp/deck target drive the
+      // rider through an unrelated surface on the next frame.
+      if (this.transitionAir && this.transitionAir.apexPassed && this.bailTime <= 0) {
+        this.transitionAir = null;
+        this.setMovementState(MOVEMENT_STATE.AIR);
+      }
+    }
   }
 
 }

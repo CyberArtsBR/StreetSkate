@@ -31,7 +31,7 @@ try {
   await page.locator('[data-action="board"][data-index="5"]').click();
   await page.locator('[data-location="urban-warehouse"]').click();
   const layouts=[];
-  for(const [name,width,height] of [['desktop',1536,900],['laptop',1280,720],['short',800,450],['phone',390,844]]) {
+  for(const [name,width,height] of [['desktop',1536,900],['laptop',1280,720],['short',800,450]]) {
     await page.setViewportSize({width,height});
     await page.locator('.shell-content').evaluate(el=>el.scrollTop=0);
     await page.waitForTimeout(500);

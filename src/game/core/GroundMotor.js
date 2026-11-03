@@ -5,12 +5,12 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
 
 export const GROUND_MOTOR = Object.freeze({
-  autoPushTarget: 17,
+  autoPushTarget: 18,
   autoPushSurfaceY: 0.992,
   autoPushMinAccel: 3.6,
   autoPushMaxAccel: 13.5,
   // Crouching is aerodynamic, not an invisible extra throttle.
-  crouchedPushTarget: 17,
+  crouchedPushTarget: 18,
   crouchedPushAccelScale: 0.78,
   crouchedDragScale: 0.55,
   softSpeedLimit: 21,

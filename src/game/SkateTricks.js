@@ -21,6 +21,7 @@ export class SkateTricks {
     this.pendingManual = null;
     this.pendingAirFlip = null;
     this.pendingAirGrab = null;
+    this.airGrabEntries = new Map();
     this.airTrickQueue = [];
     this.buttonBuffer = [];
     this.variantTaps = {};
@@ -64,6 +65,9 @@ export class SkateTricks {
 
   resolve(input, context) {
     if (context.bailing) { this.cancelCombo(); return {}; }
+    // One scoring opportunity per grab family per flight, even after release
+    // or an intervening flip. A real landing/rail/wall starts the next segment.
+    if(context.grounded||context.grinding||context.wallRiding)this.airGrabEntries.clear();
     const events = {};
     const direction = directionKey(input.steer, input.drive);
     if (context.grounded && this.wasAirborne) this.variantTaps = {};
@@ -200,8 +204,6 @@ export class SkateTricks {
       entry.name === name && entry.stance === normalizedStance
       && this.time - entry.recordedAt >= 0 && this.time - entry.recordedAt < 0.14);
     if (duplicate) return duplicate;
-    const priorRepeats = this.combo.reduce((count, entry) =>
-      count + Number(entry.name === name && entry.stance === normalizedStance), 0);
     if (!this.combo.length) this.comboStartedAt = this.time;
     const entry = {
       name, basePoints: Math.max(0, Number.isFinite(points) ? points : 0),
@@ -209,11 +211,22 @@ export class SkateTricks {
     };
     this.combo.push(entry);
     this.recalculateCombo();
-    // First and second executions build a combo; mechanical input loops do not
-    // inflate the multiplier forever. New tricks and switch stance add variety.
-    if (priorRepeats < 2) this.comboMultiplier = Math.min(MAX_COMBO_MULTIPLIER, this.comboMultiplier + 1);
     this.lastLabel = name;
     this.settleTimer = 0;
+    return entry;
+  }
+
+  recordAirGrab(name, points, options = {}) {
+    const family = Object.entries(DOUBLE_GRAB_TRICKS).find(([,variant])=>variant.name===name)?.[0] || name;
+    const previous=this.airGrabEntries.get(family);
+    if(previous&&this.combo.includes(previous)){
+      // A deliberate double tap upgrades the existing trick instead of adding
+      // a second multiplier. Further taps cannot downgrade/reaward it.
+      if(points>previous.basePoints)this.upgrade(previous,name,points);
+      return previous;
+    }
+    const entry=this.record(name,points,options);
+    if(entry)this.airGrabEntries.set(family,entry);
     return entry;
   }
 
@@ -223,7 +236,7 @@ export class SkateTricks {
     entry.basePoints = points;
     this.recalculateCombo();
     this.lastLabel = name;
-    // The extra rotation improves this trick; it is not a second multiplier.
+    // An upgrade changes this entry's identity, never adds a second entry.
     return true;
   }
 
@@ -231,9 +244,13 @@ export class SkateTricks {
     const counts = new Map();
     let base = 0;
     let duration = 0;
+    let multiplier = 0;
     for (const entry of this.combo) {
       const key = `${entry.stance}:${entry.name}`;
       const repeated = counts.get(key) || 0;
+      // Derive variety from final identities: repeatedly upgrading a fresh
+      // Kickflip to Double Kickflip must not bypass the repeat limit.
+      if (repeated < 2) multiplier++;
       entry.repeatFactor = REPEAT_VALUES[Math.min(repeated, REPEAT_VALUES.length - 1)];
       entry.points = Math.round(entry.basePoints * entry.repeatFactor);
       base += entry.points;
@@ -242,6 +259,7 @@ export class SkateTricks {
     }
     const wholeDuration = Math.floor(duration + 1e-9);
     this.comboBase = base + wholeDuration;
+    this.comboMultiplier = Math.min(MAX_COMBO_MULTIPLIER, multiplier);
     this.durationFraction = Math.max(0, duration - wholeDuration);
   }
 

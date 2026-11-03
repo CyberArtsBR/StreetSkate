@@ -37,6 +37,23 @@ function frame(physics, input = {}, dt = 1 / 60) {
   });
 }
 
+test('low and high ollies land in regular and switch without changing global physics',()=>{
+ for(const stance of [1,-1]){
+  const heights=[];
+  for(const chargeFrames of [2,40]){
+   const physics=new StatefulSkillStreetPhysics({collision:flatWorld(),spawn:[0,.5,0],rails:[]});
+   physics.stance=stance;
+   for(let i=0;i<chargeFrames;i++)frame(physics,{ollieHeld:true});
+   frame(physics,{ollieReleased:true});assert.equal(physics.grounded,false);
+   let peak=physics.position.y;
+   for(let i=0;i<240&&!physics.grounded&&!physics.bailTime;i++){frame(physics);peak=Math.max(peak,physics.position.y);}
+   assert.equal(physics.bailTime,0,`stance ${stance}, charge ${chargeFrames}`);
+   assert.equal(physics.grounded,true);heights.push(peak);
+  }
+  assert.ok(heights[1]>heights[0]+.3,`stance ${stance}: charge must create useful height difference`);
+ }
+});
+
 test('stationary ollie lands instead of falling through the floor', () => {
   const physics = new StatefulSkillStreetPhysics({
     collision: flatWorld(),

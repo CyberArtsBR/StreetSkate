@@ -19,7 +19,7 @@ export const GRIND_CAPTURE_POLICY = Object.freeze({
   railPredictionTime: 0.16,
   railAlignmentRelax: 0.58,
   railMaxAlignmentSlack: 0.16,
-  railMinTangentSpeed: 0.12,
+  railMinTangentSpeed: 0,
   railBlendTime: 0.14,
 });
 
@@ -123,7 +123,7 @@ export function resolveStrictGrindCapture({
         s: hit.s,
         point: hit.point,
         tangent: hit.tangent,
-        direction: tangentSpeed >= 0 ? 1 : -1,
+        direction: (Math.abs(tangentSpeed) > 1e-8 ? tangentSpeed : flatForward.dot(hit.tangent)) >= 0 ? 1 : -1,
         speed: projectedGrindSpeed(tangentSpeed),
         projectedSpeed: Math.abs(tangentSpeed),
         surfaceDistance,
@@ -198,7 +198,7 @@ export function resolveMagneticGrindCapture({
         s: hit.s,
         point: hit.point,
         tangent: hit.tangent,
-        direction: tangentSpeed >= 0 ? 1 : -1,
+        direction: (Math.abs(tangentSpeed) > 1e-8 ? tangentSpeed : flatForward.dot(hit.tangent)) >= 0 ? 1 : -1,
         speed: projectedGrindSpeed(tangentSpeed),
         projectedSpeed: Math.abs(tangentSpeed),
         surfaceDistance,

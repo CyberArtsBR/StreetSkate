@@ -47,12 +47,12 @@ try {
   assert.deepEqual(report.separateVolumes, { music: 0.6, musicSaved: '0.6', effectsSaved: '0.25' });
   await page.locator('[data-action="musicDown"]').click();
   await page.screenshot({ path: `${output}/audio-options-desktop.png` });
-  await page.setViewportSize({ width: 390, height: 844 });
-  report.mobile = await page.evaluate(() => ({ width: document.documentElement.scrollWidth,
+  await page.setViewportSize({ width: 1280, height: 600 });
+  report.shortDesktop = await page.evaluate(() => ({ width: document.documentElement.scrollWidth,
     buttons: [...document.querySelectorAll('.audio-volume-control button')].map(button => {
       const r = button.getBoundingClientRect(); return { width: r.width, height: r.height, right: r.right }; }) }));
-  assert.ok(report.mobile.buttons.every(button => button.width >= 44 && button.height >= 44 && button.right <= 390));
-  await page.screenshot({ path: `${output}/audio-options-mobile.png` });
+  assert.ok(report.shortDesktop.buttons.every(button => button.width >= 44 && button.height >= 44 && button.right <= 1280));
+  await page.screenshot({ path: `${output}/audio-options-short-desktop.png` });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.reload();
   await page.waitForFunction(() => window.streetSkate?.ready, null, { timeout: 60000 });

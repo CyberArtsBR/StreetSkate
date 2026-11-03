@@ -28,7 +28,7 @@ function fixture(shouldThrow = false) {
     traverse(visitor) { visitor(rider);visitor(board); }
   };
   pipeline.bloomComposer={
-    readBuffer:{texture:{id:'actor-bloom-only'}},
+    readBuffer:{texture:{id:'actor-plus-glow'}},
     render() {
       called++;
       assert.equal(scene.background,null,'HDRI must not contribute to bloom');
@@ -37,9 +37,11 @@ function fixture(shouldThrow = false) {
       assert.equal(windowMesh.material,darkMaterial,'glass cannot glow');
       assert.equal(rider.material,darkMaterial,'ordinary costume highlights must not contribute to bloom');
       assert.equal(board.material,deckMaterial,'deck must contribute to bloom');
+      if(pipeline.effectsRoot)assert.equal(pipeline.effectsRoot.visible,false,'dust and sparks stay out of the glow buffer');
       if(shouldThrow) throw new Error('simulated WebGL failure');
     },
   };
+  pipeline.bloom={renderTargetsHorizontal:[{texture:{id:'actor-bloom-only'}}]};
   pipeline.bloomComposite={uniforms:{bloomTexture:{value:null}}};
   return {pipeline, scene, meshes:[warehouse,windowMesh,rider,board], materials:[concrete,glass,riderMaterial,deckMaterial], background,fog,override,called:()=>called};
 }
@@ -66,6 +68,16 @@ test('renderer errors never leave warehouse materials black or clear the sky',()
   meshes.forEach((m,i)=>assert.equal(m.material,materials[i]));
 });
 
+test('particle visibility restores after the bloom pass, including a renderer failure',()=>{
+  for(const fail of [false,true])for(const visible of [false,true]) {
+    const {pipeline}=fixture(fail);
+    const effects={visible};pipeline.setEffectsTarget(effects);
+    if(fail)assert.throws(()=>pipeline.renderSelectiveBloom(),/WebGL/);
+    else assert.equal(pipeline.renderSelectiveBloom(),true);
+    assert.equal(effects.visible,visible);
+  }
+});
+
 test('no bloom work is attempted until rider and board are in the scene',()=>{
   const {pipeline,called}=fixture();
   pipeline.glowRoot=null;
@@ -79,8 +91,25 @@ test('normal environment shader chain does not include an all-scene bloom pass',
   assert.match(fx,/this\.bloomComposer\.addPass\(this\.bloom\)/);
   assert.doesNotMatch(fx,/this\.composer\.addPass\(this\.bloom\)/);
   assert.match(fx,/this\.scene\.background = null/);
-  assert.match(fx,/replaced\.push\(\[object, object\.material\]\)/);
   assert.match(main,/graphicsPipeline\.setGlowTarget\(skater\.visual\)/);
   assert.match(fx,/this\.composite|this\.bloomComposite/);
   assert.match(fx,/this\.settings\.bloomScale/);
+});
+
+test('repeated bloom passes release saved materials, including after failure and material changes',()=>{
+  const {pipeline,meshes,materials}=fixture();
+  pipeline.renderSelectiveBloom();
+  const storage=pipeline.bloomReplacements;
+  assert.equal(storage.length,0);
+  const changed={name:'replacement concrete'};
+  meshes[0].material=changed;
+  pipeline.bloomComposer.render=()=>{throw new Error('lost context');};
+  assert.throws(()=>pipeline.renderSelectiveBloom(),/lost context/);
+  assert.equal(meshes[0].material,changed);
+  assert.equal(meshes[1].material,materials[1]);
+  assert.equal(pipeline.bloomReplacements,storage);
+  assert.equal(storage.length,0,'no old park materials retained after rendering');
+  pipeline.bloomComposer.render=()=>{};
+  pipeline.renderSelectiveBloom();
+  assert.equal(meshes[0].material,changed);
 });

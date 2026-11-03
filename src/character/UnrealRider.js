@@ -1,13 +1,17 @@
+import { updateApprovedBalancePose, handstandTarget } from './ApprovedBalancePose.js';
 import { halfPipePose, kneeHeight } from './HalfPipePose.js';
 import * as THREE from 'three';
 import { calibrateRiderMaterials } from './RiderMaterialPresentation.js';
+import { applyGhostRiderPresentation, shouldApplyGhostRiderPresentation } from './GhostRiderMaterials.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { flipMotion, pushMotion } from './TrickMotion.js';
+import { flipMotion, flipFlickOffset, impossibleMotion, grindWeightShift, pushMotion } from './TrickMotion.js';
 import { safeLimbReach, anatomicalKneeDirection, preserveFootOrder, smoothHandDestination, neutralArmIKTargets, skatingArmIKTargets, safeArmGoal } from './AnimationDynamics.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
 import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
+import { SkateRagdoll } from './SkateRagdoll.js';
+import { calibrateFootSupportBounds } from './FootSupportClearance.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -72,8 +76,10 @@ function limb(upper, lower, end, target, pole, maximumFlex = 2.55) {
 }
 
 export class UnrealRider {
-  constructor(url) {
+  constructor(url, { uploadFilename = '' } = {}) {
     this.url = url;
+    this.uploadFilename = uploadFilename;
+    this.ghostRider = shouldApplyGhostRiderPresentation(url, uploadFilename);
     this.root = new THREE.Group();
     this.root.name = 'street-rider';
     this.rest = new Map();
@@ -83,7 +89,9 @@ export class UnrealRider {
     this.deckHeight = 0.12;
     this.channels = new Map(Object.values(PRESENTATION_STATES)
       .map(state => [state, { value: state === 'IDLE' ? 1 : 0, velocity: 0 }]));
-    this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 } };
+    this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 },
+      airBalance: { value: 0, velocity: 0 } };
+    this.ragdoll = new SkateRagdoll();
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
     this.kneePoles={};
@@ -102,6 +110,11 @@ export class UnrealRider {
   configureModel(model) {
     this.model = model;
     calibrateRiderMaterials(this.model,this.url);
+    // The prepared Teddy_Ghost.glb carries its spectral marker in mesh extras;
+    // this also works for cached portrait loads where the filename is unknown.
+    this.ghostRider = this.ghostRider ||
+      shouldApplyGhostRiderPresentation(this.url, this.uploadFilename, this.model);
+    if (this.ghostRider) applyGhostRiderPresentation(this.model);
     const box = new THREE.Box3().setFromObject(this.model);
     const height = box.getSize(V()).y;
     if (!Number.isFinite(height) || height < 1e-4 || !Number.isFinite(box.min.y)) {
@@ -116,8 +129,8 @@ export class UnrealRider {
     this.root.add(this.model);
     this.model.traverse(object => {
       if (object.isMesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
+        object.castShadow = !this.ghostRider;
+        object.receiveShadow = !this.ghostRider;
         object.frustumCulled = false;
       }
       if (object.isBone) this.rest.set(object, object.quaternion.clone());
@@ -163,6 +176,10 @@ export class UnrealRider {
     if (restAnkles.length && this.bones.pelvis) {
       const hipY = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V())).y;
       this.poseCalibration = avatarPoseCalibration(hipY - Math.min(...restAnkles));
+      // Tux's broad body needs a little more clearance than his short leg
+      // proportions alone predict. Keep sole targets and bone scale intact.
+      if (String(this.url).split('?')[0].endsWith('/assets/rider/TuxR.glb'))
+        this.poseCalibration.pelvisClearance = Math.max(.35, this.poseCalibration.pelvisClearance);
     }
     // Imported character axes can be mirrored by the +90 degree GLB rotation.
     // Infer leg sides from the actual positioned feet, never side labels alone.
@@ -210,10 +227,12 @@ export class UnrealRider {
       this.kneeForward.negate();
     this.root.userData.rigAudit = this.rigAudit;
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
+    calibrateFootSupportBounds(this);
     return this;
   }
 
   resetPresentation() {
+    this.ragdoll.reset();
     this.smoothedHands.l = null;
     this.smoothedHands.r = null;
     for (const [name, channel] of this.channels) Object.assign(channel, { value: name === 'IDLE' ? 1 : 0, velocity: 0 });
@@ -255,25 +274,33 @@ export class UnrealRider {
 
   boardPoint(board, x, y, z) { return board?.pointWorld?.(x, y, z, V()) || null; }
 
+  handstandTarget(side, board) { return handstandTarget.call(this, side, board); }
+
   grabTarget(name, side, stance, board) {
-    const sign = this.outward[side] || (side === 'l' ? -1 : 1);
+    // Toe/heel edges belong to the rider's anatomical facing, not to which
+    // hand is reaching. Per-foot signs inverted Indy/Stalefish in one stance.
+    const sign = Math.sign(this.kneeForward.x) || 1;
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
+    const width = Math.max(.15, board?.contactRig?.deckWidth || .42) / .42;
+    const length = Math.max(.6, board?.contactRig?.deckLength || 1.1) / 1.1;
+    const point = (x, y, z) => board?.pointWorld
+      ? plantedFootWorldPoint(board, x * width, y, z * length * (stance < 0 ? -1 : 1), V()) : null;
     switch (name) {
-      case 'Indy': return side === rear ? this.boardPoint(board, sign * 0.14, 0.04, 0) : null;
-      case 'Melon': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, 0) : null;
-      case 'Nosegrab': return side === front ? this.boardPoint(board, 0, 0.05, -0.43) : null;
-      case 'Tailgrab': return side === rear ? this.boardPoint(board, 0, 0.05, 0.43) : null;
-      case 'Japan': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, -0.04) : null;
-      case 'Madonna': return side === front ? this.boardPoint(board, sign * 0.08, 0.05, -0.43) : null;
-      case 'Benihana': return side === rear ? this.boardPoint(board, sign * 0.08, 0.05, 0.35) : null;
-      case 'Method': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, 0.08) : null;
-      case 'Stalefish': return side === rear ? this.boardPoint(board, -sign * 0.14, 0.04, 0.16) : null;
-      case 'Rocket Air': return this.boardPoint(board, sign * 0.09, 0.05, -0.41);
-      case 'Seatbelt': return side === front ? this.boardPoint(board, 0.08 * sign, 0.05, 0.4) : null;
-      case 'Mute': return side === front ? this.boardPoint(board, sign * 0.14, 0.04, -0.04) : null;
-      case 'Judo': return side === front ? this.boardPoint(board, 0, 0.05, -0.4) : null;
-      case 'Crail': return side === rear ? this.boardPoint(board, 0, 0.05, -0.4) : null;
-      case 'Christ Air': return side === front ? this.boardPoint(board, -sign * 0.14, 0.04, 0) : null;
+      case 'Indy': return side === rear ? point(sign * 0.14, 0.04, 0) : null;
+      case 'Melon': return side === front ? point(-sign * 0.14, 0.04, 0) : null;
+      case 'Nosegrab': return side === front ? point(0, 0.05, -0.43) : null;
+      case 'Tailgrab': return side === rear ? point(0, 0.05, 0.43) : null;
+      case 'Japan': return side === front ? point(-sign * 0.14, 0.04, -0.04) : null;
+      case 'Madonna': return side === front ? point(sign * 0.08, 0.05, -0.43) : null;
+      case 'Benihana': return side === rear ? point(sign * 0.08, 0.05, 0.35) : null;
+      case 'Method': return side === front ? point(-sign * 0.14, 0.04, 0.08) : null;
+      case 'Stalefish': return side === rear ? point(-sign * 0.14, 0.04, 0.16) : null;
+      case 'Rocket Air': return point(sign * 0.09, 0.05, -0.41);
+      case 'Seatbelt': return side === front ? point(0.08 * sign, 0.05, 0.4) : null;
+      case 'Mute': return side === front ? point(sign * 0.14, 0.04, -0.04) : null;
+      case 'Judo': return side === front ? point(0, 0.05, -0.4) : null;
+      case 'Crail': return side === rear ? point(0, 0.05, -0.4) : null;
+      case 'Christ Air': return side === front ? point(-sign * 0.14, 0.04, 0) : null;
       default: return null;
     }
   }
@@ -281,8 +308,20 @@ export class UnrealRider {
   update({ presentation, board, speedRatio = 0, crouch = 0, steer = 0, pushWeight = 0, pushPhase = 0,
     flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grindType = null, grindBalance = 0, wallRide = null, vert = false, verticalVelocity = 0, airTime = null,
+    airborne = null, bailPhysics = null,
     bail = false, bailProgress = 0, stance = 1, flatland = null, landingSeverity = 0, time = 0, dt = 1 / 60 }) {
     if (!this.model) return;
+    if (bail && bailPhysics && (this.ragdoll.active || this.ragdoll.start(this, bailPhysics))) {
+      this.ragdoll.update(dt, bailPhysics);
+      this.ragdoll.apply(this, setWorldQ, limb);
+      return;
+    }
+    if (!bail && this.ragdoll.active) this.resetPresentation();
+    const balanceResidual = this.w(PRESENTATION_STATES.FLATLAND);
+    if (!bail && !flipState && !grabState && !grindType && !wallRide && !airborne
+      && (flatland || (balanceResidual > 0.001 && !['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state)))) {
+      return updateApprovedBalancePose.call(this, arguments[0]);
+    }
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
     this.model.position.copy(this.basePos);
     this.model.quaternion.copy(this.baseQ);
@@ -298,8 +337,9 @@ export class UnrealRider {
     const grab = grabState?.name ? C(grabWeight, 0, 1) : 0;
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const motion = flipState ? flipMotion(flipState.progress) : null;
-    const push = pushWeight > .005 && !flipState && !grab && !bail && !flatland
-      ? pushMotion(pushPhase) : null;
+    const wrap = impossibleMotion(flipState, stance);
+    const grindShift = grindWeightShift(grindType, grindBalance, grind);
+    const push = null; // User disabled the pushing animation; propulsion stays in physics.
     const pushAmount = push ? C(pushWeight, 0, 1) : 0;
     const supportShift = (push?.weightShift || 0) * pushAmount;
     const balance = C(springStep(this.scalar.balance,
@@ -307,9 +347,14 @@ export class UnrealRider {
     const halfPipe = halfPipePose({ charge: crouch, air, vert, verticalVelocity,
       landing: landingSeverity, speed: speedRatio, grab,
       popProgress: presentation?.popProgress ?? 1, airTime });
-    const compTarget = C(halfPipe.compression + grind * 0.08 + manualW * 0.04 + supportShift * .08, 0, 1);
+    const compTarget = C(halfPipe.compression + grindShift.compression + manualW * 0.04 + supportShift * .08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
-    this.root.position.y = board?.root.position.y ?? this.deckHeight;
+    const inAir = airborne ?? ['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state);
+    // Hold the chosen flight pose through the descent. Only contact releases
+    // it, so the arms do not drop as soon as vertical velocity turns negative.
+    const airBalance = C(springStep(this.scalar.airBalance,
+      inAir ? 1 : 0, inAir ? 3.5 : 2.6, dt), 0, 1);
+    this.root.position.y = wrap || grab > .01 ? (board?.riderHeight ?? board?.root.position.y ?? this.deckHeight) : (board?.root.position.y ?? this.deckHeight);
     // Sit the hips back while the chest leans forward. The actual vertical
     // crouch is solved from each leg's lengths after foot targets are known.
     const hipSetback = compression * .09 * this.poseCalibration.crouchScale;
@@ -317,7 +362,8 @@ export class UnrealRider {
     // Keep the centre of mass over the supporting truck during a push.
     const travelSign = Math.sign(this.feet[front]?.point.z) || (stance < 0 ? 1 : -1);
     this.model.position.z += travelSign * .105 * supportShift * this.poseCalibration.crouchScale;
-    this.model.position.x += balance * .045;
+    this.model.position.x += balance * .045 + grindShift.lateral;
+    this.model.position.z += grindShift.foreAft;
     if (manual === 'manual') this.model.position.z += 0.035 * manualW;
     if (manual === 'noseManual') this.model.position.z -= 0.035 * manualW;
     if (bail) {
@@ -335,7 +381,7 @@ export class UnrealRider {
       this.rotate(name, V(0, 1, 0), (.075 * stance + balance * .07
         + (push?.armSwing || 0) * pushAmount * .065) / 3, rootQ);
       const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
-      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025 + supportShift * .10) / 3, rootQ);
+      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .24 + pump * .025 + supportShift * .10) / 3, rootQ);
       this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
@@ -383,13 +429,20 @@ export class UnrealRider {
     if (motion) {
       this.ft[front].y += motion.frontLift;
       this.ft[rear].y += motion.rearLift;
-      const heel = /Heel/i.test(flipState.name), kick = /Kick|Hard|Varial/i.test(flipState.name);
       const outward = this.outward[front] || (front === 'l' ? -1 : 1);
-      this.ft[front].x += outward * (heel ? -.19 : kick ? .22 : .06) * motion.flick;
+      this.ft[front].x += outward * flipFlickOffset(flipState) * motion.flick;
       const noseSign = Math.sign(this.feet[front].point.z) || -1;
       this.ft[front].z += noseSign * .16 * motion.flick;
       this.ft[rear].z -= noseSign * .06 * motion.clearance;
       if (/Impossible|Shove/.test(flipState.name)) this.ft[rear].z -= noseSign * .10 * motion.flick;
+      if (wrap) {
+        // The rear ankle stays over the shared deck pivot while the front foot
+        // lifts straight clear. A generic outward flip flick reads as a shove.
+        this.ft[rear].z = THREE.MathUtils.lerp(this.ft[rear].z, wrap.pivotZ, wrap.weight);
+        this.ft[rear].x = THREE.MathUtils.lerp(this.ft[rear].x, this.feet[rear].point.x, wrap.weight);
+        this.ft[front].x -= outward * flipFlickOffset(flipState) * motion.flick * wrap.weight;
+        this.ft[front].y += wrap.frontLift - motion.frontLift;
+      }
     }
     if (push) {
       // The pushing foot leaves the deck; the support foot stays locked to it.
@@ -444,6 +497,7 @@ export class UnrealRider {
     // The target is absolute from rest each frame, so it cannot accumulate.
     if (!bail && !flatland) {
       let hipCorrection = Infinity;
+      let grabMinimumHipCorrection = -Infinity;
       for (const side of SIDES) {
         const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side],
           foot = this.bones['foot_' + side];
@@ -453,7 +507,14 @@ export class UnrealRider {
         const upperLength = hip.distanceTo(knee), lowerLength = knee.distanceTo(ankle);
         const hipLocal = this.root.worldToLocal(hip.clone()), target = this.ft[side];
         const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
-        const ridingFlex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        if (grab > .01) {
+          const minimumReach = safeLimbReach(upperLength,lowerLength,0,2.50);
+          const minimumHeight = Math.sqrt(Math.max(0,minimumReach*minimumReach-horizontalSquared));
+          grabMinimumHipCorrection = Math.max(grabMinimumHipCorrection,target.y+minimumHeight-hipLocal.y);
+        }
+        // Pull the knees toward the chest for a grab instead of extending a
+        // short cartoon arm past its bone length to reach the board.
+        const ridingFlex = .45 + compression * 1.65 + grab * .38 + (side === rear ? air * .08 : 0);
         // The drive leg extends while the support knee absorbs the drop to
         // the pavement. Applying the same crouch to both caused a deep bob.
         const flex = side === rear && push
@@ -462,6 +523,10 @@ export class UnrealRider {
         hipCorrection = Math.min(hipCorrection, target.y + wantedHeight - hipLocal.y);
       }
       if (Number.isFinite(hipCorrection)) {
+        // Keep the pelvis steady while the grabbed deck and both knees rise.
+        // The following clearance guard still prevents torso/deck overlap.
+        hipCorrection -= grab > .01 ? (board?.grabLift || 0) : 0;
+        hipCorrection = Math.max(hipCorrection,grabMinimumHipCorrection);
         this.model.position.y += hipCorrection;
         this.root.updateWorldMatrix(true, true);
         // Guard both short and tall rigs from dipping the pelvis into the deck
@@ -492,9 +557,11 @@ export class UnrealRider {
       ));
       if (push && side === rear) this.rotate('foot_' + side, V(1, 0, 0),
         -travelSign * push.anklePitch * pushAmount, rootQ);
+      if (wrap && side === rear) this.rotate('foot_' + side, V(1, 0, 0), wrap.anklePitch, rootQ);
     }
 
     this.root.updateWorldMatrix(true, true);
+    const armUp = V(0, 1, 0).applyQuaternion(rootQ);
     for (const side of SIDES) {
       const sign = side === 'l' ? -1 : 1;
       const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];
@@ -531,9 +598,9 @@ export class UnrealRider {
       const skatingPose = skatingArmIKTargets(
         shoulderWorld, lateral.clone().applyQuaternion(rootQ),
         this.kneeForward.clone().applyQuaternion(rootQ), armLength,
-        { front: side === front, balance,
+        { front: side === front, balance, airBalance,
           balancePose: C(manualW + grind, 0, 1),
-          up: V(0, 1, 0).applyQuaternion(rootQ),
+          up: armUp,
           breathing: Math.sin(poseTime * 1.8 + (side === front ? .3 : 0)) * .006 * (1 - air) },
       );
       world.lerp(skatingPose.wrist, skatingWeight);
@@ -549,7 +616,7 @@ export class UnrealRider {
       const crossBody = (grab > .12 && !!reach) || !!flatland;
       // Keep the requested A-pose nearly extended through both safety passes.
       // Shortening its wrist goal forces the elbow to fold against the torso.
-      const neutralArms = skatingWeight > .98 && reachWeight < .01;
+      const neutralArms = skatingWeight > .98 && (!reach || reachWeight < .01);
       world.copy(safeArmGoal(shoulderWorld, world, outwardWorld, headWorld,
         armLength, { crossBody, neutral: neutralArms }));
       // Pole offsets must also scale to the actual chain, or short-rig elbows
@@ -559,7 +626,7 @@ export class UnrealRider {
         .addScaledVector(lateral, elbowPoleReach)
         .addScaledVector(this.kneeForward, -elbowPoleReach * .35)
         .add(V(0, -elbowPoleReach * .58, 0)));
-      elbowPole.lerp(skatingPose.elbow, skatingWeight * (1 - reachWeight));
+      elbowPole.lerp(skatingPose.elbow, skatingWeight * (reach ? 1 - reachWeight : 1));
       if (headWorld) {
         const fromHead = elbowPole.clone().sub(headWorld);
         const radius = Math.max(.075, armLength * .34);
@@ -625,6 +692,7 @@ export class UnrealRider {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.ragdoll.reset();
     const geometries = new Set(), materials = new Set();
     const textures = new Set(), skeletons = new Set();
     this.model?.traverse(object => {

@@ -1,5 +1,7 @@
 # StreetSkate
 
+The local coping/presentation quality pass is documented in [docs/coping-quality-pass-2026-10-27.md](docs/coping-quality-pass-2026-10-27.md), including the confirmed cause, before/after captures and validation. Run `npm run test:browser` against a local preview with `STREETSKATE_URL` set to its URL; the smoke test covers the current three-map game.
+
 Playable Three.js street skateboarding prototype, using the reconstructed Insanity-inspired park, the user-supplied TheanchoURi character, and the skateboard from CyberArtsBR/Skate.
 
 ## Run locally
@@ -12,7 +14,22 @@ npm run dev
 Open http://127.0.0.1:5173/ and click inside the game to give it focus.
 Simulation pauses when the page loses focus; Esc / Start resumes it. Explore mode pauses the rider.
 
+PC browsers with keyboard/mouse or a standard gamepad are supported. Mobile/touch controls and phone layouts are not supported.
+
+The default **144 FPS** graphics profile follows the display refresh rate, enables lightweight glow, and caps internal rendering at 1920 × 1080 pixels (preserving aspect ratio). Turning glow off skips post-processing. Set your display to 144 Hz in the operating system; actual frame rate depends on the GPU and browser. Higher visual presets remain available in Options → Graphics. The simulation stays at a fixed 120 Hz across display refresh rates.
+
 ## Controls
+
+Open **Tutorial** on the title screen to start with Flip School: eight looping flip-trick demonstrations, synchronized Xbox/PlayStation/keyboard inputs, numbered button order, pause/replay, and 0.5× slow motion. The pause menu also provides a direct Flip School shortcut. Only the selected clip loads, and exiting the menu stops playback. Free Practice opens the normal unlimited session setup.
+
+In Free Practice, press **M** to save a grounded practice marker and **N** to return to it. On a controller, hold both shoulder buttons and press D-pad up to save or down to return. The marker restores position, facing, and stance; save a new marker after changing parks.
+
+Pause Free Practice and turn on **Practice Drills** for a sequence of optional challenges. Successfully bank an ollie, a kickflip, a grind, and a three-trick combo to complete them.
+The pause menu also offers an optional **Input Display** showing your recent skating actions.
+
+Options includes a controller stick dead zone setting (8%, 16%, or 24%) for skating and camera movement. Increase it if the sticks drift; menu navigation and trick-direction taps keep their separate thresholds.
+
+Graphics includes optional 2× edge smoothing for the 144 FPS preset with glow enabled. It can reduce frame rate; it is off by default and can be compared locally on your hardware.
 
 | Action | Keyboard | Standard gamepad |
 | --- | --- | --- |

@@ -3,6 +3,7 @@ import { Capsule } from 'three/addons/math/Capsule.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { BlockTriangleIndex } from './collision/BlockTriangleIndex.js';
 import { auditParkSurfaceCoverage } from './collision/ParkCoverageAudit.js';
+import { authoredSurfaceTag } from './SurfaceAudio.js';
 
 const DOWN = new THREE.Vector3(0, -1, 0);
 const UP = new THREE.Vector3(0, 1, 0);
@@ -111,15 +112,23 @@ export class ParkCollision {
     for (const hit of this._rayHits) {
       this.normal(hit, normalOut);
       if (!Number.isFinite(normalOut.x) || !Number.isFinite(normalOut.y) || !Number.isFinite(normalOut.z)) continue;
-      // Authoring/export tools sometimes reverse otherwise valid ramp/floor
-      // triangles. A ray descending from above must receive the upward face;
-      // never reorient underside hits on upward sweeps.
-      if (direction.y < -0.05 && normalOut.y < -minNormalY) normalOut.negate();
+      // Rideable skins use the upward face even when an uphill sweep is
+      // horizontal/rising. sweepRideable separately rejects departing motion,
+      // so reversed winding cannot make a ramp disappear during an ascent.
+      if (normalOut.y < -minNormalY) {
+        // Never reinterpret an upward ray through a floor as a top-side
+        // landing. Downward/horizontal probes still recover reverse-wound
+        // bowl/ramp skins without creating gaps at triangle seams.
+        if (direction.y > 0.05) continue;
+        normalOut.negate();
+      }
       if (normalOut.y <= minNormalY) continue;
       pointOut.copy(hit.point);
       const result = this._probeResult;
       result.point.copy(pointOut); result.normal.copy(normalOut);
       result.distance = hit.distance; result.fraction = maxDistance > EPS ? hit.distance / maxDistance : 0;
+      result.object=hit.object;result.faceIndex=hit.faceIndex;
+      result.audioSurfaceTag=authoredSurfaceTag(hit.object)||'neutral';
       return result;
     }
     return null;
@@ -159,11 +168,14 @@ export class ParkCollision {
     const distance = this._motion.length();
     if (distance < EPS) return null;
     this._direction.copy(this._motion).multiplyScalar(1 / distance);
-    const hit = this.rayRideable(from, this._direction, distance + extra, pointOut, normalOut);
+    const hit = this.rayRideable(from, this._direction, distance + extra, pointOut, normalOut, .008);
     if (!hit || this._motion.dot(normalOut) >= -1e-7) return null;
     const result = this._sweepResult;
     result.point.copy(pointOut); result.normal.copy(normalOut);
     result.distance = hit.distance;
+    result.object = hit.object;
+    result.faceIndex = hit.faceIndex;
+    result.audioSurfaceTag = hit.audioSurfaceTag;
     result.fraction = THREE.MathUtils.clamp(hit.distance / Math.max(distance, EPS), 0, 1);
     return result;
   }
@@ -326,7 +338,7 @@ export class ParkCollision {
           if (ignoreRail && triangle.railId === ignoreRail) continue;
           const face = triangle.faceNormal.dot(this._moveNormal.copy(this._movePreviousCenter).sub(triangle.a)) < 0
             ? new THREE.Triangle(triangle.c, triangle.b, triangle.a) : triangle;
-          const hit = this.blocks.triangleCapsuleIntersect(this.capsule, face);
+          const hit = this.blocks.triangleCapsuleIntersect(this.capsule, face, Boolean(triangle.railId));
           if (!hit || hit.depth < 0.00001 || (deepest && hit.depth <= deepest.depth)) continue;
           deepest = { ...hit, railId: triangle.railId };
         }

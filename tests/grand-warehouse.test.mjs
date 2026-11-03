@@ -20,7 +20,7 @@ const expectedHash = 'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37
 
 test('Map 3 is distinct and preserves ORBIT as Map 2', () => {
   const ids = PARK_DEFINITIONS.filter(p => p.selectable).map(p => p.id);
-  assert.deepEqual(ids, ['rooftop','orbit','grand-warehouse']);
+  assert.deepEqual(ids, ['skate-paradise','orbit','grand-warehouse']);
   assert.equal(PARK_DEFINITIONS.find(p => p.id === 'orbit').number, 2);
   assert.equal(PARK_REGISTRY.orbit.name, 'ORBIT');
   assert.equal(PARK_DEFINITIONS.find(p => p.id === 'grand-warehouse').number, 3);

@@ -8,7 +8,9 @@ import { createUrbanRubberFloorMaterial, isUrbanRubberFloorName, tileUrbanRubber
 import { ensureGrandWarehouseSpawns } from './GrandWarehouseSpawns.js';
 import { excludeGrandWarehouseMisplacedSixStair } from './GrandWarehouseSceneFilter.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
-import { refineWarehouseMaterials } from './WarehouseMaterialPresentation.js';
+import { refineWarehouseMaterials, loadWarehousePhotoFinish } from './WarehouseMaterialPresentation.js';
+import { collectWarehousePracticalAnchors, createWarehouseVisualPass } from '../graphics/WarehouseVisualPass.js';
+import { fetchCompressedGlb } from '../game/CompressedAsset.js';
 
 // The exported GLBs preserve The Foundry's 150 x 110 metre topology.
 // Reusing the Foundry's authored collision/rails (rather than raycasting visual
@@ -29,6 +31,7 @@ const VARIANTS = Object.freeze({
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
     url: gameAssetUrl('/assets/warehouse/granwarehouse.glb?v=fbc46ba3'),
+    compressedUrl: gameAssetUrl('/assets/warehouse/granwarehouse.glb.gz?v=fbc46ba3'),
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',
@@ -165,11 +168,15 @@ export async function createWarehouseVariant(id) {
   const loader = new GLTFLoader();
   let gltf;
   try {
-    gltf = await loader.loadAsync(variant.url);
+    gltf = variant.compressedUrl
+      ? await loader.parseAsync(await fetchCompressedGlb(variant.compressedUrl, variant.url), '')
+      : await loader.loadAsync(variant.url);
   } catch (error) {
     throw new Error(`${variant.name} needs ${variant.url}; upload the GLB to public/assets/warehouse/ first. ${error.message || ''}`);
   }
   const world = createWarehousePark({ textures: false });
+  const practicalAnchors = id === 'grand-warehouse' && gltf.scene?.isObject3D
+    ? collectWarehousePracticalAnchors(gltf.scene) : [];
   let batched, imported;
   const featureMetadata = typeof annotateWarehouseFeatures === 'function'
     ? annotateWarehouseFeatures(gltf.scene, id) : { annotated: 0, explicitAliases: 0, explicitSurfaceHints: 0 };
@@ -208,7 +215,7 @@ export async function createWarehouseVariant(id) {
   // paths are inherited from the verified original warehouse.
   releaseVisualRoot(world.park);
   world.park = batched.park;
-  if(id==='grand-warehouse')refineWarehouseMaterials(world.park);
+  if(id==='grand-warehouse')refineWarehouseMaterials(world.park,{detail:true});
   if (imported) {
     releaseVisualRoot(world.collision);
     world.collision = imported.collision;
@@ -280,6 +287,13 @@ export async function createWarehouseVariant(id) {
     ambientIntensity: id === 'tron-warehouse' ? 1.35 : 1.6,
     roofFadeHeight: 18,
   };
-  world.ready = Promise.resolve();
+  if(id==='grand-warehouse'&&world.park?.isObject3D){
+    world.surfaceDetail=createWarehouseVisualPass(world,{practicalAnchors});
+    manifest.statistics.visualPassTriangles=world.surfaceDetail.stats.triangles;
+    manifest.statistics.visualPassDrawCalls=world.surfaceDetail.stats.drawCalls;
+    manifest.statistics.practicalLights=world.surfaceDetail.stats.lights;
+  }
+  world.ready = id==='grand-warehouse'&&world.park?.isObject3D
+    ? loadWarehousePhotoFinish(world.park) : Promise.resolve();
   return world;
 }

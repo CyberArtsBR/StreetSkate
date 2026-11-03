@@ -9,11 +9,12 @@ import {
   isControlledDeckExitTouchdown,
 } from './RampWallSafetySkillStreetPhysics.js';
 import { PRODUCTION_BOARD_CONTACT_RIG } from './SkateboardContactRig.js';
-import { PHYSICS } from './StreetPhysics.js';
+import { PHYSICS, MOVEMENT_STATE } from './StreetPhysics.js';
 import { applyAcceptedLanding } from './core/LandingExecutor.js';
 import {
   evaluateTransitionLanding,
   transitionLandingSupportMode,
+  landingBailMessage,
 } from './core/LandingResult.js';
 import { LANDING_ROUTE, resolveLandingRoute } from './landing/LandingPolicy.js';
 import { VERT_RETURN } from './transitions/VertReturnFlight.js';
@@ -27,6 +28,7 @@ import {
   resolveSweepReentryCandidate,
   resolveWheelReentryCandidate,
   supportMatchesOriginalTransition as matchesOriginalTransition,
+  partialDeckContactDuringReturn,
 } from './core/TransitionReentryResult.js';
 
 export const SAFE_COPING_EXIT = Object.freeze({
@@ -136,19 +138,38 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
   /** Contact alignment is intentionally inert: only player input may change yaw. */
   autoAlignOriginalTransition() {}
 
+  deferTransitionImpact(impact) {
+    const air = this.transitionAir;
+    return Boolean(air && !air.transferring
+      && (supportMatchesOriginalTransition(impact, air)
+        || partialDeckContactDuringReturn({support:this.ensureBoardContact().state,air,
+          position:this.position,rig:this.contactRig,config:SAFE_COPING_EXIT})));
+  }
+
   land(support) {
     const air = this.transitionAir;
+    // A transfer can brush the departing ramp before clearing its lip. Resolve
+    // that impact without calling it a new landing and immediately relaunching.
+    if (air && !air.apexPassed && this.velocity.y > 0.05) {
+      this.copingTrace?.contact('landing-rejected', support, 'departure');
+      return false;
+    }
     if (air && !air.transferring) {
       // Wheel probes can still see the coping while the rider is leaving it.
       // That is departure contact, not another touchdown/takeoff cycle.
-      if (!air.apexPassed && this.velocity.y > 0.05) return false;
       const nearLip = support?.position && air.frame?.lipPoint
         && support.position.y > air.frame.lipPoint.y - 0.25;
-      if (nearLip && Math.abs(support.normal?.y ?? 1) > 0.985) return false;
+      if (nearLip && Math.abs(support.normal?.y ?? 1) > 0.985) {
+        this.copingTrace?.contact('landing-rejected', support, 'flat-lip');
+        return false;
+      }
     }
 
     const control = air?.exitControl;
-    const originalTransition = Boolean(air
+    // A verified deliberate exit owns its deck landing. Mixed lip support can
+    // still geometrically overlap the original ramp, but must not bypass the
+    // deck-target check and settle backward on that blended contact.
+    const originalTransition = Boolean(air && (!air.transferring || control?.abortToReturn)
       && supportMatchesOriginalTransition(support, air));
     const deckTargetMatches = supportMatchesDeckTarget(support, air);
     const route = resolveLandingRoute({
@@ -186,10 +207,12 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
     if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
 
     if (!landing.accepted) {
-      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
+      this.copingTrace?.contact('landing-rejected', support, landing.rejectReason);
+      if (landing.shouldBail) this.bail(landingBailMessage(landing));
       return false;
     }
 
+    this.copingTrace?.contact('landing-accepted', support, route);
     return applyAcceptedLanding(this, support, landing, {
       partialGrace: 0.16,
       slopedGrace: 0.07,
@@ -259,18 +282,19 @@ export class SafeCopingExitSkillStreetPhysics extends DeckAwareRampExitSkillStre
       : resolveSweepReentryCandidate(context);
     if (!sweep?.support || !sweep.candidate) return false;
 
+    // Only true wheel support can complete the landing. Contact with the
+    // rider's center must never fabricate a grounded wheel catch.
     this.position.copy(sweep.candidate);
-    if (this.land(sweep.support)) return true;
-    if (this.bailTime > 0) {
-      this.position.copy(sweep.support.position);
-      return true;
-    }
+    if (sweep.wheelVerified && this.land(sweep.support)) return true;
+    if (this.bailTime > 0) return true;
 
-    // Final invariant: once the original transition has been swept, never allow
-    // the center to continue through it even if a future landing rule rejects.
-    this.position.copy(sweep.support.position);
-    const into = this.velocity.dot(sweep.support.normal);
-    if (into < 0) this.velocity.addScaledVector(sweep.support.normal, -into);
+    // A rejected re-entry remains airborne. Resolve actual penetration along
+    // the measured face while retaining ramp-tangent momentum. Stop steering
+    // the following frame back into the same failed coping-return contact.
+    const into = this.velocity.dot(sweep.hit.normal);
+    if (into < 0) this.velocity.addScaledVector(sweep.hit.normal, -into);
+    this.transitionAir = null;
+    this.setMovementState(MOVEMENT_STATE.AIR);
     return true;
   }
 

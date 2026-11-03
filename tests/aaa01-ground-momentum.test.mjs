@@ -54,10 +54,10 @@ test('aaa01: manual keeps low-speed momentum and only gently damps overspeed', (
 });
 
 test('aaa01: push traction smoothly vanishes approaching cruise speed', () => {
-  const a = [15, 16, 16.9, 16.99].map(speed => automaticPushAcceleration({ speed }));
+  const a = [16, 17, 17.9, 17.99].map(speed => automaticPushAcceleration({ speed }));
   assert.ok(a[0] > a[1] && a[1] > a[2] && a[2] > a[3] && a[3] > 0);
   assert.ok(a[3] < 0.1);
-  assert.equal(automaticPushAcceleration({ speed: 17 }), 0);
+  assert.equal(automaticPushAcceleration({ speed: 18 }), 0);
   assert.equal(automaticPushAcceleration({ speed: 2, normalY: 0.98 }), 0);
 });
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { resolveCameraClearance } from './CameraClearance.js';
+import { CAMERA_MODES } from './CameraModes.js';
 import {
   captureCameraState,
   resolveCameraTravelDirection,
@@ -46,6 +47,8 @@ export const THPS_CAMERA = Object.freeze({
   positionFollowRate: 7.5,
   targetFollowRate: 8.5,
   verticalFollowRate: 8.5,
+  landingSettleDuration: 0.24,
+  landingVerticalFollowRate: 5.5,
   vertVerticalFollowRate: 13,
   maximumFollowLag: 1.4,
   classicVertDistance: 3.6,
@@ -152,6 +155,8 @@ export function fixedChaseFrame(player, direction, config = THPS_CAMERA) {
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
+    this.preferences = { cameraDistance: 1, cameraFov: 58, speedFov: 1 };
+    this.motionPreference=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
     this.mode = 'follow';
     this.position = new THREE.Vector3();
     this.target = new THREE.Vector3();
@@ -172,13 +177,25 @@ export class FollowCamera {
     this.zoom = 1;
     this.lookAhead = 0;
     this.aimTarget = null;
+    this.airborneTime = 0;
+    this.landingSettle = 0;
   }
 
   setMode(mode, player = null) {
-    this.mode = ['follow', 'classic', 'fixed'].includes(mode) ? mode : 'follow';
-    this.camera.fov = 58;
+    this.mode = CAMERA_MODES.includes(mode) ? mode : 'follow';
+    this.camera.fov = this.preferences.cameraFov;
     this.camera.updateProjectionMatrix();
     if (player) this.snap(player);
+  }
+
+  setPreferences(value = {}) {
+    const bounded = (n, fallback, min, max) => Number.isFinite(Number(n))
+      ? THREE.MathUtils.clamp(Number(n), min, max) : fallback;
+    this.preferences = {
+      cameraDistance: bounded(value.cameraDistance, 1, .8, 1.3),
+      cameraFov: bounded(value.cameraFov, 58, 48, 80),
+      speedFov: bounded(value.speedFov, 1, 0, 2),
+    };
   }
 
   snap(player) {
@@ -194,19 +211,33 @@ export class FollowCamera {
     this.trickZoomActive = false; this.zoom = 1;
     this.lookAhead = 0;
     this.aimTarget = null;
+    this.airborneTime = 0;
+    this.landingSettle = 0;
     this.update(player, 1, {});
   }
 
-  update(player, dt, input = {}) {
+  update(player, dt, input = {}, presentationPosition = null) {
     dt = THREE.MathUtils.clamp(Number(dt) || 0, 0, 0.1);
+    const reducedMotion=this.motionPreference?.matches===true;
     const firstFrame = !this.initialized;
     const state = captureCameraState(player, {
       previousDirection: this.direction,
       initialized: this.initialized,
+      presentationPosition,
     });
     const classic = this.mode !== 'fixed';
-    const highFollow = this.mode === 'follow';
+    const highFollow = this.mode === 'follow' || this.mode === 'follow-close' || this.mode === 'follow-low';
     const returning = state.transitionReturning;
+    this.landingSettle = Math.max(0, this.landingSettle - dt);
+    if (!state.grounded && !state.grindActive && !state.bailing) this.airborneTime += dt;
+    else {
+      // Ignore one-frame wheel-contact flicker. A real landing settles the
+      // lens height and boom gently without adding camera shake or yaw.
+      if (state.grounded && this.airborneTime >= .1 && !state.bailing)
+        this.landingSettle = THPS_CAMERA.landingSettleDuration;
+      this.airborneTime = 0;
+    }
+    const landingBlend = this.landingSettle / THPS_CAMERA.landingSettleDuration;
     if (classic) {
       if (!this.initialized) this.direction.copy(state.travelDirection);
       if (returning && !this.wasReturning) {
@@ -244,16 +275,22 @@ export class FollowCamera {
         THPS_CAMERA.maximumTrackedYawRadiansPerSecond));
       if (returning && state.doingTrick) this.trickZoomActive = true;
       if (!returning) this.trickZoomActive = false;
-      const zoomTarget = highFollow ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
+      const zoomTarget = highFollow || reducedMotion ? 1 : this.trickZoomActive ? THPS_CAMERA.classicTrickZoom
         : state.grindActive ? THPS_CAMERA.classicGrindZoom : 1;
       this.zoom = THREE.MathUtils.lerp(this.zoom, zoomTarget, 1 - Math.exp(-5 * dt));
       const highFrame = highFollow ? highFollowFraming({ ...state, transitionReturning: returning || this.returnHold > 0 }) : null;
-      const distance = highFollow ? highFrame.distance
+      let distance = highFollow ? highFrame.distance
         : returning ? THPS_CAMERA.classicVertDistance
         : state.grounded || state.grindActive ? THPS_CAMERA.distance : THPS_CAMERA.airDistance;
-      const height = highFollow ? highFrame.height
+      let height = highFollow ? highFrame.height
         : returning ? THPS_CAMERA.classicVertHeight
         : state.grounded || state.grindActive ? THPS_CAMERA.height : THPS_CAMERA.airHeight;
+      if (landingBlend > 0 && state.grounded && !returning && !state.grindActive) {
+        const airFrame = highFollow ? highFollowFraming({ ...state, grounded: false })
+          : { distance: THPS_CAMERA.airDistance, height: THPS_CAMERA.airHeight };
+        distance = THREE.MathUtils.lerp(distance, airFrame.distance, landingBlend);
+        height = THREE.MathUtils.lerp(height, airFrame.height, landingBlend);
+      }
       const blend = this.initialized ? 1 - Math.exp(-THPS_CAMERA.contextFollowRate * dt) : 1;
       this.distance = THREE.MathUtils.lerp(this.distance, distance * this.zoom, blend);
       this.height = THREE.MathUtils.lerp(this.height, height, blend);
@@ -285,8 +322,10 @@ export class FollowCamera {
         state.horizontalSpeed * THPS_CAMERA.highSpeedFollowGain,
       );
       const horizontal = 1 - Math.exp(-followRate * dt);
-      const vertical = 1 - Math.exp(-(returning
-        ? THPS_CAMERA.vertVerticalFollowRate : THPS_CAMERA.verticalFollowRate) * dt);
+      const verticalRate = returning ? THPS_CAMERA.vertVerticalFollowRate
+        : classic && landingBlend > 0 ? THREE.MathUtils.lerp(THPS_CAMERA.verticalFollowRate,
+          THPS_CAMERA.landingVerticalFollowRate, landingBlend) : THPS_CAMERA.verticalFollowRate;
+      const vertical = 1 - Math.exp(-verticalRate * dt);
       this.followCenter.x = THREE.MathUtils.lerp(this.followCenter.x, state.position.x, horizontal);
       this.followCenter.z = THREE.MathUtils.lerp(this.followCenter.z, state.position.z, horizontal);
       this.followCenter.y = THREE.MathUtils.lerp(this.followCenter.y, state.position.y, vertical);
@@ -309,9 +348,20 @@ export class FollowCamera {
       ? baseLead + (returning ? 0 : fastLead * (highFollow ? 1 : 0.45)) : 0;
     this.lookAhead = classic ? THREE.MathUtils.lerp(this.lookAhead, lookAheadTarget,
       this.initialized ? 1 - Math.exp(-8 * dt) : 1) : 0;
+    let frameDistance = this.distance * this.preferences.cameraDistance;
+    let frameHeight = this.height + (classic ? this.lookTilt * 3 : 0);
+    if (this.mode === 'follow-close' || this.mode === 'follow-low') {
+      // Scale the whole eye-to-target vector to keep the Follow viewing angle;
+      // the low variant uses the same closer distance with a lower eye.
+      const scale = 0.72;
+      frameDistance = Math.max(2.6, (frameDistance + this.lookAhead) * scale - this.lookAhead);
+      const rise = frameHeight + THPS_CAMERA.anchorHeight - THPS_CAMERA.targetHeight;
+      frameHeight = rise * (this.mode === 'follow-low' ? 0.38 : scale)
+        - THPS_CAMERA.anchorHeight + THPS_CAMERA.targetHeight;
+    }
     const frame = fixedChaseFrame({ position: this.followCenter }, viewDirection,
-      { ...THPS_CAMERA, distance: this.distance,
-        height: this.height + (classic ? this.lookTilt * 3 : 0),
+      { ...THPS_CAMERA, distance: frameDistance,
+        height: frameHeight,
         lookAhead: this.lookAhead });
     this.position.copy(frame.desired);
     if (firstFrame || !this.aimTarget) this.aimTarget = frame.target.clone();
@@ -328,12 +378,12 @@ export class FollowCamera {
     // Fixed is intentionally a constant-lens, world-axis shot. Gameplay
     // follow modes can gently open their lens at speed; portrait displays get
     // extra visibility without altering the avatar or authored geometry.
-    const speedFov = this.mode === 'fixed' ? 0 : Math.min(
+    const speedFov = this.mode === 'fixed' || reducedMotion ? 0 : Math.min(
       THPS_CAMERA.highSpeedFovCap,
       Math.max(0, state.horizontalSpeed - 12) * THPS_CAMERA.highSpeedFovGain);
     const portraitFov = this.mode === 'fixed' ? 0 : Math.min(
       THPS_CAMERA.portraitFovCap, Math.max(0, 1.2 - (this.camera.aspect || 1.78)) * 3);
-    const requestedFov = 58 + speedFov + portraitFov;
+    const requestedFov = this.preferences.cameraFov + speedFov * this.preferences.speedFov + portraitFov;
     if (Math.abs(this.camera.fov - requestedFov) > 0.05) {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, requestedFov,
         firstFrame ? 1 : 1 - Math.exp(-5 * dt));
@@ -343,7 +393,8 @@ export class FollowCamera {
 
     // The tripod is intentionally smoothed, but all clearance rays originate
     // at the real rider, so follow lag never conceals a camera/character overlap.
-    const riderAnchor = state.position.clone().addScaledVector(UP, THPS_CAMERA.anchorHeight);
+    const riderAnchor = (player?.position?.clone?.() || state.position.clone())
+      .addScaledVector(UP, THPS_CAMERA.anchorHeight);
     const minArm = state.wallRideActive ? 3.3 : 2.35;
     this.clearanceCache.fixedAxis = highFollow || this.mode === 'fixed';
     this.clearanceCache.minimumDistance = minArm;

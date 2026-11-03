@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { GraphicsPipeline } from '../src/graphics/GraphicsPipeline.js';
-import { GRAPHICS_PRESETS, GRAPHICS_PRESET_ORDER } from '../src/graphics/GraphicsSettings.js';
+import { GRAPHICS_PRESETS, GRAPHICS_PRESET_ORDER, resolveGraphicsSettings } from '../src/graphics/GraphicsSettings.js';
 import { WAREHOUSE_RELIEF_SIZE, createWarehouseMaterials } from '../src/park/WarehouseMaterials.js';
 
 test('agent07: all five presets retain 1024² shadows with bounded follow coverage', () => {
@@ -13,7 +13,7 @@ test('agent07: all five presets retain 1024² shadows with bounded follow covera
     assert.ok(p.shadowNormalBias > 0 && p.shadowNormalBias < .05);
     assert.ok(p.bloomScale <= 1);
   }
-  assert.equal(GRAPHICS_PRESETS.performance.bloomStrength, 0);
+  assert.equal(GRAPHICS_PRESETS.performance.bloomStrength, 1.09);
   assert.equal(GRAPHICS_PRESETS.performance.sharpen, 0);
   assert.equal(GRAPHICS_PRESETS.high.ssr, false);
   // Screen-space reflections ghost/skew imported skatepark objects at high DPR.
@@ -72,8 +72,12 @@ test('agent07: static bloom mesh lists are reused rather than traversing scene t
     assert.strictEqual(wood.material,pipeline.blackoutMaterial);
     assert.equal(riderMesh.material.name,'rider');
   }};
+  const glowOnly = {};
+  pipeline.bloom = { renderTargetsHorizontal:[{ texture:glowOnly }] };
   pipeline.bloomComposite = {uniforms:{bloomTexture:{value:null}}};
   assert.equal(pipeline.renderSelectiveBloom(),true);
+  assert.strictEqual(pipeline.bloomComposite.uniforms.bloomTexture.value,glowOnly,
+    'composite only the glow, not a low-resolution duplicate of the source');
   assert.equal(pipeline.renderSelectiveBloom(),true);
   assert.equal(walks,1, 'static scene must be cached between frames');
   assert.equal(renders,2);
@@ -99,10 +103,10 @@ test('agent07: relief GPU budget drops 75% without reducing photographic texture
   assert.ok(materials.coping.roughness < .35);
 });
 
-test('agent07: Performance renders directly instead of allocating or executing post effects', () => {
+test('agent07: Performance and 144 FPS with glow off render directly without post effects', () => {
   const pipeline = Object.create(GraphicsPipeline.prototype);
   let direct = 0, composer = 0;
-  pipeline.settings = {name:'performance',bloomStrength:0};
+  pipeline.settings = resolveGraphicsSettings('performance',{}, {bloomEnabled:false});
   pipeline.faulted = false;
   pipeline.scene = {};
   pipeline.camera = {};
@@ -113,4 +117,24 @@ test('agent07: Performance renders directly instead of allocating or executing p
   pipeline.render();
   assert.equal(direct,1);
   assert.equal(composer,0);
+  pipeline.settings = {...GRAPHICS_PRESETS['high-refresh'],name:'high-refresh',bloomStrength:0,postProcessing:false};
+  pipeline.render();
+  assert.equal(direct,2);
+  assert.equal(composer,0);
+});
+
+test('Performance and 144 FPS with glow enabled render and composite their bloom passes', () => {
+  for(const name of ['performance','high-refresh']) {
+    const pipeline=Object.create(GraphicsPipeline.prototype);
+    let glow=0,composer=0,direct=0;
+    pipeline.settings=resolveGraphicsSettings(name);
+    pipeline.scene={};pipeline.camera={};pipeline.faulted=false;
+    pipeline.bloomComposite={enabled:true};pipeline.updateContactShadows=()=>{};
+    pipeline.renderSelectiveBloom=()=>{glow++;return true;};
+    pipeline.composer={render(){composer++;}};pipeline.renderer={render(){direct++;}};
+    pipeline.render();
+    assert.equal(glow,1,name);assert.equal(composer,1);assert.equal(direct,0);
+    assert.equal(pipeline.bloomComposite.enabled,true);
+    const status=pipeline.getStatus();assert.equal(status.bloomEnabled,true);assert.equal(status.glowTuning.bloom,1.09);
+  }
 });

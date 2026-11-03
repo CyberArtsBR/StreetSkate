@@ -1,5 +1,5 @@
 import { gameAssetUrl } from './AssetPaths.js';
-import { readAudioVolume, saveAudioVolume } from './AudioSettings.js';
+import { readAudioVolume, saveAudioVolume, readBackgroundAudio, saveBackgroundAudio } from './AudioSettings.js';
 export const TRACKS = [
   ['Chimpion Drip','chimpion-drip.mp3'], ['Chimpion Slide','chimpion-slide.mp3'],
   ['West Park','west-park.mp3'], ['Old School flip','old-school-flip.mp3'],
@@ -14,6 +14,9 @@ export class MusicPlayer {
     this.musicVolume = readAudioVolume('music');
     this.masterVolume = this.musicVolume;
     this.audio.volume = this.musicVolume;
+    this.backgroundAudio = readBackgroundAudio();
+    this.duckAmount = 1;
+    this.duckTimer = null;
     this.queue = [];
     this.current = -1;
     this.onChange = onChange;
@@ -25,26 +28,26 @@ export class MusicPlayer {
     this._ended = () => this.next();
     this._error = () => {
       if (this.disposed || this.current < 0) return;
-      console.warn('StreetSkate music asset error', {
-        track: this.title, url: this.audio.currentSrc || this.audio.src,
-        code: this.audio.error?.code ?? null,
-      });
       this.failed.add(this.current);
       if (this.failed.size < TRACKS.length) this.next();
       else this.onChange(this.title, 'Soundtrack unavailable — reload to retry');
     };
-    this._visibility = () => { if (!document.hidden) this.unlock(); };
+    this._visibility = () => {
+      if (this.isBackgroundMuted()) {
+        this.generation++; this.playPending = null; this.audio.pause();
+      } else this.unlock();
+    };
     this.unlock = this.unlock.bind(this);
     this.audio.addEventListener('ended', this._ended);
     this.audio.addEventListener('error', this._error);
     window.addEventListener('pointerdown', this.unlock, { passive: true });
     window.addEventListener('keydown', this.unlock, { passive: true });
-    window.addEventListener('touchstart', this.unlock, { passive: true });
     document.addEventListener('visibilitychange', this._visibility);
     this.next();
   }
 
   get title() { return TRACKS[this.current]?.[0] || ''; }
+  isBackgroundMuted() { return !this.backgroundAudio && Boolean(document.hidden); }
 
   shuffle() {
     this.queue = TRACKS.map((_, i) => i).filter(i => !this.failed.has(i));
@@ -76,7 +79,7 @@ export class MusicPlayer {
   }
 
   async play() {
-    if (this.disposed || this.playPending || this.failed.size === TRACKS.length) return;
+    if (this.disposed || this.isBackgroundMuted() || this.playPending || this.failed.size === TRACKS.length) return;
     const generation = this.generation;
     let pending;
     try {
@@ -100,7 +103,7 @@ export class MusicPlayer {
   }
 
   unlock() {
-    if (this.disposed || !this.audio.paused || this.audio.ended) return;
+    if (this.disposed || this.isBackgroundMuted() || !this.audio.paused || this.audio.ended) return;
     // A browser may still be rejecting the original automatic play attempt
     // when the first trusted click or keydown arrives. Don't discard the only
     // user activation just because that old promise has not settled yet.
@@ -116,7 +119,7 @@ export class MusicPlayer {
   setMusicVolume(value) {
     this.musicVolume = saveAudioVolume('music', value);
     this.masterVolume = this.musicVolume;
-    this.audio.volume = this.musicVolume;
+    this.audio.volume = this.musicVolume * this.duckAmount;
     this.onChange(this.title, '');
   }
 
@@ -126,16 +129,43 @@ export class MusicPlayer {
     try { localStorage.setItem('streetskate.masterVolume', String(this.masterVolume)); } catch {}
   }
 
+  setBackgroundAudio(value) {
+    this.backgroundAudio = saveBackgroundAudio(value);
+    this._visibility();
+  }
+
+  duck(durationMs = 550, amount = .6) {
+    if (this.disposed) return;
+    const now = Date.now(), hold = Math.max(80, Math.min(3200, Number(durationMs) || 550));
+    const depth = Math.max(.25, Math.min(1, Number(amount) || .6));
+    // Stronger overlapping reactions retain priority until their own hold expires.
+    (this.duckRequests ||= []).push({ until: now + hold, amount: depth });
+    if (this.duckTimer) return;
+    let previous = now;
+    const step = () => {
+      if (this.disposed) return;
+      const time = Date.now(), dt = Math.min(100, Math.max(1, time - previous)); previous = time;
+      this.duckRequests = this.duckRequests.filter(request => request.until > time);
+      const target = Math.min(1, ...this.duckRequests.map(request => request.amount));
+      const tau = target < this.duckAmount ? 25 : 120;
+      this.duckAmount += (target - this.duckAmount) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - this.duckAmount) < .002) this.duckAmount = target;
+      this.audio.volume = this.musicVolume * this.duckAmount;
+      if (!this.duckRequests.length && this.duckAmount === 1) { clearInterval(this.duckTimer); this.duckTimer = null; }
+    };
+    this.duckTimer = setInterval(step, 16);
+  }
+
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
     this.generation++;
+    clearInterval(this.duckTimer); this.duckTimer = null; this.duckRequests = [];
     this.audio.pause();
     this.audio.removeEventListener('ended', this._ended);
     this.audio.removeEventListener('error', this._error);
     window.removeEventListener('pointerdown', this.unlock);
     window.removeEventListener('keydown', this.unlock);
-    window.removeEventListener('touchstart', this.unlock);
     document.removeEventListener('visibilitychange', this._visibility);
     this.audio.removeAttribute?.('src');
     this.audio.load?.();

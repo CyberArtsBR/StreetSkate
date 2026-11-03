@@ -22,7 +22,7 @@ function glb() {
 }
 
 test('Agent10 released park IDs are stable and exact',()=>{
-  assert.deepEqual(LOCATION_IDS,['rooftop','orbit','grand-warehouse']);
+  assert.deepEqual(LOCATION_IDS,['skate-paradise','orbit','grand-warehouse']);
 });
 test('Agent10 GLB verifies all chunk boundaries, not only the magic', async()=>{
   const temp=await mkdtemp(join(tmpdir(),'agent10-glb-'));

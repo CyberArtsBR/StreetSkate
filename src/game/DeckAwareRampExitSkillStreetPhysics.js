@@ -23,6 +23,7 @@ export const DECK_AWARE_EXIT = Object.freeze({
   launchHorizontalMax: 4.8,
   landingHeightTolerance: 0.34,
   landingCorridorPad: 0.20,
+  landingNormalAlignment: 0.985,
   catchHorizontalRadius: 0.52,
   catchVerticalWindow: 0.46,
 });
@@ -127,6 +128,14 @@ export function supportMatchesDeckTarget(support, air, config = DECK_AWARE_EXIT)
   if (!control?.geometryAware || control.abortToReturn || !control.targetPoint) return true;
   if (!support?.position || !support?.normal) return false;
   if (support.normal.y < config.deckMinNormalY) return false;
+  // Near the lip, front wheels may hit the flat deck while rear wheels still
+  // sample the curved ramp. That blended support is not a completed deck exit:
+  // projecting the descent onto it can reverse travel and leave the rider stuck
+  // on the coping. Keep the existing swept collision/flight active until support
+  // agrees with the deck we actually scanned. Sloped decks compare to their own
+  // normal, so this does not impose a world-UP-only landing rule.
+  if (control.targetNormal && support.normal.dot(control.targetNormal)
+    < (config.landingNormalAlignment ?? DECK_AWARE_EXIT.landingNormalAlignment)) return false;
   if (Math.abs(support.position.y - control.targetPoint.y) > config.landingHeightTolerance) return false;
 
   const outward = horizontal(support.position.clone().sub(air.frame.lipPoint))

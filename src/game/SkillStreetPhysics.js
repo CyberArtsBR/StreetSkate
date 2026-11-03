@@ -333,7 +333,7 @@ export class SkillStreetPhysics extends StreetPhysics {
     if (!current) { this.exitGrind(false); return; }
     const currentTravel = current.tangent.clone().multiplyScalar(this.grind.direction);
     const gravityAlong = GRAVITY.dot(currentTravel);
-    this.grind.speed = advanceGrindSpeed(this.grind.speed, gravityAlong, dt);
+    this.grind.speed = advanceGrindSpeed(this.grind.speed, gravityAlong, dt, input.brake);
 
     const railStep = this.grind.direction * this.grind.speed * dt;
     this.grind.s += railStep;
@@ -359,7 +359,9 @@ export class SkillStreetPhysics extends StreetPhysics {
     this.airHeading = this.heading;
     this.airDirection();
     this.resolveMotion(before, beforeUp, input);
-    if (blendT >= 1 && this.position.distanceTo(sample.point) > 0.20) { this.exitGrind(false); return; }
+    // While captured, the rail owns support. Ground/coping collision correction
+    // must not silently detach the board. Real collision/balance bails still win.
+    if (this.grind && !this.bailTime && blendT >= 1) this.position.copy(sample.point);
     this.distance += this.position.distanceTo(before);
     this.stableGroundTime = 0;
   }

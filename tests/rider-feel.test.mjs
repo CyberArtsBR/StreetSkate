@@ -30,7 +30,7 @@ test('shipping controller captures a slow approach and accelerates without stall
   p.position.set(.04,1.02,1.25);p.heading=0;p.airHeading=0;p.airDirection();
   p.setMovementState(MOVEMENT_STATE.AIR);p.velocity.set(0,-.35,-.21);
   assert.equal(p.enterGrind({name:'50-50'}),true);
-  assert.equal(p.grind.speed,GRIND_CAPTURE.antiStallSpeed);
+  assert.equal(p.grind.speed,0.21);
   const start=p.grind.s;
   for(let i=0;i<120;i++) {
     const previous=p.grind.speed;p.stepGrind(1/120,{});
@@ -38,6 +38,28 @@ test('shipping controller captures a slow approach and accelerates without stall
   }
   assert.ok(Math.abs(p.grind.s-start)>3.2);
   assert.ok(p.grind.speed>3.5);
+});
+
+test('zero-speed attempts reject cleanly and legitimate slow rail entries support long counterbalanced holds',()=>{
+ for(const speed of [0,.03,.21,.3,5]){
+  const floor=new THREE.Mesh(new THREE.BoxGeometry(30,.1,1200),new THREE.MeshBasicMaterial());floor.position.y=-.05;
+  const p=new StatefulSkillStreetPhysics({collision:floor,spawn:[0,.015,0],rails:[{name:'long rail',radius:.055,points:[[0,.8,500],[0,.8,-500]]}]});
+  p.position.set(.04,1.02,1.25);p.heading=0;p.airHeading=0;p.airDirection();
+  p.setMovementState(MOVEMENT_STATE.AIR);p.velocity.set(0,-.35,-speed);
+  const captured=p.enterGrind({name:'50-50'});
+  if(speed===0){assert.equal(captured,false);assert.equal(p.grind,null);assert.equal(p.bailTime,0);continue;}
+  assert.equal(captured,true,`entry speed ${speed}`);
+  const start=p.grind.s;
+  for(let i=0;i<120*12;i++){
+   const state=p.grind.balanceState;
+   // Correct against the marker and its velocity, preserving the game's opposite-direction controls.
+   const steer=THREE.MathUtils.clamp(-2*state.value-.7*state.velocity,-1,1);
+   p.stepGrind(1/120,{steer});assert.equal(p.bailTime,0);assert.ok(p.grind,'balanced contact must remain captured');
+  }
+  assert.ok(Math.abs(p.grind.s-start)>100,'neutral traction must move the rider along the rail');
+  p.stepGrind(1/120,{ollieReleased:true});assert.equal(p.grind,null);assert.equal(p.bailTime,0);
+  assert.ok(p.velocity.y>0,'deliberate jump-out must pop away from the rail');
+ }
 });
 
 test('rail acceleration stays bounded on downhill and uphill rails at different step rates', () => {
@@ -50,3 +72,4 @@ test('balance pressure keeps increasing beyond the first few seconds on a rail',
   const pressure = duration => stepBalance(createBalanceState(),{dt:1/120,duration,speed:5,rail:true}).pressure;
   assert.ok(pressure(10)>pressure(3));assert.ok(pressure(18)>pressure(10));
 });
+

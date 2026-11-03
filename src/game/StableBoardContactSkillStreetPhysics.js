@@ -4,6 +4,7 @@ import { CollisionResolver } from './collision/CollisionResolver.js';
 import {
   evaluateStableLanding,
   stableFlipLandingMode,
+  landingBailMessage,
 } from './core/LandingResult.js';
 import {
   applyAcceptedLanding,
@@ -165,6 +166,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
 
   resolveMotion(before, beforeUp, input = {}) {
     const collision = this.ensureCollisionResolver();
+    const velocityBefore = this.copingTrace ? this.velocity.toArray() : null;
     const result = collision.resolveBody({
       from: before,
       desired: this.position,
@@ -176,6 +178,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
       ignoreRail: this.grind?.rail.name || null,
     });
     collision.applyBodyResult(this, result);
+    this.copingTrace?.decision('body-collision', {velocityBefore,velocityAfter:this.velocity.toArray(),
+      contacts:result.wallContacts.map(c=>({normal:c.normal?.toArray(),surface:c.surface,rail:c.railId}))});
 
     const wall = result.wallContacts[0] || null;
     const slideContact = result.contacts.find(hit => Math.abs(hit.normal?.y ?? 1) < 0.3);
@@ -210,6 +214,24 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     );
 
     const landingGrace = (this.transitionLandingGrace || 0) > 0;
+    // Recovery is allowed only while the board was already grounded on a
+    // non-flat rideable transition. At diagonal bowl seams, its previous
+    // pitch/roll basis can lose all four wheel rays for a single fixed step.
+    // Re-check the actual mesh vertically before classifying that as takeoff.
+    // Never bridge real lips: all recovered contacts must be very near the
+    // current center and face roughly the same direction as the prior bowl.
+    if (!support.supported && this._supportPreviousNormal.y > 0.1
+      && this._supportPreviousNormal.y < 0.985 && this.velocity.y > -1.5) {
+      const corrected = contact.snapToGround(this.position, this.heading, 0.16, 0.20);
+      if (!(corrected.supported && corrected.count >= 2
+        && corrected.position.distanceTo(this.position) <= 0.14
+        && corrected.normal.dot(this._supportPreviousNormal) >= 0.48)) {
+        contact.clearContacts();
+        support = contact.state;
+        support.supported = false;
+      } else support = corrected;
+    }
+
     if (!support.supported && landingGrace) {
       const oldRise = contact.probeRise;
       const oldDrop = contact.probeDrop;
@@ -254,7 +276,8 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     }
 
     const measuredSign = this.velocity.dot(this.forward) < 0 ? -1 : 1;
-    const sign = Number.isFinite(this.rollingSign) && this.rollingSign !== 0
+    const downhillReversal = this.normal.y < .95 && this.velocity.y < -.01;
+    const sign = !downhillReversal && Number.isFinite(this.rollingSign) && this.rollingSign !== 0
       ? (this.rollingSign < 0 ? -1 : 1)
       : measuredSign;
     const speed = this.velocity.length() * sign;
@@ -340,7 +363,7 @@ export class StableBoardContactSkillStreetPhysics extends BoardContactSkillStree
     if (landing.flipMode === 'autoCatch' && this.flipState) this.flipState.progress = 1;
 
     if (!landing.accepted) {
-      if (landing.shouldBail) this.bail('BAIL · align your board before landing');
+      if (landing.shouldBail) this.bail(landingBailMessage(landing));
       return false;
     }
 

@@ -13,7 +13,7 @@ test('Ultra/Cinematic preserve high-tier shading without SSR geometry ghosting',
     assert.equal(profile.ssr, false);
     assert.equal(profile.ssrTargetLimit, 0);
     assert.equal(profile.shadowResolution, 1024);
-    assert.ok(profile.bloomStrength > GRAPHICS_PRESETS.high.bloomStrength);
+    assert.equal(profile.bloomStrength, GRAPHICS_PRESETS.high.bloomStrength);
     assert.ok(profile.pixelRatio > 1.5);
   }
 });

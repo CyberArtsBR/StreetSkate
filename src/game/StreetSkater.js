@@ -26,6 +26,8 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this._presentationUp = new THREE.Vector3(0, 1, 0);
     this._basis = new THREE.Matrix4();
     this._smoothedVisualPosition = null;
+    this._previousPhysicsPosition = null;
+    this._renderPhysicsPosition = new THREE.Vector3();
     this._targetVisualRotation = new THREE.Quaternion();
     this._visualRotationInitialized = false;
     this._wallPoseQ = new THREE.Quaternion();
@@ -120,13 +122,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   }
 
   /** Hot-swap a rigged GLB without resetting physics, collision, or the skateboard. */
-  async setRiderModel(url) {
+  async setRiderModel(url, { uploadFilename = '' } = {}) {
     if (!url || typeof url !== 'string') throw new Error('Choose a character GLB.');
     // A slow previous GLB is never allowed to replace a newer user selection.
     const request = (this._riderSwapGeneration || 0) + 1;
     this._riderSwapGeneration = request;
     if (this.rider?.url === url) return this.rider;
-    const candidate = await new UnrealRider(url).load();
+    const candidate = await new UnrealRider(url, { uploadFilename }).load();
     if (request !== this._riderSwapGeneration) {
       candidate.dispose();
       return this.rider;
@@ -182,7 +184,20 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this.board?.resetPresentation();
     this.presentationNormal.copy(this.bodyUp());
     this._smoothedVisualPosition=null;
+    this._previousPhysicsPosition=null;
+    this._renderPhysicsPosition?.copy(this.position);
     this._visualRotationInitialized=false;
+  }
+
+  step(dt, input) {
+    // Save the position at the start of the final physics step in this frame.
+    // Rendering can then interpolate it without altering gameplay state.
+    const previous = this._previousPhysicsPosition ||= new THREE.Vector3();
+    previous.copy(this.position);
+    const respawn = this.respawnSerial;
+    super.step(dt, input);
+    if (this._previousPhysicsPosition && (respawn !== this.respawnSerial ||
+        previous.distanceToSquared(this.position) > 4)) previous.copy(this.position);
   }
 
   updatePresentation(delta, input, before) {
@@ -270,21 +285,27 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
   update(delta, input, elapsed) {
     const before = { grounded: this.grounded, velocity: this._beforeVelocity.copy(this.velocity), airTime: this.airTime };
     this.advance(delta, input);
+    if(this.lastCaughtFlip){this.board?.catchFlip(this.lastCaughtFlip);this.lastCaughtFlip=null;}
     const present = this.updatePresentation(delta, input, before);
 
     this.root.position.copy(this.position);
+    const renderPosition = this._renderPhysicsPosition;
+    if (this._previousPhysicsPosition) {
+      const alpha = clamp(this.accumulator / this.config.step, 0, 1);
+      renderPosition.lerpVectors(this._previousPhysicsPosition, this.position, alpha);
+    } else renderPosition.copy(this.position);
     // Gameplay collision stays authoritative on root. Only the rendered skater
-    // receives a tiny capped low-pass correction to hide high-frequency contact
-    // and fixed-step micro-jitter, especially noticeable from side cameras.
-    if(!this._smoothedVisualPosition)this._smoothedVisualPosition=this.position.clone();
+    // receives interpolation and a tiny capped low-pass correction to hide
+    // contact jitter without affecting physics or input.
+    if(!this._smoothedVisualPosition)this._smoothedVisualPosition=renderPosition.clone();
     else if(delta>0){
-      if(this._smoothedVisualPosition.distanceToSquared(this.position)>4)
-        this._smoothedVisualPosition.copy(this.position);
+      if(this._smoothedVisualPosition.distanceToSquared(renderPosition)>4)
+        this._smoothedVisualPosition.copy(renderPosition);
       else {
-        this._smoothedVisualPosition.lerp(this.position,1-Math.exp(-27*delta));
-        const lag=this._smoothedVisualPosition.clone().sub(this.position);
+        this._smoothedVisualPosition.lerp(renderPosition,1-Math.exp(-27*delta));
+        const lag=this._smoothedVisualPosition.clone().sub(renderPosition);
         if(lag.lengthSq()>0.18*0.18)
-          this._smoothedVisualPosition.copy(this.position).add(lag.setLength(0.18));
+          this._smoothedVisualPosition.copy(renderPosition).add(lag.setLength(0.18));
       }
     }
     this.visual.position.copy(this._smoothedVisualPosition).sub(this.position);
@@ -316,9 +337,15 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     if (this.bailTime > 0) p.grabWeight = 0;
     if (p.grabWeight < 0.005 && !grabActive) p.grabPose = null;
     const manualBalance = Number.isFinite(this.manualBalance) ? this.manualBalance : 0;
+    this._supportPlaneNormal ||= new THREE.Vector3();
+    this._supportPlaneRotation ||= new THREE.Quaternion();
+    this._supportPlaneNormal.copy(this.normal).applyQuaternion(
+      this.visual.getWorldQuaternion(this._supportPlaneRotation).invert());
+    const supportOffset=this.normal.dot(this._smoothedVisualPosition)-this.normal.dot(this.position);
     const grindBalance = Number.isFinite(this.grind?.balance) ? this.grind.balance : Number.isFinite(this.grindBalance) ? this.grindBalance : 0;
     const bailProgress = this.bailTime > 0 ? clamp(1 - this.bailTime / this.bailDuration, 0, 1) : 0;
     const common = {
+      supportPlane:{normal:this._supportPlaneNormal,offset:supportOffset},
       presentation: this.presentation,
       flipState: this.flipState,
       flipPhase: this.presentation.flipPhase,
@@ -333,8 +360,15 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       vert: present.vert,
       verticalVelocity: this.velocity.y,
       airTime: this.airTime,
+      airborne: !this.grounded && !this.grind && !this.wallRide && this.bailTime <= 0,
       bail: this.bailTime > 0,
       bailProgress,
+      bailPhysics: this.bailTime > 0 ? {
+        velocity: this.bailLaunchVelocity || this.bailVelocity,
+        severity: this.bailSeverity || 0,
+        surface: this.surface,
+        anchor: this.position,
+      } : null,
       stance: this.stance,
       flatland: this.flatland,
       time: elapsed,
@@ -353,13 +387,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       landingSeverity: p.landingSeverity * landingMotion(1 - p.landingTime / p.landingDuration),
       pumpState: this.presentation.pumpState,
     });
-    this.applyWallImpactPose(this.wallImpactPoseWeight());
-    if (this.rider && this.bailTime > 0) {
-      const fall = THREE.MathUtils.smoothstep(bailProgress, 0, 0.58);
-      // UnrealRider owns the sideways tumble; only add forward pitch here.
-      this.rider.root.rotation.x = 0.32 * fall;
-      this.rider.root.position.y += 0.16 * fall;
-    }
+    if (this.bailTime <= 0) this.applyWallImpactPose(this.wallImpactPoseWeight());
     const flashing = this.respawnTimer > 0 && Math.floor((1.8 - this.respawnTimer) / 0.3) % 2 === 0;
     for (const saved of this.flashMaterials || []) {
       const transparent = flashing || saved.transparent;
