@@ -36,6 +36,8 @@ flowchart TD
 - `GraphicsPipeline` owns render state restoration and bloom masking. Static scenery local transforms are frozen; actors/bones remain dynamic. Rider identity invalidates actor masks immediately, without adding a per-frame whole-scene walk.
 - `game-main` bridges runtime, menu and toolbar sound through one setter. `SkateAudio` remains the actual persisted enabled-state authority.
 - Tutorial tables and video cues consume current validated bindings. Fixed menu navigation remains separate from remappable skating actions.
+- Shader readiness includes one actual composed draw and the wheel materials' speed-dependent bloom variant while loadout is current. No game simulation runs for warmup. Resume consumes/discards the paused frame interval before the next ready/play update; shader work does not deduct playable time.
+- GPU timer results carry a unique serial; held values are display state, not additional measurements. `cpuSubmitMs` brackets `GraphicsPipeline.render()` only.
 
 ## Remaining structural debt
 

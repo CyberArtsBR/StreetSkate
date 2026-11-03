@@ -1,6 +1,6 @@
 # Project profile — Chimp Hawk / StreetSkate
 
-Discovered from source on 2026-11-03. Release baseline: `f62779d`; current local integration branch: `codex/evolution-cycle-20261103`. [Current state](PROJECT_STATE.md).
+Discovered from source on 2026-11-03. Release baseline: `f62779d`; cycle 2 follows the owner-approved local checkpoint `77fbf6d` on `codex/evolution-cycle2-20261103`. [Current state](PROJECT_STATE.md).
 
 | Area | Actual implementation |
 |---|---|

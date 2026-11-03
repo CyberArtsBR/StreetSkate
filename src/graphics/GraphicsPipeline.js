@@ -258,7 +258,7 @@ export class GraphicsPipeline {
     }
   }
 
-  renderSelectiveBloom() {
+  renderSelectiveBloom(warmupMaterials = null) {
     if (!this.glowRoot?.parent) return false;
     const allowed = new Set();
     this.glowRoot.traverse(object => {
@@ -267,7 +267,8 @@ export class GraphicsPipeline {
       // Light-colored costumes are reflective surfaces, not light sources.
       // Bloom the board's neon and authored emissive details; leave faces and
       // fabric out of the glow mask so ordinary highlights retain definition.
-      if(materials.some(material=>material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0))allowed.add(object);
+      if(materials.some(material=>warmupMaterials?.has(material)||
+        (material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0)))allowed.add(object);
     });
     const childCount = this.scene.children?.length ?? 0;
     // A rider swap replaces a child of the stable visual group, often with
@@ -483,12 +484,17 @@ export class GraphicsPipeline {
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
   }
 
-  render({ contactSource = null } = {}) {
+  render({ contactSource = null, warmup = false } = {}) {
     this.wheelContactShadows?.update(contactSource);
     if (!this.settings || this.faulted) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
+    // Wheels begin dark but join the bloom pass as speed rises. Prepare that
+    // material/target/fog variant during loadout without changing their paint
+    // or actual emission. Ordinary frames allocate no extra collection here.
+    const warmupMaterials=warmup&&contactSource?.board?.wheelGlow?.length
+      ? new Set(contactSource.board.wheelGlow.map(entry=>entry.material)) : null;
     try {
       this.updateContactShadows();
       // Performance and 144 FPS with glow disabled use one scene pass. The
@@ -498,7 +504,7 @@ export class GraphicsPipeline {
         return;
       }
       if (this.bloomComposite.enabled) {
-        const validBloom = this.renderSelectiveBloom();
+        const validBloom = this.renderSelectiveBloom(warmupMaterials);
         this.bloomComposite.enabled = validBloom;
       }
       this.composer.render();

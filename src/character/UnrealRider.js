@@ -12,6 +12,7 @@ import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, 
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 import { SkateRagdoll } from './SkateRagdoll.js';
 import { calibrateFootSupportBounds } from './FootSupportClearance.js';
+import { grabReachPose, grabReachMargin } from './GrabReachPose.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -350,6 +351,9 @@ export class UnrealRider {
     const compTarget = C(halfPipe.compression + grindShift.compression + manualW * 0.04 + supportShift * .08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     const inAir = airborne ?? ['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state);
+    const reachingSides = grab > 0 && inAir && !bail && !flipState && !flatland && board
+      ? SIDES.filter(side => this.grabTarget(grabState?.name, side, stance, board)) : null;
+    const grabPose = reachingSides ? grabReachPose(grab, reachingSides) : null;
     // Hold the chosen flight pose through the descent. Only contact releases
     // it, so the arms do not drop as soon as vertical velocity turns negative.
     const airBalance = C(springStep(this.scalar.airBalance,
@@ -377,12 +381,24 @@ export class UnrealRider {
     this.root.updateWorldMatrix(true, true);
     const rootQ = this.root.getWorldQuaternion(Q());
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
+    const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
+    // A low deck target needs a lower shoulder, not a stretched arm. Hinge
+    // before foot IK, then share the small extra curl across the spine.
+    let shoulderBendAxis = null;
+    if (grabPose?.weight > 0) {
+      this.rotate('pelvis', pitchAxis, -grabPose.pelvisHinge, rootQ);
+      const reachingOutward = V();
+      for (const side of reachingSides) if (this.armOutward[side])
+        reachingOutward.add(this.armOutward[side]);
+      shoulderBendAxis = V(0, 1, 0).cross(reachingOutward).normalize();
+    }
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), (.075 * stance + balance * .07
         + (push?.armSwing || 0) * pushAmount * .065) / 3, rootQ);
-      const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
-      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .24 + pump * .025 + supportShift * .10) / 3, rootQ);
+      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .24 + (grabPose?.spineCurl || 0) + pump * .025 + supportShift * .10) / 3, rootQ);
       this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
+      if (shoulderBendAxis && shoulderBendAxis.lengthSq() > .5)
+        this.rotate(name, shoulderBendAxis, grabPose.shoulderBend / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
     this.rotate('neck_01', V(0, 1, 0), .12 * stance + balance * .04, rootQ);
@@ -602,7 +618,8 @@ export class UnrealRider {
       world.lerp(skatingPose.wrist, skatingWeight);
       const reachWeight = handstand ? flat : grab;
       if (reach) {
-        world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
+        world.lerp(boundedHandReach(shoulderWorld, reach, armLength,
+          grabPose?.weight > 0 ? grabReachMargin(armLength) : .035), reachWeight);
       }
       const outwardWorld = lateral.clone().applyQuaternion(rootQ);
       const headWorld = this.bones.head?.getWorldPosition(V()) || null;

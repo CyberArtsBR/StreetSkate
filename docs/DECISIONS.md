@@ -12,3 +12,10 @@
 | EV-D08 | Consolidate current governance here and link historical audits rather than rewrite their evidence. | Current state is [PROJECT_STATE](PROJECT_STATE.md); earlier documents describe earlier milestones. |
 
 [Architecture](ARCHITECTURE.md) · [Vision](GAME_VISION.md) · [Roadmap](DEVELOPMENT_ROADMAP.md).
+
+## Cycle 2 decisions
+
+- EV-D09: use a bounded upper-body reach and proportional wrist reserve; do not stretch bones or move physical targets to claim palm contact. Mirror only the verified switch Nose/Tail pitch defect.
+- EV-D10: retain existing licensed recordings and refine scheduling, levels and sustained windows. A/B previews are QA artifacts; they do not become new game content or prove human listening approval.
+- EV-D11: prepare the actual first render and wheel-glow shader variants behind loadout, then discard paused time on resume. Keep normal masks and material emission unchanged. A first-route hitch reduction is distinct from steady-state FPS throughput.
+- EV-D12: follow the owner's minimum-testing instruction: retain the passing suite/physics results and finish targeted warmup/visual/audio checks. Do not repeat full rounds or a long paired GPU benchmark without a new reason. No release actions in this cycle.

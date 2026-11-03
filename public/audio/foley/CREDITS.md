@@ -37,3 +37,7 @@ After owner feedback, generic wood pop/catch takes, soft-body substitute takes a
 - `ambience-paradise.wav`: quiet16-second excerpt from **Soft Wind** by **florianreichelt**, [Freesound459977](https://freesound.org/people/florianreichelt/sounds/459977/), CC0 1.0. Converted to mono22.05kHz, gently faded and looped under outdoor skate sound.
 
 These new sounds still require owner audition. Browser decode, waveform and scheduling checks do not certify subjective sound quality or replace headphone/speaker review.
+
+## Runtime continuity refinement — 2026-11-03
+
+Original audio bytes and source hashes remain unchanged. The metal skate loop uses the sustained 2.35–3.80-second pass; the concrete skate loop uses 19.70–21.75 seconds. Both receive an 80ms mono overlap crossfade in memory, excluding the full field takes' separate mounting contacts and quiet gaps. Voice pain playback uses bounded gain correction without pitch changes; the quiet take receives at most +2.6dB. See `docs/evolution-cycle2-audio.md` for measurements and local before/after audition files. No new recordings, generated sounds or replacement source identities were added.

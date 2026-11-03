@@ -254,7 +254,12 @@ export class StreetBoard {
       }
       this._wasFlipping = false;
     }
-    let x = grabPose[0] * grabWeight;
+    // Nose/Tail switch grabs reach the opposite end with the opposite hand.
+    // Mirror only these end-lifting pitches; the other authored grab tilts
+    // retain their rail/one-foot pose and physical contact geometry stays put.
+    const switchEndGrab = airborne && stance < 0
+      && (grabState?.name === 'Nosegrab' || grabState?.name === 'Tailgrab');
+    let x = grabPose[0] * grabWeight * (switchEndGrab ? -1 : 1);
     let y = grabPose[1] * grabWeight + this._yawHold;
     let z = grabPose[2] * grabWeight;
 

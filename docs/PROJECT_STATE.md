@@ -1,6 +1,12 @@
 # Game Evolution — current project state
 
-Updated 2026-11-03. **Local milestone verified; further improvement work remains in the roadmap.** Release base: `f62779d`. Integration branch: `codex/evolution-cycle-20261103`. The current cycle has not been merged, pushed, deployed or synchronized to Portals.
+Updated 2026-11-03. **Cycle 2 local polish is ready:** improved grab reach and switch Nose/Tail poses, recorded-audio continuity/mix, actual pipeline shader warmup and reliable GPU sample reporting. Base: owner-approved `77fbf6d`. Branch: `codex/evolution-cycle2-20261103`. [Current report and evidence](evolution-cycle2-status.md).
+
+Local game: http://127.0.0.1:5185/ . Audio A/B: http://127.0.0.1:5187/ . Refresh the game tab to load the updated bundle. No merge, push, deployment or Portals synchronization in this cycle.
+
+## Previous milestone — cycle 1
+
+The following sections preserve the verified cycle 1 milestone. Its release base was `f62779d`, integration branch `codex/evolution-cycle-20261103`, saved as `77fbf6d`. The owner tested and accepted that local batch before requesting cycle 2.
 
 ## Executive summary
 

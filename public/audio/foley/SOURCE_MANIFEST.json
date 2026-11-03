@@ -213,7 +213,7 @@
     "download": "https://cdn.freesound.org/previews/262/262079_4883517-hq.mp3",
     "license": "CC0-1.0",
     "sha256": "5edffaf8c75daa18d4fa53b3b2b2f432e2a6645792d2e47c16909cc5e5034c27",
-    "runtimeUse": "Active actual skateboard grinding replacement."
+    "runtimeUse": "Active actual skateboard grinding replacement. Runtime loop uses 2.35–3.80 seconds with 80ms mono overlap; source bytes unchanged."
   },
   {
     "file": "scrape-skate-concrete.mp3",
@@ -222,7 +222,7 @@
     "download": "https://cdn.freesound.org/previews/655/655372_13723333-hq.mp3",
     "license": "CC0-1.0",
     "sha256": "a2504d15375d59a18a4bc13b92de21500641f498bba7bacdb32e0af179459393",
-    "runtimeUse": "Active actual skateboard grinding replacement."
+    "runtimeUse": "Active actual skateboard grinding replacement. Runtime loop uses 19.70–21.75 seconds with 80ms mono overlap; source bytes unchanged."
   },
   {
     "file": "pop-skate-1.wav",

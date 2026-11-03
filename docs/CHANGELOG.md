@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — local polish cycle 2, 2026-11-03
+
+Base: owner-tested `77fbf6d`; branch `codex/evolution-cycle2-20261103`. [Current delivery](evolution-cycle2-status.md).
+
+- Grabs now gather the pelvis/spine/reaching shoulder within measured limb limits; switch Nose/Tail pitch raises the requested end. Feet, colliders and flip paths are preserved.
+- Recorded sound gains/tails, contact-voice priority, cue deduplication, ambience transitions and sustained skate loops are refined. Original source audio and rejected-cheer exclusion remain intact.
+- Actual composed shaders and speed-dependent wheel-glow variants prepare before play. Resuming discards the paused frame interval so loading work does not consume READY or advance simulation.
+- GPU telemetry distinguishes new query results from held/stale values; rendering-only CPU scope is explicit. Capture/audition/profile tools and focused regressions document the changes.
+- No release, Portals sync, new mode, dependency or source-model/recording/texture replacement.
+
 ## Unreleased — Game Evolution local cycle, 2026-11-03
 
 Base: `f62779d`. Integration: `codex/evolution-cycle-20261103`. [Verification](PROJECT_STATE.md).

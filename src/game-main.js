@@ -496,7 +496,11 @@ function goToSpot(id) {
 }
 
 function setPaused(value) {
+  const wasPaused=paused;
   paused = Boolean(value) && mode === 'skate';
+  // Synchronous loading work belongs to the pause. Do not charge that old
+  // frame interval to the ready countdown or simulation on the first resume.
+  if(wasPaused&&!paused)clock.getDelta();
   app.dataset.paused = String(paused);
   input.clear();
   gameShell.syncPause(paused);
@@ -755,7 +759,10 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
     if (finish != null) skater.board.setFinish(finish);
     followCamera.snap(skater);
     progress('PREPARING PARK LIGHTING…');
-    await warmScenePrograms(renderer,scene,camera);
+    await warmScenePrograms(renderer,scene,camera,{
+      isCurrent:()=>request===loadoutRequest,
+      renderFirstFrame:()=>graphicsPipeline.render({contactSource:skater,warmup:true}),
+    });
     if(request!==loadoutRequest)return false;
     return { locationId: currentWorld.id, manifest };
   } catch (error) {

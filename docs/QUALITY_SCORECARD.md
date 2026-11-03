@@ -32,3 +32,7 @@ Baseline: `f62779d`. Candidate: `codex/evolution-cycle-20261103`. [Evidence inde
 | 24 | Overall polish | 7→7 | Several concrete inconsistencies fixed and a complete local run checked; remaining motion/audio/art/performance gaps prevent an inflated overall grade. |
 
 The raised rendering/UI ratings reflect verified defect removal only. Other scores remain unchanged or ungraded instead of treating more tests/features as proof of a better player experience.
+
+## Cycle 2 evidence update
+
+Candidate branch is now `codex/evolution-cycle2-20261103`, based on the owner's accepted `77fbf6d`. All category scores above are retained: the new bounded grab pass improves measured wrist gaps, audio levels/transitions have signal/event verification, and sampled first-use shader stalls move into loading. Exact palm authoring, human mix approval and sustained performance remain unverified, so these improvements do not automatically raise overall or subjective ratings. [Cycle 2 report](evolution-cycle2-status.md).

@@ -2,7 +2,7 @@
 
 Cycle 2026-11-03 · integration owner: lead · [State/evidence](PROJECT_STATE.md) · [Known issues](KNOWN_ISSUES.md).
 
-## Current controlled milestone
+## Completed foundation milestone
 
 All tasks use existing architecture. Low-risk corrections stay independent; tutorial/render-cache changes are medium complexity because they cross presentation state. The shared recovery transaction precedes marker/spot integration. Final browser/build verification follows agent review.
 
@@ -24,15 +24,15 @@ All tasks use existing architecture. Low-risk corrections stay independent; tuto
 
 Review risks: do not let recoveries award discarded tricks; do not let an input remap change fixed menu keys; do not let visual geometry filtering change collision/rails; do not mistake a mask/particle fix for a measured frame-rate gain. Focused tests and independent review cover these boundaries.
 
-## Next work, ranked by impact and evidence
+## Next work and cycle 2 progress
 
-These are recommendations, not work silently claimed as implemented. No new game mode is proposed in this cycle.
+Cycle 2 implements the bounded reach, recorded-audio continuity and first-use shader/telemetry parts of EV-N01–03. They remain REVIEW because exact grip authoring, subjective listening and long-run profiling have outstanding acceptance items. [Delivered changes and evidence](evolution-cycle2-status.md). Other rows remain recommendations. No new game mode is proposed.
 
 | ID / owner / status | Objective and player benefit | Technical approach / affected systems / dependency | Complexity / risk | Acceptance |
 |---|---|---|---|---|
-| EV-N01 · animation/technical art · BACKLOG | Better grab contact and silhouettes for every rider. | Review worst compact-rig poses, then bounded hand/deck targets and elbow planes in `ApprovedGrabPose`/rider IK; depends on recorded full-motion matrix. | Medium/high; hand fixes can stretch arms, move feet or contaminate physics. | Regular/switch, each rider, side/front/rear normal+slow video; no body/floor penetration or physical-root/trick-timing changes. |
-| EV-N02 · audio+owner · READY | Approve and refine impact/voice/crowd identity. | Audition existing recorded banks and in-game volume transitions first; select new licensed performances only for identified weaknesses. No rejected cheer. | Medium; subjective timbre, repetition, clipping, music masking. | Owner listening on speakers/headphones; contacts correctly timed, no clipping/repeated voice spam, crowd context/cooldowns preserved. |
-| EV-N03 · performance · READY | Improve measured frame pacing without sacrificing requested glow/sharpness. | Repeated fixed-route CPU/GPU capture in all parks at1080p/native high-DPI; one active game and same preset. | Medium; GPU contention and route differences can invalidate comparisons. | Identify hotspot, retain controlled baselines, demonstrate repeatable median/p95 improvement; no claimed144lock without evidence. |
+| EV-N01 · animation/technical art · REVIEW | Better grab contact and silhouettes for every rider. | Review worst compact-rig poses, then bounded hand/deck targets and elbow planes in `ApprovedGrabPose`/rider IK; depends on recorded full-motion matrix. | Medium/high; hand fixes can stretch arms, move feet or contaminate physics. | Regular/switch, each rider, side/front/rear normal+slow video; no body/floor penetration or physical-root/trick-timing changes. |
+| EV-N02 · audio+owner · REVIEW | Approve and refine impact/voice/crowd identity. | Audition existing recorded banks and in-game volume transitions first; select new licensed performances only for identified weaknesses. No rejected cheer. | Medium; subjective timbre, repetition, clipping, music masking. | Owner listening on speakers/headphones; contacts correctly timed, no clipping/repeated voice spam, crowd context/cooldowns preserved. |
+| EV-N03 · performance · REVIEW | Improve measured frame pacing without sacrificing requested glow/sharpness. | Repeated fixed-route CPU/GPU capture in all parks at1080p/native high-DPI; one active game and same preset. | Medium; GPU contention and route differences can invalidate comparisons. | Identify hotspot, retain controlled baselines, demonstrate repeatable median/p95 improvement; no claimed144lock without evidence. |
 | EV-N04 · asset pipeline · BACKLOG | Reduce GPU texture memory and cold loading. | Measure decoded footprint first, then evaluate KTX2/Basis on selected textures with source/fallback retained; depends on EV-N03. | High; normal/color-space artifacts, decoder/compatibility cost. | Lower measured memory/payload with bounded visual error; collision, rails, source GLBs and art direction intact. |
 | EV-N05 · architecture/frontend · BACKLOG | Reduce initial download/parse cost. | Profile entry composition, then lazily load creator/diagnostic tools and noncritical panels when justified; preserve loader recovery. | Medium; chunk failure/cold input regressions. | Controlled cold-network boot improvement; no stale-module crash, missing art, delayed core controls or creator regressions. |
 | EV-N06 · release engineer · BACKLOG | Make future deployment identity inspectable. | Wire trustworthy commit stamping into actual Render build path; distinguish uncommitted local builds. | Low/medium; misleading stamp or non-Git source archives. | Verified commit metadata from real release, CI/deployed identity check passes. Deployment requires the next release instruction. |
