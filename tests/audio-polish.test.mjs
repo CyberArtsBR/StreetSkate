@@ -57,6 +57,23 @@ test('same-frame body contact plays pain immediately without starting an effort 
   audio.update(player, true); assert.equal(sources.length, 1, 'same contact object never replays');
 });
 
+test('reaction music holds follow the selected take and only successful eligible playback requests a duck', () => {
+  const { audio, player } = audioFixture(), requests = [];
+  audio.onMusicDuck = request => requests.push(request);
+  audio.impact = () => {}; audio.banks.voicePain = [{ duration: .1757 }];
+  audio.update(player, true); player.bailTime = 1; player.rider.ragdoll.groundImpact = { speed: 8 };
+  audio.update(player, true);
+  assert.deepEqual(requests, [{ durationMs: 96, amount: .7, releaseMs: 80 }]);
+  audio.update(player, true); assert.equal(requests.length, 1, 'one physical contact requests one duck');
+  audio.banks.crowdExceptional = [{ duration: 4.0092 }];
+  audio.context.currentTime = 12; audio.onComboSettled({ id: 'long', points: 4000 });
+  assert.deepEqual(requests[1], { durationMs: 3310, amount: .65, releaseMs: 200 });
+  audio.context.currentTime = 24; audio.crowdVolume = 0; audio.onComboSettled({ id: 'mute', points: 4000 });
+  audio.context.currentTime = 36; audio.crowdVolume = .3; audio.banks.crowdExceptional = []; audio.onComboSettled({ id: 'missing', points: 4000 });
+  audio.context.currentTime = 48; audio.banks.crowdSubdued = [{ duration: 4 }]; audio.onComboSettled({ id: 'ordinary', points: 400 });
+  assert.equal(requests.length, 2, 'muted, missing and ordinary crowd banks do not move music');
+});
+
 test('physical contact fades an active effort voice while pain starts on the contact frame', () => {
   const { audio, sources, gains, player } = audioFixture();
   audio.impact = () => {}; audio.banks.voiceEffort = [{ duration: .25 }]; audio.banks.voicePain = [{ duration: .2 }];
@@ -71,6 +88,28 @@ test('physical contact fades an active effort voice while pain starts on the con
   audio.context.currentTime = 1.2; player.rider.ragdoll.groundImpact = { speed: 9 };
   audio.update(player, true); assert.equal(sources.length, 2, 'contact cooldown still prevents repeated pain');
   audio.silence(); assert.equal(audio.characterReactions.size, 0);
+});
+
+test('silencing reactions releases their music hold and clears cancellation handles', () => {
+  const { audio, sources } = audioFixture(); let cancelled = 0;
+  audio.onMusicDuck = () => () => { cancelled++; };
+  audio.banks.crowdExceptional = [{ duration: 4.0092 }];
+  audio.onComboSettled({ id: 'applause', points: 4000 });
+  assert.equal(audio.reactionDucks.size, 1);
+  audio.silence(); assert.equal(cancelled, 1); assert.equal(audio.reactionDucks.size, 0);
+  audio.silence(); assert.equal(cancelled, 1, 'repeated pause does not cancel twice');
+  sources[0].onended(); assert.equal(audio.reactionDucks.size, 0);
+});
+
+test('muting one reaction channel cancels only its music hold', () => {
+  const { audio } = audioFixture(), cancelled = [];
+  audio.crowd.gain = audio.characterVoice.gain = { setTargetAtTime() {} };
+  audio.onMusicDuck = request => () => cancelled.push(request.amount);
+  audio.banks.crowdExceptional = [{ duration: 4.0092 }]; audio.banks.voicePain = [{ duration: .25 }];
+  audio.onComboSettled({ id: 'applause', points: 4000 });
+  audio.playBank('voicePain', audio.characterVoice, .38, { musicDuck: { amount: .7, releaseMs: 80 } });
+  audio.setCrowdVolume(0); assert.deepEqual(cancelled, [.65]); assert.equal(audio.reactionDucks.size, 1);
+  audio.setVoiceVolume(0); assert.deepEqual(cancelled, [.65, .7]); assert.equal(audio.reactionDucks.size, 0);
 });
 
 test('voice level correction attenuates loud takes and limits quiet/noise boosts without mutating samples', () => {

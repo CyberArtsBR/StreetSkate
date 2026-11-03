@@ -9,6 +9,7 @@ const targets = [
 const repeats = Math.max(1, Number(process.env.PERF_REPEATS) || 3);
 const duration = Math.max(10000, Number(process.env.PERF_DURATION_MS) || 12000);
 const captureCpu = process.env.PERF_CPU_PROFILE === '1';
+const shaderProbe = process.env.PERF_SHADER_PROBE === '1';
 const output = process.env.AUDIT_PERF_OUTPUT || 'artifacts/evolution-cycle2-performance/runtime';
 const maps = (process.env.PERF_MAPS || 'grand-warehouse,orbit,skate-paradise').split(',');
 await mkdir(output, { recursive: true });
@@ -44,6 +45,22 @@ try {
         await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
         await page.goto(target.url);
         await page.waitForFunction(() => window.streetSkate?.ready, null, { timeout: 120000 });
+        if (shaderProbe) await page.evaluate(() => {
+          const gl = window.streetSkate.renderer.getContext();
+          window.runtimeShaderProbe = [];
+          for (const method of ['getProgramInfoLog', 'getProgramParameter', 'getShaderInfoLog', 'linkProgram']) {
+            const original = gl[method];
+            gl[method] = function (...args) {
+              const start = performance.now(), result = original.apply(this, args), ms = performance.now() - start;
+              if (ms > 4) {
+                const program = window.streetSkate.renderer.info.programs.find(entry => entry.program === args[0]);
+                window.runtimeShaderProbe.push({ method, ms, at: start, map: window.streetSkate.currentLocation,
+                  phase: document.body.dataset.screen, name: program?.name, cacheKey: program?.cacheKey });
+              }
+              return result;
+            };
+          }
+        });
         report.coldLoads.push({ target: target.label, repeat, ...await page.evaluate(() => ({
           navigation: performance.getEntriesByType('navigation')[0]?.toJSON(), observedReadyAtMs: performance.now(),
           resources: performance.getEntriesByType('resource').map(entry => ({ name: entry.name, duration: entry.duration,
@@ -100,7 +117,7 @@ try {
               memoryStart: { ...renderer.info.memory },
               hardware: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) };
             if (!metadata.focused) throw new Error('Profile page must have focus');
-            const frames = [], gpu = [], cpu = [], calls = [], triangles = [], seenQueries = new WeakSet();
+            const frames = [], gpu = [], cpu = [], calls = [], triangles = [], longFrames = [], seenQueries = new WeakSet();
             const originalResult = gl.getQueryParameter;
             let gpuMode = 'sample-serial', lastGpuSerial = game.performanceMetrics().gpuSampleSerial || 0;
             if (extension) {
@@ -136,6 +153,8 @@ try {
                   previous = now;
                   if (!document.hasFocus() || document.hidden) lostFocusFrames++;
                   const value = game.performanceMetrics();
+                  if (previous !== null && frames.at(-1) > 50) longFrames.push({ elapsed, ms: frames.at(-1),
+                    renderCpuMs: value.cpuSubmitMs, calls: value.calls, triangles: value.triangles });
                   if (Number.isFinite(value.cpuSubmitMs)) cpu.push(value.cpuSubmitMs);
                   if (Number.isFinite(value.calls)) calls.push(value.calls);
                   if (Number.isFinite(value.triangles)) triangles.push(value.triangles);
@@ -165,6 +184,7 @@ try {
               renderCpuSubmitMs: stats(cpu), gpuMs: stats(gpu), gpuMode,
               gpuTimingSupported: !!extension, gpuSerialUnavailable: serialUnavailable,
               drawCalls: stats(calls), triangles: stats(triangles), lostFocusFrames,
+              longFrames, shaderProbe: window.runtimeShaderProbe?.slice(),
               memoryEnd: { ...renderer.info.memory }, positionEnd: game.skater.position.toArray(),
               respawnSerial: game.skater.respawnSerial, phaseEnd: document.body.dataset.screen };
           }, duration);

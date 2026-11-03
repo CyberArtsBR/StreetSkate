@@ -1,8 +1,8 @@
 # Game Evolution — current project state
 
-Updated 2026-11-03. **Cycle 2 local polish is ready:** improved grab reach and switch Nose/Tail poses, recorded-audio continuity/mix, actual pipeline shader warmup and reliable GPU sample reporting. Base: owner-approved `77fbf6d`. Branch: `codex/evolution-cycle2-20261103`. [Current report and evidence](evolution-cycle2-status.md).
+Updated 2026-11-03. **The Hollow local polish is ready:** fifth rider first in the roster, preserved source rig, calibrated palm reach on the existing crew, smoother grab gather, recording-length music ducks and first-bail/respawn shader preparation. Base: `66fcd65`. Branch: `codex/hollow-grip-mix-20261103`. [Current report and evidence](hollow-grip-mix-status-2026-11-03.md).
 
-Local game: http://127.0.0.1:5185/ . Audio A/B: http://127.0.0.1:5187/ . Refresh the game tab to load the updated bundle. No merge, push, deployment or Portals synchronization in this cycle.
+Local game: http://127.0.0.1:5185/ . Current soundtrack/reaction A/B: http://127.0.0.1:5187/mix-v3/ . Refresh the game tab to load the updated bundle. No merge, push, deployment or Portals synchronization in this cycle. [Previous cycle 2 milestone](evolution-cycle2-status.md) remains recorded at `66fcd65`.
 
 ## Previous milestone — cycle 1
 

@@ -22,6 +22,7 @@ export class SkateAudio {
     this.lastImpacts = new Map();
     this.voices = new Set();
     this.characterReactions = new Map(); this.voiceLevels = new WeakMap(); this.ambienceTails = new Map();
+    this.reactionDucks = new Map();
     this.disposed = false;
     this.lastBailImpact = null;
     this.recordedFoley = new Set();
@@ -254,7 +255,9 @@ export class SkateAudio {
         if (newContact) {
           const contactSpeed = Number(impact.speed) || 0;
           this.impact(.45 + Math.min(.5, contactSpeed / 14), false, 'bail');
-          if (this.reactions.contact(contactSpeed, now)) vocalReaction = this.playBank('voicePain', this.characterVoice, .22 + Math.min(.2,contactSpeed/50), { maxDuration: .85 }) && contactSpeed >= 7;
+          if (this.reactions.contact(contactSpeed, now)) vocalReaction = this.playBank('voicePain', this.characterVoice, .22 + Math.min(.2,contactSpeed/50), {
+            maxDuration: .85, musicDuck: contactSpeed >= 7 ? { amount: .7, releaseMs: 80 } : null,
+          }) && contactSpeed >= 7;
         }
         if (!state.bail) {
           if (state.pop && !this.previous.pop && !state.grounded && !state.grind) this.impact(0.9, false, 'pop');
@@ -308,7 +311,7 @@ export class SkateAudio {
   }
 
   // Shared bounded playback. Recordings fail independently; reactions never fall back to a fake voice.
-  playBank(kind, bus, level = .3, { maxDuration = 3, pan = 0, attack = .008, release = .08 } = {}) {
+  playBank(kind, bus, level = .3, { maxDuration = 3, pan = 0, attack = .008, release = .08, musicDuck = null } = {}) {
     if (!this.enabled || this.disposed || this.isBackgroundMuted() || this.context?.state !== 'running' || !bus || this.voices.size >= 16) return false;
     const channel = kind.startsWith('crowd') ? this.crowdVolume : kind.startsWith('voice') ? this.voiceVolume : 1;
     if (!(channel > 0)) return false;
@@ -345,7 +348,13 @@ export class SkateAudio {
     this.voices.add(source);
     if (kind.startsWith('voice')) this.characterReactions.set(source, { kind, gain: gain.gain, level: volume, end: now+duration });
     source.start(now); source.stop(now+duration+.01);
-    source.onended = () => { this.voices.delete(source); this.characterReactions.delete(source); source.disconnect(); gain.disconnect(); panner?.disconnect(); };
+    source.onended = () => { this.voices.delete(source); this.characterReactions.delete(source); this.reactionDucks.delete(source); source.disconnect(); gain.disconnect(); panner?.disconnect(); };
+    // Follow the take that actually started. Fixed event timers over-duck short
+    // pain takes and restore music before long applause reaches its decay.
+    if (musicDuck) {
+      const cancel = this.onMusicDuck?.({ durationMs: Math.ceil(Math.max(.08, duration - tail) * 1000), ...musicDuck });
+      if (typeof cancel === 'function') this.reactionDucks.set(source, { kind, cancel });
+    }
     return true;
   }
 
@@ -358,6 +367,7 @@ export class SkateAudio {
       maxDuration: reaction.exceptional ? 4.1 : reaction.kind === 'crowdSubdued' ? 1 : 1.8,
       attack: .035, release: reaction.exceptional ? .7 : reaction.kind === 'crowdSubdued' ? .28 : .45,
       pan: this.location.includes('paradise') ? -.32 : .25,
+      musicDuck: reaction.exceptional ? { amount: .65, releaseMs: 200 } : null,
     });
     return played && reaction.exceptional;
   }
@@ -365,10 +375,18 @@ export class SkateAudio {
   setCrowdVolume(value) {
     this.crowdVolume = saveAudioVolume('crowd', value);
     this.crowd?.gain.setTargetAtTime(this.baseGain*this.crowdVolume, this.context.currentTime, .045);
+    if (!this.crowdVolume) this.cancelMusicDucks('crowd');
   }
   setVoiceVolume(value) {
     this.voiceVolume = saveAudioVolume('voice', value);
     this.characterVoice?.gain.setTargetAtTime(this.baseGain*this.voiceVolume, this.context.currentTime, .045);
+    if (!this.voiceVolume) this.cancelMusicDucks('voice');
+  }
+
+  cancelMusicDucks(prefix = '') {
+    for (const [source, duck] of this.reactionDucks) if (duck.kind.startsWith(prefix)) {
+      duck.cancel(); this.reactionDucks.delete(source);
+    }
   }
 
   silence() {
@@ -377,6 +395,7 @@ export class SkateAudio {
     for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind, this.concreteScrape, this.metalScrape, this.ambience])
       layer?.gain.gain.setTargetAtTime(0, this.context.currentTime, 0.02);
     for (const voice of this.voices) { try { voice.stop(); } catch {} }
+    this.cancelMusicDucks();
     this.characterReactions.clear();
   }
 

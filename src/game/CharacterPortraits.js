@@ -5,7 +5,7 @@ import { PortraitPromiseCache } from './PortraitPromiseCache.js';
 
 const cache = new PortraitPromiseCache(8);
 let renderer = null;
-const bakedPortraits=new Map(['The_Heretic','The_AdolescentUR','The_Anchor','TuxR']
+const bakedPortraits=new Map(['thehollowf','The_Heretic','The_AdolescentUR','The_Anchor','TuxR']
   .map(name=>[gameAssetUrl(`/assets/rider/${name}.glb`),gameAssetUrl(`/assets/menu/riders/${name}.png?v=full-body-2`)]));
 
 /** Drop cached previews before revoking an uploaded character's blob URL. */

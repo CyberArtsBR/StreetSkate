@@ -3,6 +3,7 @@ import { SKATEBOARD_FINISHES } from '../skateboard/BoardFinishes.js';
 import { PARK_DEFINITIONS } from '../park/ParkRegistry.js';
 
 export const DEFAULT_CHARACTERS = Object.freeze([
+  Object.freeze({ id:'hollow', name:'The Hollow', subtitle:'THE HOLLOW', url:gameAssetUrl('/assets/rider/thehollowf.glb'), accent:'#fff151' }),
   Object.freeze({ id:'heretic', name:'Heretic', subtitle:'THE EXECUTOR', url:gameAssetUrl('/assets/rider/The_Heretic.glb'), accent:'#f66e62' }),
   Object.freeze({ id:'adolescent', name:'Adolescent', subtitle:'THE YOUNGBLOOD', url:gameAssetUrl('/assets/rider/The_AdolescentUR.glb'), accent:'#7edcff' }),
   Object.freeze({ id:'anchor', name:'Anchor', subtitle:'THE WIZARD', url:gameAssetUrl('/assets/rider/The_Anchor.glb'), accent:'#c8f17f' }),

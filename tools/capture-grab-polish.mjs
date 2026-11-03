@@ -3,9 +3,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { launchAuditBrowser } from './quality-browser-runtime.mjs';
 
-const out = 'artifacts/evolution-cycle2/animation';
+const out = process.env.GRAB_REVIEW_OUTPUT || 'artifacts/evolution-cycle2/animation';
+const base = process.env.GRAB_REVIEW_BASE || '77fbf6d';
+const riders = process.env.GRAB_REVIEW_RIDERS?.split(',') || ['The_AdolescentUR', 'The_Heretic', 'The_Anchor', 'TuxR'];
 const browser = await launchAuditBrowser();
-const report = { base: '77fbf6d', errors: [], sheets: [], note: 'Shipping-mesh presentation harness; both stances and three views. This does not replace physical-input, park-lighting or human motion approval.' };
+const report = { base, errors: [], sheets: [], note: 'Shipping-mesh presentation harness; both stances and three views. This does not replace physical-input, park-lighting or human motion approval.' };
 const rows = ['Indy', 'Melon', 'Nosegrab', 'Tailgrab', 'Japan', 'Stalefish']
   .map(name => ({ label: name, time: .65, spec: { kind: 'grab', name } }));
 try {
@@ -14,8 +16,10 @@ try {
     const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     const page = await context.newPage(); page.on('pageerror', e => report.errors.push(e.message));
     const overrides = new Map();
-    if (variant === 'before') for (const file of ['src/character/UnrealRider.js', 'src/skateboard/StreetBoard.js'])
-      overrides.set('/' + file, execFileSync('git', ['show', `77fbf6d:${file}`]));
+    if (variant === 'before') for (const file of ['src/character/UnrealRider.js', 'src/skateboard/StreetBoard.js', 'src/character/GrabReachPose.js']) {
+      try { overrides.set('/' + file, execFileSync('git', ['show', `${base}:${file}`],{stdio:['ignore','pipe','pipe']})); }
+      catch(error) { if(file!=='src/character/GrabReachPose.js')throw error; }
+    }
     await page.route('**/*', async route => {
       const pathname = decodeURIComponent(new URL(route.request().url()).pathname);
       const local = /^\/(src|tools|node_modules)\//.test(pathname) ? pathname.slice(1) : `public${pathname}`;
@@ -28,20 +32,23 @@ try {
     });
     await page.goto('http://127.0.0.1/tools/animation-review-scene.html');
     await page.waitForFunction(() => window.reviewReady, null, { timeout: 90000 });
-    for (const rider of ['The_AdolescentUR', 'The_Heretic', 'The_Anchor', 'TuxR']) {
-      if (rider !== 'The_AdolescentUR') await page.evaluate(name => window.reviewSwapRider(name), rider);
+    let currentRider = 'The_AdolescentUR';
+    for (const rider of riders) {
+      if (rider !== currentRider) await page.evaluate(name => window.reviewSwapRider(name), rider);
+      currentRider = rider;
       const image = await page.evaluate(spec => window.reviewSheet(spec), { title: `${rider} · ${variant} · named grabs`, rows });
       const file = `${variant}/${rider}.png`;
       await writeFile(`${out}/${file}`, Buffer.from(image.split(',')[1], 'base64')); report.sheets.push(file);
       console.log(file);
       if(process.env.GRAB_REVIEW_CLIPS==='1'){
-        const transitionRows=[.30,.40,.65,1.50,1.65,2.15].map(time=>({label:`Nosegrab ${time}s`,time,spec:{kind:'grabTransition',name:'Nosegrab'}}));
+        const transitionName=rider==='The_Heretic'?'Japan':rider==='The_Anchor'?'Stalefish':'Nosegrab';
+        const transitionRows=[.30,.40,.65,1.50,1.65,2.15].map(time=>({label:`${transitionName} ${time}s`,time,spec:{kind:'grabTransition',name:transitionName}}));
         const sheet=await page.evaluate(spec=>window.reviewSheet(spec),{title:`${rider} · engage / hold / release`,rows:transitionRows});
         await writeFile(`${out}/after/${rider}-transition.png`,Buffer.from(sheet.split(',')[1],'base64'));
         // Both stances are on the sheets; record one representative transition
         // per rider to keep this focused visual pass short.
-        for(const stance of [rider==='The_AdolescentUR'||rider==='The_Heretic'?-1:1]){
-          const name=rider==='The_Heretic'?'Japan':'Nosegrab';
+        for(const stance of [rider==='The_AdolescentUR'||rider==='The_Heretic'||rider==='The_Anchor'?-1:1]){
+          const name=transitionName;
           const clip=await page.evaluate(args=>window.reviewGrabRecord(args),{name,stance});
           const clipPath=`after/${rider}-${name}-${stance===1?'regular':'switch'}.webm`;
           await writeFile(`${out}/${clipPath}`,Buffer.from(clip.split(',')[1],'base64'));

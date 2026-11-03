@@ -119,7 +119,7 @@ try{
   report.parkCoverage=coverage;
  });
  await checked('packaged rider and title media are accessible',async()=>{
-  for(const asset of ['/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
+  for(const asset of ['/assets/rider/thehollowf.glb','/assets/menu/riders/thehollowf.png','/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
    '/assets/rider/The_Anchor.glb','/assets/rider/TuxR.glb',
    '/media/title-screen.png','/media/trick-guide-16x9.png']){
    const r=await page.request.head(url+asset);
@@ -355,8 +355,9 @@ try{
   await stats('practice-restart-3');
   await page.screenshot({path:join(out,'practice-restart.png'),fullPage:true});
  });
- await checked('all four stock GLB riders load and bind without stale resources',async()=>{
+ await checked('all five stock GLB riders load and bind without stale resources',async()=>{
   const avatars=[
+   ['hollow','/assets/rider/thehollowf.glb'],
    ['heretic','/assets/rider/The_Heretic.glb'],
    ['adolescent','/assets/rider/The_AdolescentUR.glb'],
    ['anchor','/assets/rider/The_Anchor.glb'],

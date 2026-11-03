@@ -2,6 +2,8 @@
 
 Cycle 2026-11-03 · integration owner: lead · [State/evidence](PROJECT_STATE.md) · [Known issues](KNOWN_ISSUES.md).
 
+Current local follow-up: [The Hollow/contact/mix delivery](hollow-grip-mix-status-2026-11-03.md) completes the fifth-rider integration and advances EV-N01–03 with actual palm calibration, source-length soundtrack ducking and measured first-bail/respawn shader preparation. Exact finger wrap, human listening and sustained repeated profiling remain REVIEW. No release or new game mode is included.
+
 ## Completed foundation milestone
 
 All tasks use existing architecture. Low-risk corrections stay independent; tutorial/render-cache changes are medium complexity because they cross presentation state. The shared recovery transaction precedes marker/spot integration. Final browser/build verification follows agent review.

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — The Hollow / contact / mix, 2026-11-03
+
+Base: `66fcd65`; branch `codex/hollow-grip-mix-20261103`. [Delivery and evidence](hollow-grip-mix-status-2026-11-03.md).
+
+- Added The Hollow first among five riders, with the exact supplied GLB, baked portrait, readable roster and direct initial actor loading.
+- Calibrated actual palm/deck reach on the existing four rigs, directional torso gather, bounded wrist/forearm orientation and eased grab entry/release. Hollow's prior motion is preserved.
+- Music ducking follows actual pain/applause duration and releases on reaction silence/mute while preserving independent session cues.
+- Prepared hidden bail-liquid/particle and translucent respawn shader variants behind loadout, fixing measured first-bail/respawn stalls without reducing graphics quality. Visibility and material state restore even after failure.
+- Focused tests, five-rider runtime verification, soundtrack A/B and three-park CPU/GPU captures pass. No release, Portals synchronization, new modes or installations.
+
 ## Unreleased — local polish cycle 2, 2026-11-03
 
 Base: owner-tested `77fbf6d`; branch `codex/evolution-cycle2-20261103`. [Current delivery](evolution-cycle2-status.md).

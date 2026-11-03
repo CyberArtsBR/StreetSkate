@@ -2,6 +2,7 @@ import { gameAssetUrl } from './AssetPaths.js';
 import * as THREE from 'three';
 import { StatefulSkillStreetPhysics } from './StatefulSkillStreetPhysics.js';
 import { UnrealRider } from '../character/UnrealRider.js';
+import { warmGrabDeckSurface } from '../character/GrabReachPose.js';
 import { StreetBoard } from '../skateboard/StreetBoard.js';
 import { ensureBalanceHud } from './BalanceHud.js';
 import { captureGameplayState } from './core/GameplayStateSnapshot.js';
@@ -93,12 +94,13 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     ].join('\n');
   }
 
-  async load() {
+  async load({riderUrl=gameAssetUrl('/assets/rider/TheanchoURi.glb')}={}) {
     [this.board, this.rider] = await Promise.all([
       new StreetBoard(gameAssetUrl('/assets/rider/skateboard.glb')).load(),
-      new UnrealRider(gameAssetUrl('/assets/rider/TheanchoURi.glb')).load(),
+      new UnrealRider(riderUrl).load(),
     ]);
     this.visual.add(this.board.root, this.rider.root);
+    warmGrabDeckSurface(this.board);
     this.captureRiderFlashMaterials();
     this.rider.deckHeight = this.board.deckHeight;
     this.setBoardContactRig(this.board.contactRig);

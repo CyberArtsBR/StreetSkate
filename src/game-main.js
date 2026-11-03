@@ -1,7 +1,7 @@
 import { surfaceTagFor } from './game/SurfaceAudio.js';
 import { installModuleLoadRecovery } from './game/ModuleLoadRecovery.js';
 import { freezeStaticParkTransforms } from './graphics/StaticParkTransforms.js';
-import { warmScenePrograms } from './graphics/ShaderWarmup.js';
+import { warmScenePrograms, renderGameplayWarmup } from './graphics/ShaderWarmup.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -283,6 +283,7 @@ const gameShell = new GameShell({
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
   testMap: ({file,hero,board,onProgress}) => selectLocation('test-map', {file,hero,finish:board.finishIndex,onProgress}),
 });
+skateAudio.onMusicDuck=({durationMs,amount,releaseMs})=>gameShell.music.duck(durationMs,amount,releaseMs);
 
 // Observe the existing score banks without changing scoring or simulation rules.
 function observeRunScoring(controller) {
@@ -310,8 +311,8 @@ function observeRunScoring(controller) {
         startTime: comboStartTime, endTime: sessionEventTime });
       if(moment){
         const oldBest=scoreRecords.get(currentWorld.id)?.bestCombo;
-        if(skateAudio.onComboSettled?.({points:moment.points,id:currentWorld.id+':'+sessionEventTime,location:currentWorld.id,
-          personalBest:!gameShell.practice&&oldBest>0&&moment.points>oldBest}))gameShell.music.duck(900,.65);
+        skateAudio.onComboSettled?.({points:moment.points,id:currentWorld.id+':'+sessionEventTime,location:currentWorld.id,
+          personalBest:!gameShell.practice&&oldBest>0&&moment.points>oldBest});
         if(moment.points>=1200){const node=document.getElementById('trick-feedback');node?.classList.remove('exceptional-line');
           requestAnimationFrame(()=>node?.classList.add('exceptional-line'));}
       }
@@ -761,7 +762,8 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
     progress('PREPARING PARK LIGHTING…');
     await warmScenePrograms(renderer,scene,camera,{
       isCurrent:()=>request===loadoutRequest,
-      renderFirstFrame:()=>graphicsPipeline.render({contactSource:skater,warmup:true}),
+      renderFirstFrame:()=>renderGameplayWarmup({skater,effects:skateEffects,
+        render:()=>graphicsPipeline.render({contactSource:skater,warmup:true})}),
     });
     if(request!==loadoutRequest)return false;
     return { locationId: currentWorld.id, manifest };
@@ -783,7 +785,8 @@ async function loadGame() {
     await ensureWorldEnvironment(initialWorld);
     document.querySelector('#load-progress').textContent = 'Loading rider and skateboard';
     skater = await new StreetSkater({ collision: initialWorld.collision, spawn: initialWorld.manifest.spawn,
-      rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions }).load();
+      rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions })
+      .load({riderUrl:gameShell.heroes[0].url});
     observeRunScoring(skater);
     scene.add(skater.root);
     // Actor-only bloom: visual contains the skateboard and currently selected GLB rider.
@@ -1041,8 +1044,7 @@ renderer.setAnimationLoop(() => {
   });
   transitionDebug?.update(skater);
   if(gameShell.phase==='highlights'&&highlightPlayback.active)skateEffects.updateReplay?.(realDelta);
-  const vocalDuck=skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
-  if(vocalDuck)gameShell.music.duck(650,.7);
+  skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
   const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
   if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
   skateEffects.root.visible = Boolean(effectsActive||(gameShell.phase==='highlights'&&highlightPlayback.active));

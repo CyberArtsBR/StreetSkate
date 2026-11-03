@@ -1,6 +1,6 @@
 # Project profile — Chimp Hawk / StreetSkate
 
-Discovered from source on 2026-11-03. Release baseline: `f62779d`; cycle 2 follows the owner-approved local checkpoint `77fbf6d` on `codex/evolution-cycle2-20261103`. [Current state](PROJECT_STATE.md).
+Discovered from source on 2026-11-03. Release baseline: `f62779d`; the current local pass follows `66fcd65` on `codex/hollow-grip-mix-20261103`. [Current state](PROJECT_STATE.md).
 
 | Area | Actual implementation |
 |---|---|
@@ -13,6 +13,7 @@ Discovered from source on 2026-11-03. Release baseline: `f62779d`; cycle 2 follo
 | Rendering | ACES tone mapping, PBR materials, stable environment reflections, 1024 shadow atlas, optional selective bloom/CAS/contact shading. Six presets; 144 FPS is a target, not a monitor setting or guarantee. |
 | Inputs | `SkateInput`, semantic `InputInterpreter`, saved validated bindings, analog tap detector, fixed menu confirmation/back controls. Five camera modes. |
 | Assets | GLB/glTF, gzip delivery for selected park data, JPEG/PNG/WebP textures, local bitmap graffiti glyphs and fonts. Paradise has a separate optimized delivery asset and original fallback. |
+| Riders | Five supplied rigged stock characters, headed by The Hollow; baked stock portraits and existing custom GLB import. Hollow's source bytes and prior procedural motion are preserved. |
 | Audio | Web Audio effects, recorded skate Foley/banks with synthesis fallback, surface layers, location ambience, music player, separate effects/announcer/crowd/voice controls. Rejected `crowd-cheer.ogg` stays excluded. |
 | UI | DOM/CSS menu shell, tutorial/Flip School video loops, synchronized controller overlay, HUD lettering, settings, loadout previews, round/results/replay screens. |
 | Persistence | Defensive localStorage preferences, bindings and versioned per-park score records. Highlight poses remain session-local. |
