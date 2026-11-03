@@ -38,7 +38,7 @@ test('v2 rewards accepted score and variety without per-bank or per-entry inflat
   assert.equal(result.weightedScore, 1150);
   assert.equal(result.bailPenalty, 250);
   assert.equal(result.finalScore, 900);
-  assert.equal(result.ruleVersion, 'line-score-v2');
+  assert.equal(result.ruleVersion, 'line-score-v3');
 });
 
 test('comparison matrix: linked repetitions beat isolated banks; varied line beats repetitions', () => {

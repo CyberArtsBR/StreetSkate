@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { flipMotion } from './TrickMotion.js';
 import { PRESENTATION_STATES, springStep, transitionFrequency } from './PresentationState.js';
+import { clearFeetAboveSupport } from './FootSupportClearance.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -247,6 +248,7 @@ export function updateApprovedBalancePose({ presentation, board, speedRatio = 0,
     }
 
     this.root.updateWorldMatrix(true, true);
+    if (handstandWeight > 0) clearFeetAboveSupport(this,board);
     for (const side of SIDES) {
       const sign = side === 'l' ? -1 : 1;
       const upper = this.bones['upperarm_' + side], lower = this.bones['lowerarm_' + side], hand = this.bones['hand_' + side];

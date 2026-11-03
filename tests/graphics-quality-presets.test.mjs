@@ -54,7 +54,7 @@ test('unstable SSR is disabled across all tiers while preserving high preset blo
   assert.equal(GRAPHICS_PRESETS.high.ssr,false);
   assert.equal(GRAPHICS_PRESETS.ultra.ssr,false);
   assert.equal(GRAPHICS_PRESETS.cinematic.ssr,false);
-  assert.equal(GRAPHICS_PRESETS.performance.bloomStrength,0);
+  assert.equal(GRAPHICS_PRESETS.performance.bloomStrength,1.09);
   assert.ok(GRAPHICS_PRESETS.high.bloomStrength>0);
 });
 
@@ -101,13 +101,17 @@ test('144 FPS retains native detail on high-DPI and 4K displays', () => {
   assert.equal(resolveGraphicsSettings('high-refresh',{width:1280,height:720}).pixelRatio,1);
 });
 
-test('144 FPS glow is active by default and its off switch restores direct rendering', () => {
-  const on=resolveGraphicsSettings('high-refresh',{}, {bloomEnabled:true});
-  const off=resolveGraphicsSettings('high-refresh',{}, {bloomEnabled:false});
+test('lean tiers enable glow by default and its off switch restores direct rendering', () => {
+  for(const name of ['performance','high-refresh']) {
+  const on=resolveGraphicsSettings(name,{}, {bloomEnabled:true});
+  const off=resolveGraphicsSettings(name,{}, {bloomEnabled:false});
   assert.ok(on.bloomStrength>0);
   assert.equal(on.postProcessing,true);
   assert.equal(off.bloomStrength,0);
   assert.equal(off.postProcessing,false);
+  }
+  assert.ok(GRAPHICS_PRESETS.performance.bloomScale<GRAPHICS_PRESETS['high-refresh'].bloomScale);
+  assert.equal(GRAPHICS_PRESETS.performance.surfaceDetailScale,0);
 });
 
 test('linear fog maintains near plane and adjusts far distance relative to the map', () => {

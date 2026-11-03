@@ -38,6 +38,10 @@ export const ALL_FLIP_LESSONS = Object.freeze([...FLIP_LESSONS,...ADVANCED_FLIP_
 // One timeline drives the recorded demonstration and the live input overlay.
 // Seconds are clip time; playback speed scales the video and overlay together.
 export const FLIP_LESSON_TIMING = Object.freeze({charge:.35,pop:1.05,tap:1.16,release:1.30,firstRelease:1.23,secondTap:1.31,secondRelease:1.39,land:1.95,duration:3.2});
+/** The list and detailed steps describe the same discrete button sequence. */
+export function flipLessonInput(lesson,direction=`${lesson.arrow} ${lesson.label}`,flip='flip') {
+  return `${direction} + ${flip}${lesson.taps===2?' → release → '+flip:''}`;
+}
 export function flipLessonFrame(lesson,time) {
   const t=Math.max(0,Number(time)||0),k=FLIP_LESSON_TIMING;
   const airborne=t>=k.pop&&t<k.land;
@@ -73,7 +77,7 @@ export function flipLessonSteps(lesson,mode='xbox',bindings=readBindings()) {
   return [
     {title:'Charge',input:`Hold ${ollie}`,detail:'Build your ollie before takeoff.'},
     {title:'Pop',input:`Release ${ollie}`,detail:'Get the board into the air.'},
-    {title:lesson.taps===2?'Double tap':'Flick',input:`${direction} + ${flip}${lesson.taps===2?' → release → '+flip:''}`,detail:lesson.taps===2?'Keep the same direction for both taps. Tap again early, then release the direction.':'Tap together, then release the direction.'},
+    {title:lesson.taps===2?'Double tap':'Flick',input:flipLessonInput(lesson,direction,flip),detail:lesson.taps===2?'Keep the same direction for both taps. Release the flip button between taps. Tap again early, then release the direction.':'Tap together, then release the direction.'},
     {title:'Land',input:'Release · land straight',detail:'Let the flip finish and catch the board.'},
   ];
 }

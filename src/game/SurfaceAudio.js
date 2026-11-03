@@ -59,9 +59,11 @@ export function wheelSurfaceTag(wheels = []) {
   return selected;
 }
 
-export function surfaceAudioFor(player) {
+export function surfaceTagFor(player) {
   const rail = player?.grind?.rail;
   const tag = rail ? rail.audioSurfaceTag ?? rail.surfaceType ?? rail.userData?.audioSurfaceTag
     : player?.audioSurfaceTag ?? player?.contact?.audioSurfaceTag ?? wheelSurfaceTag(player?.boardContact?.wheels);
-  return SURFACE_AUDIO[validatedSurfaceTag(tag)];
+  return validatedSurfaceTag(tag);
 }
+
+export function surfaceAudioFor(player) { return SURFACE_AUDIO[surfaceTagFor(player)]; }

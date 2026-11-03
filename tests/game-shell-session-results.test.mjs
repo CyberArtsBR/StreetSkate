@@ -94,10 +94,10 @@ test('results collapse v2 arithmetic and distinguish earned points, variety and 
   assert.ok(html.includes(`<strong data-final-score>${(580).toLocaleString()}</strong>`));
   assert.match(html,/FINAL SCORE/);assert.match(html,/FINAL POINTS/);
   assert.match(html,/<dd data-banked-score>900<\/dd>/);
-  assert.doesNotMatch(html,/3 × 100 points|7 × 25 points/,'flat bonuses are removed in line-score-v2');
+  assert.doesNotMatch(html,/3 × 100 points|7 × 25 points/,'flat bonuses are removed in line-score-v3');
   assert.match(html,/<details class="run-score-breakdown"[^>]*>/);
   assert.doesNotMatch(html,/<details class="run-score-breakdown"[^>]*open/,'arithmetic starts collapsed');
-  assert.match(html,/line-score-v2/);
+  assert.match(html,/line-score-v3/);
   assert.match(html,/4 different tricks · \+20%/);
   assert.match(html,/<dd class="score-multiplier">×1\.20<\/dd>/);
   assert.match(html,/2 × 250 point penalty/);assert.match(html,/<dd>−500<\/dd>/);

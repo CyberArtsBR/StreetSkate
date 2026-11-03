@@ -7,6 +7,7 @@ import { checkGlbChunkHeader, LOCATION_IDS } from './agent10-release-utils.mjs';
 
 const root = resolve(process.env.AGENT10_ASSET_ROOT || 'public');
 export const REQUIRED_GLBS = Object.freeze([
+  'assets/rider/thehollowf.glb',
   'assets/rider/The_Heretic.glb',
   'assets/rider/The_AdolescentUR.glb',
   'assets/rider/The_Anchor.glb',
@@ -16,6 +17,7 @@ export const REQUIRED_GLBS = Object.freeze([
   'assets/warehouse/granwarehouse.glb',
 ]);
 export const REQUIRED_MEDIA = Object.freeze([
+  'assets/menu/riders/thehollowf.png',
   'media/title-screen.png', 'media/trick-guide-16x9.png',
   'assets/menu/rooftop.webp', 'assets/menu/urban-warehouse.webp',
 ]);

@@ -136,7 +136,7 @@ export class RunSummary {
       landedCombos: this.landedCombos, tricksLanded: this.tricksLanded,
       uniqueTricks, bails: this.bails });
     const achievements = [];
-    if (this.bestCombo) achievements.push({ title: 'Best combo', detail: `${this.bestCombo.points.toLocaleString('en-US')} points · ${this.bestCombo.trickCount} tricks`, kind: 'combo' });
+    if (this.bestCombo) achievements.push({ title: 'Best combo', detail: `${this.bestCombo.points.toLocaleString('en-US')} points · ${this.bestCombo.trickCount} ${this.bestCombo.trickCount===1?'trick':'tricks'}`, kind: 'combo' });
     if (this._uniqueTricks.size > 1) achievements.push({ title: 'Trick variety', detail: `${this._uniqueTricks.size} different landed tricks`, kind: 'variety' });
     if (this.maxAirTime >= 0.25) achievements.push({ title: 'Longest air', detail: `${this.maxAirTime.toFixed(2)} seconds airborne`, kind: 'air' });
     if (this.landedCombos && !this.bails) achievements.push({ title: 'Clean run', detail: `${this.landedCombos} combos landed without a bail`, kind: 'clean' });

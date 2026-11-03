@@ -13,7 +13,7 @@ try{
   await page.waitForSelector('.loadout-shell');
   const hero=page.locator('.loadout-character');
   const decks=page.locator('.loadout-deck');
-  assert.equal(await hero.count(),4);
+  assert.equal(await hero.count(),5);
   assert.equal(await decks.count(),8);
   assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),true);
   // Keyboard navigation must be horizontal within a row and vertical between rows.
@@ -50,7 +50,7 @@ try{
       cameraVisible:skater.visual.visible,
     };
   });
-  assert.match(scene.rider,/The_Heretic.glb/);
+  assert.match(scene.rider,/thehollowf\.glb/);
   assert.equal(scene.finishIndex,5);
   assert.ok(scene.footY.every(Number.isFinite));
   assert.ok(scene.offsetXZ<0.5,'foot midpoint misaligned with deck '+JSON.stringify(scene));

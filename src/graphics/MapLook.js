@@ -5,7 +5,7 @@ export const MAP_LOOKS = Object.freeze({
     exposure: 1.02, ambientSky: '#b9cbe5', ambientGround: '#62545b', ambientIntensity: .66,
     keyColor: '#ffd0a0', keyIntensity: 2.5, keyPosition: [-45, 55, -25],
     environmentIntensity: .58,
-    fillColor: '#a5bce9', fillIntensity: .42, fillPosition: [155, 40, -155],
+    fillColor: '#a5bce9', fillIntensity: .5, fillPosition: [155, 40, -155],
     fogColor: '#a29aaa', fogDensity: .00065,
   }),
   rooftop: Object.freeze({
@@ -18,13 +18,13 @@ export const MAP_LOOKS = Object.freeze({
     exposure: 1.02, ambientSky: '#bed7ee', ambientGround: '#29243d', ambientIntensity: .65,
     keyColor: '#d8e8ff', keyIntensity: 2.65, keyPosition: [-32, 52, 26],
     environmentIntensity: .34,
-    fillColor: '#a6b8ff', fillIntensity: .55, fillPosition: [38, 24, -45],
+    fillColor: '#a6b8ff', fillIntensity: .68, fillPosition: [38, 24, -45],
   }),
   'grand-warehouse': Object.freeze({
     exposure: 1.02, ambientSky: '#c7d8ed', ambientGround: '#554537', ambientIntensity: .64,
     keyColor: '#ffdcad', keyIntensity: 2.75, keyPosition: [-35, 42, 16],
     environmentIntensity: .28,
-    fillColor: '#b8d6ff', fillIntensity: .5, fillPosition: [38, 22, -42],
+    fillColor: '#b8d6ff', fillIntensity: .65, fillPosition: [38, 22, -42],
   }),
 });
 

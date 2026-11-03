@@ -7,13 +7,14 @@ const LIFE = 5, DROPS = 8;
 // A shallow convex surface with a rounded, irregular meniscus, not a decal.
 // Local +Z is the contact normal; XY follows the impact surface.
 function liquidGeometry() {
-  const segments = 48, rings = 10, positions = [0, 0, .024], indices = [];
+  const segments = 48, rings = 10, positions = [0, 0, .0225], indices = [];
   for (let ring = 1; ring <= rings; ring++) {
     const r = ring / rings;
     for (let i = 0; i < segments; i++) {
       const a = i * Math.PI * 2 / segments;
       const edge = .95 + .028 * Math.sin(3 * a) + .022 * Math.cos(5 * a);
-      const height = .024 * Math.pow(Math.max(0, 1 - r * r), .55)
+      const height = .0225 * Math.pow(Math.max(0, 1 - r * r), .65)
+        + .0006*Math.exp(-Math.pow((1-r)/.035,2))
         + .0018 * Math.sin(r * 15 + a * 2) * r * (1 - r);
       positions.push(Math.cos(a) * r * edge * RADIUS_X, Math.sin(a) * r * edge * RADIUS_Y, height);
     }
@@ -31,9 +32,18 @@ function liquidGeometry() {
 }
 
 function liquidMaterial() {
-  return new THREE.MeshPhysicalMaterial({color:0x510309, metalness:0, roughness:.16,
+  const material = new THREE.MeshPhysicalMaterial({color:0x510309, metalness:0, roughness:.16,
     clearcoat:1, clearcoatRoughness:.07, envMapIntensity:1.5,
     transparent:true, opacity:1, depthWrite:true});
+  // Wet center rolls into a slightly rougher, thin meniscus instead of a hard shiny disk.
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader='varying float vLiquidEdge;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLiquidEdge=length(position.xy/vec2(.69,.48));');
+    shader.fragmentShader='varying float vLiquidEdge;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor+=smoothstep(.62,1.,vLiquidEdge)*.07;');
+  };
+  material.customProgramCacheKey=()=> 'bail-liquid-meniscus-v1';
+  return material;
 }
 
 export class BailLiquid {
@@ -60,6 +70,7 @@ export class BailLiquid {
     const p = this.puddles[this.cursor++ % this.puddles.length];
     this.normal.copy(impact.normal).normalize();
     p.age = 0;p.count = performance ? 4 : DROPS;
+    p.severity=THREE.MathUtils.clamp((Number(impact.speed)||8)/8,.35,1);
     p.mesh.position.copy(impact.point).addScaledVector(this.normal, .003);
     p.mesh.quaternion.setFromUnitVectors(NORMAL, this.normal);
     this.conformSurface(p.mesh, surface);
@@ -107,7 +118,7 @@ export class BailLiquid {
     let alive = false;
     for (let i = 0; i < p.count; i++) {
       const a = i * Math.PI * 2 / p.count + .3;
-      const speed = .65 + (i % 3) * .19, lift = 1.1 + (i % 3) * .19, t = p.age;
+      const speed = (.65 + (i % 3) * .19)*p.severity, lift = (1.1 + (i % 3) * .19)*(.6+.4*p.severity), t = p.age;
       const z = .045 + lift * t + .5 * p.gravity.z * t * t;
       const visible = t < .65 && z > .02;
       alive ||= visible;

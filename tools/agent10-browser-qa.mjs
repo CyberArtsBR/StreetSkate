@@ -8,6 +8,7 @@ const url=process.env.STREETSKATE_URL||'http://127.0.0.1:4173';
 const out=process.env.AGENT10_ARTIFACT_DIR||'artifacts/agent10';
 await mkdir(out,{recursive:true});
 const report={url,started:new Date().toISOString(),checks:[],pageErrors:[],requestFailures:[],consoleErrors:[],samples:[]};
+const stockRiderCount=5;
 // Headless Chromium can deprioritize RAF in software WebGL even while the
 // tab is under test. Disable background throttling without lowering the
 // required number of animation frames.
@@ -47,10 +48,25 @@ async function chooseLoadout(){
  assert.equal(await page.locator('[data-action="confirmLoadout"]').isDisabled(),false);
  await page.locator('[data-action="confirmLoadout"]').scrollIntoViewIfNeeded();
  if(page.viewportSize()?.width<=800) await page.screenshot({path:join(out,'selection-five-800.png'),fullPage:true});
- const cta=await page.locator('[data-action="confirmLoadout"]').boundingBox();
- const lastLocation=await page.locator('.loadout-location').last().boundingBox();
- assert.ok(cta && lastLocation && cta.y >= lastLocation.y + lastLocation.height - 2,
-   'START SESSION must not overlap location cards, including on short viewports');
+ const layout=await page.locator('[data-action="confirmLoadout"]').evaluate(button=>{
+   const cta=button.getBoundingClientRect();
+   const cards=[...document.querySelectorAll('.loadout-location')].map(card=>{
+     const box=card.getBoundingClientRect();
+     let left=Math.max(0,box.left),right=Math.min(innerWidth,box.right),
+       top=Math.max(0,box.top),bottom=Math.min(innerHeight,box.bottom);
+     for(let parent=card.parentElement;parent;parent=parent.parentElement){
+       const style=getComputedStyle(parent),clip=parent.getBoundingClientRect();
+       if(/auto|scroll|hidden|clip/.test(style.overflowX)){left=Math.max(left,clip.left);right=Math.min(right,clip.right);}
+       if(/auto|scroll|hidden|clip/.test(style.overflowY)){top=Math.max(top,clip.top);bottom=Math.min(bottom,clip.bottom);}
+     }
+     return {id:card.dataset.location,left,right,top,bottom,visible:right>left&&bottom>top};
+   });
+   return {cta:{left:cta.left,right:cta.right,top:cta.top,bottom:cta.bottom},cards};
+ });
+ assert.ok(layout.cta.top>=0&&layout.cta.bottom<=page.viewportSize().height,'START SESSION must be inside the viewport');
+ assert.ok(layout.cards.every(card=>!card.visible||card.bottom<=layout.cta.top+2
+   ||card.top>=layout.cta.bottom-2||card.right<=layout.cta.left||card.left>=layout.cta.right),
+   'START SESSION must not overlap visible location cards: '+JSON.stringify(layout));
  await page.locator('[data-action="confirmLoadout"]').click();
  await page.locator('body[data-screen="playing"]').waitFor({timeout:60000});
  assert.equal(await page.locator('body[data-screen="tutorial"]').count(),0,
@@ -119,7 +135,7 @@ try{
   report.parkCoverage=coverage;
  });
  await checked('packaged rider and title media are accessible',async()=>{
-  for(const asset of ['/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
+  for(const asset of ['/assets/rider/thehollowf.glb','/assets/menu/riders/thehollowf.png','/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
    '/assets/rider/The_Anchor.glb','/assets/rider/TuxR.glb',
    '/media/title-screen.png','/media/trick-guide-16x9.png']){
    const r=await page.request.head(url+asset);
@@ -140,13 +156,15 @@ try{
  await checked('timed run selection, grid keyboard, and three playable locations',async()=>{
   await page.locator('[data-action="start"]').click();
   await page.locator('body[data-screen="select"]').waitFor();
-  assert.equal(await page.locator('.loadout-character').count(),4);
-  await page.waitForFunction(() => {
+  assert.equal(await page.locator('.loadout-character').count(),stockRiderCount);
+  assert.deepEqual(await page.locator('.loadout-character strong').allTextContents(),
+    ['The Hollow','Heretic','Adolescent','Anchor','Tuxr']);
+  await page.waitForFunction(count => {
     const roster = document.querySelectorAll('.loadout-roster .rider-portrait img');
     const selected = document.querySelector('.selected-rider .rider-portrait img');
-    return roster.length === 4 && [...roster, selected].every(img => img?.complete && img.naturalWidth > 0);
-  }, null, {timeout:60000});
-  await page.screenshot({path:join(out,'selection-four-1440.png'),fullPage:true});
+    return roster.length === count && [...roster, selected].every(img => img?.complete && img.naturalWidth > 0);
+  }, stockRiderCount, {timeout:60000});
+  await page.screenshot({path:join(out,'selection-five-1440.png'),fullPage:true});
   assert.equal(await page.locator('.loadout-deck').count(),8);
   assert.equal(await page.locator('.loadout-location').count(),3);
   assert.equal(await page.locator('.loadout-location[disabled]').count(),0);
@@ -199,12 +217,12 @@ try{
   await input.setInputFiles({name:'not-a-model.glb',mimeType:'model/gltf-binary',buffer:Buffer.alloc(128)});
   await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent || ''), null, { timeout: 30000 });
   assert.match(await page.locator('.loadout-status').textContent(),/Invalid GLB header/i);
-  assert.equal(await page.locator('.loadout-character').count(),4);
+  assert.equal(await page.locator('.loadout-character').count(),stockRiderCount);
   // A magic-only fake is not a valid GLB. It must never become selectable.
   const invalid=Buffer.alloc(128);invalid.write('glTF');
   await input.setInputFiles({name:'<img src=x onerror=alert(1)>.glb',mimeType:'model/gltf-binary',buffer:invalid});
   await page.waitForFunction(() => /Invalid GLB header/i.test(document.querySelector('.loadout-status')?.textContent||''), null, { timeout: 30000 });
-  assert.equal(await page.locator('.loadout-character').count(),4);
+  assert.equal(await page.locator('.loadout-character').count(),stockRiderCount);
   assert.equal(await page.locator('img[src="x"]').count(),0);
 
   // Conversely, accept a real, small, self-contained GLB v2 and escape its
@@ -219,9 +237,9 @@ try{
   valid.writeUInt32LE(0x4e4f534a,16);
   json.copy(valid,20);
   await input.setInputFiles({name:'<img src=x onerror=alert(1)>.glb',mimeType:'model/gltf-binary',buffer:valid});
-  await page.waitForFunction(() => document.querySelectorAll('.loadout-character').length === 5, null, { timeout: 30000 });
+  await page.waitForFunction(count => document.querySelectorAll('.loadout-character').length === count, stockRiderCount+1, { timeout: 30000 });
   assert.equal(await page.locator('img[src="x"]').count(),0);
-  assert.equal(await page.locator('.loadout-character').count(),5);
+  assert.equal(await page.locator('.loadout-character').count(),stockRiderCount+1);
  });
  await checked('direct Start Session flow without mandatory tutorial',async()=>{
   await chooseLoadout();
@@ -355,8 +373,9 @@ try{
   await stats('practice-restart-3');
   await page.screenshot({path:join(out,'practice-restart.png'),fullPage:true});
  });
- await checked('all four stock GLB riders load and bind without stale resources',async()=>{
+ await checked('all five stock GLB riders load and bind without stale resources',async()=>{
   const avatars=[
+   ['hollow','/assets/rider/thehollowf.glb'],
    ['heretic','/assets/rider/The_Heretic.glb'],
    ['adolescent','/assets/rider/The_AdolescentUR.glb'],
    ['anchor','/assets/rider/The_Anchor.glb'],
@@ -429,7 +448,7 @@ try{
            crouch:grab?0:1,grabState:grab?{name:'Indy'}:null,
            grabWeight:grab?1:0,dt:1/60,stance:1});
        }
-       rider.root.updateWorldMatrix(true,true);board.root.updateWorldMatrix(true,true);
+       rider.root.updateMatrixWorld(true);board.root.updateMatrixWorld(true);
        const world=()=>camera.position.clone();
        const pelvis=rider.bones.pelvis.getWorldPosition(world());
        const localPelvis=board.root.worldToLocal(pelvis);
@@ -441,7 +460,29 @@ try{
          const h=rider.root.worldToLocal(hip), k=rider.root.worldToLocal(knee);
          knees[side]=Number(((k.x-h.x)*rider.outward[side]).toFixed(3));
        }
-       metrics[pose]={hipsAboveDeck:Number((localPelvis.y-top).toFixed(3)),knees};
+       // A common pelvis-pivot height penalizes short, safely tucked rigs.
+       // Check the actual deformed torso above the board footprint instead.
+       const trunkBones=new Set(['pelvis','spine_01','spine_02','spine_03']
+         .map(name=>rider.bones[name]).filter(Boolean));
+       let trunkSamples=0,minTrunkClearance=Infinity;
+       rider.model.traverse(mesh=>{
+         if(!mesh.isSkinnedMesh)return;
+         mesh.skeleton.update();
+         const weights=mesh.geometry.attributes.skinWeight,indices=mesh.geometry.attributes.skinIndex;
+         if(!weights||!indices)return;
+         for(let vertex=0;vertex<weights.count;vertex++){
+           let weight=0;
+           for(let component=0;component<4;component++)
+             if(trunkBones.has(mesh.skeleton.bones[indices.getComponent(vertex,component)]))
+               weight+=weights.getComponent(vertex,component);
+           if(weight<.55)continue;
+           const point=board.root.worldToLocal(mesh.getVertexPosition(vertex,world()).applyMatrix4(mesh.matrixWorld));
+           if(Math.abs(point.x)<=board.contactRig.deckWidth*.5&&Math.abs(point.z)<=board.contactRig.deckLength*.5){
+             trunkSamples++;minTrunkClearance=Math.min(minTrunkClearance,point.y-top);
+           }
+         }
+       });
+       metrics[pose]={hipsAboveDeck:Number((localPelvis.y-top).toFixed(3)),knees,trunkSamples,minTrunkClearance};
        const center=rider.root.getWorldPosition(world());
        camera.position.copy(center).add({x:2.5,y:1.6,z:2.7});
        camera.lookAt(center.x,center.y+0.7,center.z);
@@ -457,7 +498,9 @@ try{
    assert.equal(posed.fixture.grounded,true,name+' pose fixture must start grounded');
    assert.equal(posed.fixture.bailTime,0,name+' pose fixture must not be bailing');
    for(const pose of ['crouch','grab']){
-     assert.ok(posed.metrics[pose].hipsAboveDeck>0.34,name+' pelvis intersects board during '+pose);
+     assert.ok(posed.metrics[pose].hipsAboveDeck>0,name+' pelvis intersects board during '+pose);
+     assert.ok(posed.metrics[pose].trunkSamples>0&&posed.metrics[pose].minTrunkClearance>=.02,
+       name+' deformed torso must clear the board by 2cm during '+pose+': '+JSON.stringify(posed.metrics[pose]));
      assert.ok(Number.isFinite(posed.metrics[pose].knees.l)&&
        Number.isFinite(posed.metrics[pose].knees.r),name+' knee IK must be finite');
      if(posed.images[pose]) await writeFile(join(out,'rider-'+name+'-'+pose+'.png'),
@@ -465,7 +508,7 @@ try{
    }
 
   }
-  console.log('AGENT10 FOUR RIDERS '+JSON.stringify(metrics));
+  console.log('AGENT10 FIVE RIDERS '+JSON.stringify(metrics));
  });
  await checked('90-second results screen, score and return to title',async()=>{
   await page.keyboard.press('Escape');

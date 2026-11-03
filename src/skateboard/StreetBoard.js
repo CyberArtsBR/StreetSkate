@@ -91,6 +91,15 @@ export class StreetBoard {
     this.model.position.set(-center.x, -box.min.y - this.deckHeight, -center.z);
     this.model.updateMatrixWorld(true);
     this.contactRig = this.deriveContactRig();
+    // Cache a conservative rigid envelope once, rather than rescanning mesh
+    // vertices in every manual/handstand frame. Coordinates are board-root local.
+    this.supportCorners=[];
+    this.model.traverse(mesh=>{
+      if(!mesh.isMesh||!mesh.geometry?.attributes.position)return;
+      mesh.geometry.computeBoundingBox();const box=mesh.geometry.boundingBox;
+      for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])
+        this.supportCorners.push(new THREE.Vector3(x,y,z).applyMatrix4(mesh.matrixWorld));
+    });
     return this.contactRig;
   }
 
@@ -219,7 +228,8 @@ export class StreetBoard {
 
   update({ presentation = null, airborne = false, flipState = null, grabState = null, grabWeight = 0, manual = null, manualBalance = 0,
     grind = null, grindBalance = 0, wallRide = null, bail = false, bailProgress = 0,
-    stance = 1, flatland = null, time = 0, speedRatio = 0, dt = 1 / 60 }) {
+    stance = 1, flatland = null, time = 0, speedRatio = 0, dt = 1 / 60, supportPlane = null }) {
+    this.supportPlane=supportPlane;
     const glowTarget = bail ? 0 : THREE.MathUtils.smoothstep(clamp(speedRatio, 0, 1), .25, .85);
     this.wheelGlowAmount = (this.wheelGlowAmount || 0) + (glowTarget - (this.wheelGlowAmount || 0)) * (1 - Math.exp(-8 * Math.max(0, dt)));
     const glowColor = new THREE.Color(SKATEBOARD_FINISHES[this.finishIndex || 0].stops[1]);
@@ -244,7 +254,12 @@ export class StreetBoard {
       }
       this._wasFlipping = false;
     }
-    let x = grabPose[0] * grabWeight;
+    // Nose/Tail switch grabs reach the opposite end with the opposite hand.
+    // Mirror only these end-lifting pitches; the other authored grab tilts
+    // retain their rail/one-foot pose and physical contact geometry stays put.
+    const switchEndGrab = airborne && stance < 0
+      && (grabState?.name === 'Nosegrab' || grabState?.name === 'Tailgrab');
+    let x = grabPose[0] * grabWeight * (switchEndGrab ? -1 : 1);
     let y = grabPose[1] * grabWeight + this._yawHold;
     let z = grabPose[2] * grabWeight;
 
@@ -278,6 +293,10 @@ export class StreetBoard {
     z += flatPose.roll;
     this.root.position.y += flatPose.lift;
     this.riderHeight = this.root.position.y;
+    // A grab gathers the deck toward the chest. The rider keeps its body
+    // reference while foot IK follows this cosmetic lift; physics is untouched.
+    this.grabLift = !bail && !flipState && airborne && grabState ? .18 * clamp(grabWeight,0,1) : 0;
+    this.root.position.y += this.grabLift;
 
     if (bail) {
       const p = clamp(bailProgress, 0, 1);
@@ -308,7 +327,7 @@ export class StreetBoard {
     this.poseReady = true;
     if (manual) this.manualSupport = true;
     if (airborne || bail || grind || wallRide || flatland) this.manualSupport = false;
-    if (this.manualSupport) {
+    if (this.manualSupport && !this.supportCorners?.length) {
       // Lift around the supporting truck rather than sinking the lower wheels
       // through the ground when increasing the presentation angle.
       const pitch = this.root.rotation.x;
@@ -318,6 +337,18 @@ export class StreetBoard {
       // Keep support during the return to level instead of dropping the board
       // immediately while its rotation is still blending out of the manual.
       if (!manual && Math.abs(pitch) < 0.0001) this.manualSupport = false;
+    }
+    const flatResidual=Object.values(this.flatlandMotion.weights).some(weight=>weight>.000001);
+    if(!airborne&&!bail&&!grind&&!wallRide&&!flipState&&(supportPlane||manual||flatland||flatResidual||this.manualSupport)) {
+      this._supportScratch ||= new THREE.Vector3();
+      const n=supportPlane?.normal||THREE.Object3D.DEFAULT_UP;
+      let minimum=Infinity;
+      for(const corner of this.supportCorners||[]) {
+        this._supportScratch.copy(corner).applyQuaternion(this.root.quaternion).add(this.root.position);
+        minimum=Math.min(minimum,this._supportScratch.dot(n)+(supportPlane?.offset||0));
+      }
+      if(minimum<0&&n.y>.25)this.root.position.y+=-minimum/n.y;
+      if(!manual&&!flatland&&!flatResidual&&this.root.quaternion.angleTo(this._poseQuaternion)<.0001)this.manualSupport=false;
     }
     this.wind.update(flipState, airborne, bail, dt);
 

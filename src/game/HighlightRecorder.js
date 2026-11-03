@@ -34,6 +34,7 @@ export class HighlightRecorder {
     this.count = 0;
     this.writeIndex = 0;
     this.moments = [];
+    this.events = [];
     this.finished = false;
     this.clips = null;
     // Reserve room for the playback interpolation and restoration snapshots.
@@ -58,6 +59,13 @@ export class HighlightRecorder {
   }
 
   get byteLength() { return (this.poses?.byteLength || 0) + (this.times?.byteLength || 0); }
+
+  markEvent(event) {
+    if (!this.enabled || this.finished || !event || !['pop','landing','grind','bail','catch'].includes(event.kind)) return false;
+    this.events.push({ ...event, time:this.time });
+    if(this.events.length>1024)this.events.shift();
+    return true;
+  }
 
   record(skater, dt) {
     if (!this.enabled || this.finished || skater?.root !== this.root || !Number.isFinite(dt) || dt < 0) return false;
@@ -117,6 +125,7 @@ export class HighlightRecorder {
         start, end, duration: end - start, trickStart: moment.start, trickEnd: moment.end,
         points: moment.points, label: moment.label, nodes: this.nodes,
         stride: this.stride, sampleHz: this.sampleHz,
+        events: this.events.filter(event=>event.time>=start&&event.time<=end),
         sample: (time, target) => this.sample(time, target),
       });
       if (selected.length === 3) break;

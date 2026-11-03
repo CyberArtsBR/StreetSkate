@@ -5,7 +5,7 @@ import { PortraitPromiseCache } from './PortraitPromiseCache.js';
 
 const cache = new PortraitPromiseCache(8);
 let renderer = null;
-const bakedPortraits=new Map(['The_Heretic','The_AdolescentUR','The_Anchor','TuxR']
+const bakedPortraits=new Map(['thehollowf','The_Heretic','The_AdolescentUR','The_Anchor','TuxR']
   .map(name=>[gameAssetUrl(`/assets/rider/${name}.glb`),gameAssetUrl(`/assets/menu/riders/${name}.png?v=full-body-2`)]));
 
 /** Drop cached previews before revoking an uploaded character's blob URL. */
@@ -112,7 +112,7 @@ export function characterPortrait(url) {
     if(baked){
       try{
         await new Promise((resolve,reject)=>{
-          const image=new Image();image.onload=resolve;image.onerror=reject;image.src=baked;
+          const image=new Image();image.onload=()=>Promise.resolve(image.decode?.()).then(resolve,reject);image.onerror=reject;image.src=baked;
         });
         return baked;
       }catch{ /* A missing static asset falls back to the real GLB preview. */ }

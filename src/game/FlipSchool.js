@@ -1,17 +1,26 @@
 import { gameAssetUrl } from './AssetPaths.js';
-import { ALL_FLIP_LESSONS as FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps } from './FlipLessons.js';
+import { ALL_FLIP_LESSONS as FLIP_LESSONS, FLIP_LESSON_TIMING, flipLessonFrame, flipLessonSteps, flipLessonInput } from './FlipLessons.js';
 import { readBindings, keyLabel, padLabel } from '../input/ControlBindings.js';
 
 const MODES=['xbox','playstation','keyboard'];
+const FACE_BUTTON_POSITIONS=Object.freeze([[210,83],[236,57],[184,57],[210,31]]);
+// This diagram depicts face buttons. Other bindings use the textual cue instead
+// of putting a shoulder/trigger/D-pad label at an incorrect face-button position.
+export function flipPadPlacement(button) {
+  const position=Number.isInteger(button)?FACE_BUTTON_POSITIONS[button]:null;
+  return position ? {x:position[0],y:position[1]} : null;
+}
+const diagramLabel=(button,mode)=>mode==='playstation'&&flipPadPlacement(button)?['×','○','□','△'][button]:padLabel(button,mode);
 const pad=`<svg class="flip-pad" viewBox="0 0 260 145" aria-hidden="true">
   <path d="M63 20 Q42 15 32 46 L13 112 Q6 138 27 137 Q37 137 62 104 H198 Q223 137 233 137 Q254 138 247 112 L228 46 Q218 15 197 20 Z" fill="#1e303a" stroke="#718994" stroke-width="2"/>
   <circle cx="69" cy="57" r="25" fill="#101f28" stroke="#627a85"/>
   <g data-stick><circle cx="69" cy="57" r="14" fill="#91a8b0" stroke="#dae5e1" stroke-width="2"/></g>
   <path d="M95 84v30m-15-15h30" stroke="#8da5ae" stroke-width="9"/>
   <circle cx="160" cy="100" r="15" fill="#101f28" stroke="#627a85"/>
+  <circle cx="184" cy="57" r="10" fill="#394d56"/><circle cx="210" cy="83" r="10" fill="#394d56"/>
+  <circle cx="236" cy="57" r="10" fill="#394d56"/><circle cx="210" cy="31" r="10" fill="#394d56"/>
   <g data-pad="flip"><circle cx="184" cy="57" r="14"/><text x="184" y="62" data-pad-flip>X</text></g>
   <g data-pad="ollie"><circle cx="210" cy="83" r="14"/><text x="210" y="88" data-pad-ollie>A</text></g>
-  <circle cx="236" cy="57" r="10" fill="#394d56"/><circle cx="210" cy="31" r="10" fill="#394d56"/>
   <path d="M118 51h7m10 0h7" stroke="#879ca5" stroke-width="3" stroke-linecap="round"/>
 </svg>`;
 
@@ -21,7 +30,7 @@ export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
     <header class="flip-school-header"><div><span class="flip-eyebrow">CHIMP HAWK / FIELD NOTES 01</span><h2>FLIP <em>SCHOOL.</em></h2><p>Watch the board. Learn the buttons. Find your line.</p></div><span class="flip-header-stamp">${FLIP_LESSONS.length} TRICKS<br><b>ONE CLEAN LANDING.</b></span></header>
     <div class="flip-school-layout">
       <nav class="flip-lesson-list" aria-label="Choose a flip trick"><span class="flip-eyebrow">THE TRICK LIST</span>
-        ${FLIP_LESSONS.map((entry,i)=>`<button data-menu data-action="flipLesson" data-index="${i}" aria-pressed="${i===index}" class="flip-lesson${i===index?' is-current':''}"><span class="flip-lesson-number">${String(i+1).padStart(2,'0')}</span><span>${entry.trick.name}<small>${entry.arrow} ${entry.label} + flip</small></span><span class="flip-lesson-arrow" aria-hidden="true">↗</span></button>`).join('')}
+        ${FLIP_LESSONS.map((entry,i)=>`<button data-menu data-action="flipLesson" data-index="${i}" aria-pressed="${i===index}" class="flip-lesson${i===index?' is-current':''}"><span class="flip-lesson-number">${String(i+1).padStart(2,'0')}</span><span>${entry.trick.name}${entry.taps===2?'<b class="flip-tap-badge">DOUBLE TAP</b>':''}<small>${flipLessonInput(entry)}</small></span><span class="flip-lesson-arrow" aria-hidden="true">${i===index?'✓':'↗'}</span></button>`).join('')}
         <p class="flip-list-note">Hold a direction only for the trick tap. Holding it longer can rotate your rider.</p>
       </nav>
       <section class="flip-lesson-detail" aria-label="${lesson.trick.name} lesson">
@@ -30,7 +39,7 @@ export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
           <video data-flip-video muted loop playsinline preload="metadata" poster="${gameAssetUrl(lesson.poster)}" aria-label="${lesson.trick.name} animated demonstration"></video>
           <span class="flip-video-caption">IN-GAME ANIMATION / SIDE VIEW</span>
           <div class="flip-input-overlay" data-input-mode="${mode}">
-            <span class="flip-overlay-label" data-overlay-label>CONTROLLER INPUT</span>${pad}
+            <span class="flip-overlay-label" data-overlay-label>CONTROLLER INPUT</span>${pad}<p class="flip-list-note" data-remap-note hidden></p>
             <div class="flip-keyboard" aria-hidden="true"><kbd data-key="direction">${lesson.keys}</kbd><kbd data-key="ollie">SPACE</kbd><kbd data-key="flip">←</kbd></div>
             <span class="flip-live-cue" data-live-cue>Get ready</span>
           </div>
@@ -53,8 +62,8 @@ export function renderFlipSchool(index=0,mode='xbox',tutorialFlow=false){
 }
 
 export class FlipSchoolPlayer {
-  constructor(root,index=0,mode='xbox'){
-    this.root=root;this.lesson=FLIP_LESSONS[index]||FLIP_LESSONS[0];this.mode=mode;
+  constructor(root,index=0,mode='xbox',bindings){
+    this.root=root;this.lesson=FLIP_LESSONS[index]||FLIP_LESSONS[0];this.mode=mode;this.inputBindings=bindings;
     this.video=root.querySelector('[data-flip-video]');
     this.error=root.querySelector('[data-video-error]');
     this.playButton=root.querySelector('[data-action="flipPlay"]');
@@ -80,11 +89,25 @@ export class FlipSchoolPlayer {
   }
   setInputMode(mode){
     this.mode=MODES.includes(mode)?mode:'xbox';this.key='';
-    this.bindings=readBindings();
+    this.bindings=this.inputBindings||readBindings();
     this.root.querySelector('.flip-input-overlay').dataset.inputMode=this.mode;
     this.root.querySelector('[data-overlay-label]').textContent=this.mode==='keyboard'?'KEYBOARD INPUT':this.mode==='playstation'?'PLAYSTATION INPUT':'XBOX INPUT';
-    this.root.querySelector('[data-pad-ollie]').textContent=this.mode==='keyboard'?'A':padLabel(this.bindings.ollie.gamepad,this.mode);
-    this.root.querySelector('[data-pad-flip]').textContent=this.mode==='keyboard'?'X':padLabel(this.bindings.flip.gamepad,this.mode);
+    this.root.querySelector('[data-pad-ollie]').textContent=this.mode==='keyboard'?'A':diagramLabel(this.bindings.ollie.gamepad,this.mode);
+    this.root.querySelector('[data-pad-flip]').textContent=this.mode==='keyboard'?'X':diagramLabel(this.bindings.flip.gamepad,this.mode);
+    const textOnly=[];
+    for(const action of ['ollie','flip']){
+      const position=flipPadPlacement(this.bindings[action].gamepad);
+      const group=this.root.querySelector(`[data-pad="${action}"]`);
+      group.setAttribute('visibility',position?'visible':'hidden');
+      if(position){
+        const circle=group.querySelector('circle'),text=group.querySelector('text');
+        circle.setAttribute('cx',position.x);circle.setAttribute('cy',position.y);
+        text.setAttribute('x',position.x);text.setAttribute('y',position.y+5);
+      }else textOnly.push(`${action==='ollie'?'Ollie':'Flip'}: ${padLabel(this.bindings[action].gamepad,this.mode)}`);
+    }
+    const remapNote=this.root.querySelector('[data-remap-note]');
+    remapNote.hidden=this.mode==='keyboard'||!textOnly.length;
+    remapNote.textContent=textOnly.length?`${textOnly.join(' · ')}. Follow the button order below.`:'';
     this.root.querySelector('[data-key="ollie"]').textContent=keyLabel(this.bindings.ollie.keyboard[0]);
     this.root.querySelector('[data-key="flip"]').textContent=keyLabel(this.bindings.flip.keyboard[0]);
     this.root.querySelector('[data-key="direction"]').textContent=[...(this.lesson.y<0?['up']:this.lesson.y>0?['down']:[]),...(this.lesson.x<0?['left']:this.lesson.x>0?['right']:[])].map(action=>keyLabel(this.bindings[action].keyboard[0])).join(' + ');

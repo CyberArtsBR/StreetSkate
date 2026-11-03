@@ -11,6 +11,7 @@ import { excludeGrandWarehouseMisplacedSixStair } from '../src/park/GrandWarehou
 import { createWarehousePark } from '../src/park/WarehousePark.js';
 import { shouldReleaseRampLip } from '../src/game/StableBoardContactSkillStreetPhysics.js';
 import { UnrealRider } from '../src/character/UnrealRider.js';
+import { StreetSkater } from '../src/game/StreetSkater.js';
 
 test('board finish is solid, emissive and double-sided even when original GLB has BLEND',()=>{
  const board=new StreetBoard('/unused');
@@ -35,11 +36,29 @@ test('board finish is solid, emissive and double-sided even when original GLB ha
 });
 
 test('respawn transparency is rider-only, never the skateboard deck',()=>{
- const js=readFileSync('src/game/StreetSkater.js','utf8');
- assert.match(js,/this\.rider\.root\.traverse\(mesh =>/);
- const flash=js.slice(js.indexOf('this.flashMaterials = []'),js.indexOf('this.rider.deckHeight'));
- assert.doesNotMatch(flash,/this\.visual\.traverse/);
- assert.doesNotMatch(flash,/this\.board\.root\.traverse/);
+ const skater=Object.create(StreetSkater.prototype);
+ const riderMaterial=new THREE.MeshStandardMaterial({opacity:.9,transparent:true,depthWrite:false});
+ const boardMaterial=new THREE.MeshStandardMaterial({opacity:1,transparent:false,depthWrite:true});
+ skater.visual=new THREE.Group();
+ skater.rider={root:new THREE.Group()};
+ skater.board={root:new THREE.Group()};
+ skater.rider.root.add(new THREE.Mesh(new THREE.BoxGeometry(),[riderMaterial,riderMaterial]));
+ skater.board.root.add(new THREE.Mesh(new THREE.BoxGeometry(),boardMaterial));
+ skater.visual.add(skater.board.root,skater.rider.root);
+ skater.flashMaterials=[{material:boardMaterial}];
+
+ skater.captureRiderFlashMaterials();
+
+ assert.deepEqual(skater.flashMaterials,[{material:riderMaterial,opacity:.9,transparent:true,depthWrite:false}],
+  'capture must replace stale entries, deduplicate rider materials and retain their original render state');
+ for(const saved of skater.flashMaterials){
+  saved.material.opacity=.22;saved.material.transparent=true;saved.material.depthWrite=false;
+ }
+ assert.equal(boardMaterial.opacity,1,'respawn ghosting must leave the deck opaque');
+ assert.equal(boardMaterial.transparent,false);
+ assert.equal(boardMaterial.depthWrite,true);
+ for(const root of [skater.rider.root,skater.board.root])root.traverse(mesh=>mesh.geometry?.dispose());
+ riderMaterial.dispose();boardMaterial.dispose();
 });
 
 test('gold/red graffiti combo keeps numbers in the viewport without duplicated cropped glyphs',()=>{

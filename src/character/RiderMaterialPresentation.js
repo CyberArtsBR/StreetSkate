@@ -15,8 +15,8 @@ export function calibrateRiderMaterials(root, url) {
       // Tux's textured body has the same omitted metallicFactor. Preserve
       // his separate authored emissive accessory and all uploaded materials.
       if (tux && material.name !== 'tripo_mat_44da3931') continue;
-      material.metalness=Math.min(material.metalness, tux ? .08 : .22);
-      material.roughness=Math.max(material.roughness, tux ? .72 : .58);
+      material.metalness=Math.min(material.metalness, .08);
+      material.roughness=Math.max(material.roughness, .72);
     }
   });
 }

@@ -110,6 +110,7 @@ export class GraphicsPipeline {
     this.bloomEnvironmentEmissives = [];
     this.bloomSceneChildCount = -1;
     this.bloomGlowMeshCount = -1;
+    this.bloomGlowChildren = null;
     this.bloomCacheAge = 0;
     this.shadowAnchor = null;
     this.shadowWorldPosition = new THREE.Vector3();
@@ -178,6 +179,7 @@ export class GraphicsPipeline {
   setGlowTarget(root) {
     this.glowRoot = root;
     this.bloomSceneMeshes = null;
+    this.bloomGlowChildren = null;
   }
 
   setEffectsTarget(root) {
@@ -214,6 +216,7 @@ export class GraphicsPipeline {
     this.bloomSceneMeshes = meshes;
     this.bloomEnvironmentEmissives = environmentEmissives;
     this.bloomSceneChildCount = this.scene.children?.length ?? 0;
+    this.bloomGlowChildren = (this.glowRoot?.children || []).slice();
     this.bloomCacheAge = 0;
   }
 
@@ -255,7 +258,7 @@ export class GraphicsPipeline {
     }
   }
 
-  renderSelectiveBloom() {
+  renderSelectiveBloom(warmupMaterials = null) {
     if (!this.glowRoot?.parent) return false;
     const allowed = new Set();
     this.glowRoot.traverse(object => {
@@ -264,12 +267,23 @@ export class GraphicsPipeline {
       // Light-colored costumes are reflective surfaces, not light sources.
       // Bloom the board's neon and authored emissive details; leave faces and
       // fabric out of the glow mask so ordinary highlights retain definition.
-      if(materials.some(material=>material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0))allowed.add(object);
+      if(materials.some(material=>warmupMaterials?.has(material)||
+        (material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0)))allowed.add(object);
     });
     const childCount = this.scene.children?.length ?? 0;
+    // A rider swap replaces a child of the stable visual group, often with
+    // exactly the same mesh/emissive counts. Compare its few direct children
+    // so the new costume is masked on its first frame and disposed meshes are
+    // dropped immediately. Static scenery still avoids a full scene walk.
+    const glowChildren = this.glowRoot.children || [];
+    const previousChildren = this.bloomGlowChildren;
+    let actorChanged = !previousChildren || glowChildren.length !== previousChildren.length;
+    if (!actorChanged) for (let i = 0; i < glowChildren.length; i++) {
+      if (glowChildren[i] !== previousChildren[i]) { actorChanged = true; break; }
+    }
     // Recheck occasionally for procedural objects, immediately for rider swaps
     // and top-level scene changes; ordinary frames avoid two full traversals.
-    if (!this.bloomSceneMeshes || this.bloomCacheAge >= 120 ||
+    if (!this.bloomSceneMeshes || actorChanged || this.bloomCacheAge >= 120 ||
         this.bloomSceneChildCount !== childCount || this.bloomGlowMeshCount !== allowed.size) {
       this.refreshBloomSceneCache();
       this.bloomGlowMeshCount = allowed.size;
@@ -408,7 +422,7 @@ export class GraphicsPipeline {
     if (!this.settings) return null;
     return { ...this.settings,
       glowTuning:resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)),
-      bloomEnabled: !this.faulted && this.settings.name !== 'performance' && this.settings.bloomStrength > 0,
+      bloomEnabled: !this.faulted && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
       postProcessingEnabled: !this.faulted && this.settings.postProcessing,
       contactDepthEnabled: !this.faulted&&Boolean(this.contactDepth?.enabled),
@@ -430,16 +444,13 @@ export class GraphicsPipeline {
   configureBloom() {
     if (!this.settings) return;
     const orbit = Boolean(this.world?.userData?.environmentBloom);
-    const cinematic = this.settings.name === 'cinematic';
-    const ultra = this.settings.name === 'ultra';
-    // Performance means no extra scene pass, even on emissive-heavy ORBIT.
+    // Every tier honors the glow switch; quality changes bloom resolution.
     this.bloomComposite.enabled = this.settings.bloomStrength > 0;
     const tuning = resolveGlowTuning(this.settings, orbit);
     this.bloom.strength = this.bloomComposite.enabled ? tuning.bloom : 0;
     this.bloom.radius = tuning.radius;
-    // Only emissive meshes enter this pass, so the lower cinematic threshold
-    // can reveal colored neon without blooming ordinary faces and surfaces.
-    this.bloom.threshold = cinematic ? (orbit ? .42 : .34) : ultra ? .65 : (orbit ? .98 : .75);
+    // Shared thresholds keep the glow response consistent across quality tiers.
+    this.bloom.threshold = orbit ? .98 : .75;
     this.bloomComposite.uniforms.bloomMix.value = tuning.glow;
   }
 
@@ -448,14 +459,13 @@ export class GraphicsPipeline {
     this.height = Math.max(1, height);
     if (!this.settings) return;
     this.settings.pixelRatio = resolveRenderPixelRatio(this.settings,
-      { ...this.capabilities, width:this.width, height:this.height });
+      { ...this.capabilities, width:this.width, height:this.height }) * (this.settings.renderScale||1);
     this.renderer.setPixelRatio(this.settings.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     const postProcessing = this.settings.postProcessing;
     this.composer.setPixelRatio(postProcessing ? this.settings.pixelRatio : 1);
     this.composer.setSize(postProcessing ? this.width : 1, postProcessing ? this.height : 1);
-    // Performance runs without bloom: shrink its HDR buffers to 1px rather
-    // than retaining offscreen textures at full display resolution.
+    // Disabled glow releases the bloom render-size budget even on Performance.
     const bloomEnabled = this.settings.bloomStrength > 0;
     this.bloomComposer.setPixelRatio(bloomEnabled
       ? this.settings.pixelRatio * this.settings.bloomScale : 1);
@@ -474,12 +484,17 @@ export class GraphicsPipeline {
     this.cas.uniforms.pixelStep.value.set(1 / sw, 1 / sh);
   }
 
-  render({ contactSource = null } = {}) {
+  render({ contactSource = null, warmup = false } = {}) {
     this.wheelContactShadows?.update(contactSource);
     if (!this.settings || this.faulted) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
+    // Wheels begin dark but join the bloom pass as speed rises. Prepare that
+    // material/target/fog variant during loadout without changing their paint
+    // or actual emission. Ordinary frames allocate no extra collection here.
+    const warmupMaterials=warmup&&contactSource?.board?.wheelGlow?.length
+      ? new Set(contactSource.board.wheelGlow.map(entry=>entry.material)) : null;
     try {
       this.updateContactShadows();
       // Performance and 144 FPS with glow disabled use one scene pass. The
@@ -489,7 +504,7 @@ export class GraphicsPipeline {
         return;
       }
       if (this.bloomComposite.enabled) {
-        const validBloom = this.renderSelectiveBloom();
+        const validBloom = this.renderSelectiveBloom(warmupMaterials);
         this.bloomComposite.enabled = validBloom;
       }
       this.composer.render();

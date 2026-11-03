@@ -1,10 +1,10 @@
 export const PLAYER_PREFERENCES_KEY = 'streetskate.playerPreferences.v1';
 export const PLAYER_PREFERENCE_DEFAULTS = Object.freeze({
-  uiScale: 1, highContrast: false, cameraDistance: 1, cameraFov: 58,
+  uiScale: 1, renderScale: 1, highContrast: false, cameraDistance: 1, cameraFov: 58,
   speedFov: 1, liquid: true, performance: false,
 });
 export const PLAYER_PREFERENCE_RANGES = Object.freeze({
-  uiScale: [.85, 1.5, .1], cameraDistance: [.8, 1.3, .05],
+  uiScale: [.85, 1.5, .1], renderScale:[.6,1.25,.05], cameraDistance: [.8, 1.3, .05],
   cameraFov: [48, 80, 5], speedFov: [0, 2, .25],
 });
 export function normalizePlayerPreferences(value = {}) {

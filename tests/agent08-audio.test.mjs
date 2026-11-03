@@ -226,23 +226,48 @@ test('trusted input retries an autoplay attempt that is still pending', async ()
   } finally { env.restore(); }
 });
 
-test('music duck restores the latest volume after overlapping cues and does not unmute music', async () => {
-  const env = fakeMusicEnvironment();
+test('music duck ramps, prioritizes overlaps and restores the latest volume without unmuting', async () => {
+  const env = fakeMusicEnvironment(), originalNow = Date.now, originalSet = globalThis.setInterval, originalClear = globalThis.clearInterval;
+  let now = 0, step;
+  Date.now = () => now; globalThis.setInterval = fn => { step = fn; return 1; }; globalThis.clearInterval = () => {};
+  const advance = milliseconds => { for (let i=0;i<milliseconds;i+=16) { now += 16; step?.(); } };
   try {
     const music = new MusicPlayer();
-    music.setMusicVolume(.6);music.duck(100,.5);
-    assert.equal(music.audio.volume,.3);
-    music.setMusicVolume(.2);
-    assert.equal(music.audio.volume,.1,'volume edits remain ducked');
-    music.duck(80,.25);
-    assert.equal(music.audio.volume,.05);
-    await new Promise(resolve=>setTimeout(resolve,115));
-    assert.equal(music.audio.volume,.2,'restore latest saved volume, never the pre-cue value');
-    music.duck(80,.5);music.setMusicVolume(0);
-    await new Promise(resolve=>setTimeout(resolve,100));
-    assert.equal(music.audio.volume,0,'mute survives cue recovery');
-    music.dispose();assert.equal(music.duckTimer,null);
-  } finally {env.restore();}
+    music.setMusicVolume(.6); music.duck(500,.5);
+    assert.equal(music.audio.volume,.6,'attack starts at current volume');
+    advance(80); assert.ok(music.audio.volume > .3 && music.audio.volume < .34,'smooth attack approaches target');
+    music.setMusicVolume(.2); assert.ok(music.audio.volume < .12,'edits preserve current attenuation');
+    music.duck(160,.25); advance(80); assert.ok(music.audio.volume < .06,'stronger reaction takes priority');
+    music.duck(500,.8); advance(32); assert.ok(music.audio.volume < .06,'weaker cue cannot overwrite active strong reaction');
+    advance(180); assert.ok(music.audio.volume < .13,'return retains longer held cue');
+    advance(1200); assert.equal(music.audio.volume,.2,'release restores latest saved volume');
+    music.duck(80,.5); music.setMusicVolume(0); advance(1200);
+    assert.equal(music.audio.volume,0,'mute survives recovery');
+    music.dispose(); assert.equal(music.duckTimer,null);
+  } finally { Date.now = originalNow; globalThis.setInterval = originalSet; globalThis.clearInterval = originalClear; env.restore(); }
+});
+
+test('source-length crowd and contact ducks retain independent release envelopes', () => {
+  const env = fakeMusicEnvironment(), originalNow = Date.now, originalSet = globalThis.setInterval, originalClear = globalThis.clearInterval;
+  let now = 0, step;
+  Date.now = () => now; globalThis.setInterval = fn => { step = fn; return 1; }; globalThis.clearInterval = () => { step = null; };
+  const advance = milliseconds => { const end = now + milliseconds; while (now < end) { now += 16; step?.(); } };
+  try {
+    const music = new MusicPlayer();
+    music.duck(3310, .65, 200); advance(1000);
+    assert.ok(Math.abs(music.duckAmount - .65) < .002, 'long applause keeps music held after the old 900ms timer');
+    music.duck(96, .7, 80); advance(600);
+    assert.ok(Math.abs(music.duckAmount - .65) < .002, 'brief contact cannot release the longer applause hold');
+    advance(1800); assert.ok(music.duckAmount > .65 && music.duckAmount < .85, 'music rises with the applause decay');
+    advance(1400); assert.equal(music.duckAmount, 1); assert.equal(music.duckTimer, null);
+    music.duck(96, .7, 80); advance(600);
+    assert.equal(music.duckAmount, 1, 'short authored pain does not leave a 650ms hold behind');
+    const cancelCrowd = music.duck(3310, .65, 200); advance(80);
+    music.duck(500, .5); cancelCrowd(); advance(300);
+    assert.ok(music.duckAmount < .51, 'cancelling applause preserves an independent session cue');
+    advance(1000); assert.equal(music.duckAmount, 1);
+    music.dispose();
+  } finally { Date.now = originalNow; globalThis.setInterval = originalSet; globalThis.clearInterval = originalClear; env.restore(); }
 });
 
 test('background music preference pauses hidden playback, resumes deliberately and persists', async () => {

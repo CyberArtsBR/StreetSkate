@@ -1,8 +1,9 @@
 // Real CC0 skateboard recordings with a synthesized fallback when unavailable.
 import { readAudioVolume, saveAudioVolume, readBackgroundAudio, saveBackgroundAudio } from './AudioSettings.js';
 import { createSkateImpact } from './SkateSoundSynthesis.js';
-import { surfaceAudioFor } from './SurfaceAudio.js';
-import { loadSkateFoley } from './SkateFoley.js';
+import { surfaceAudioFor, surfaceTagFor } from './SurfaceAudio.js';
+import { AudioReactions, pickNonRepeating } from './AudioReactions.js';
+import { loadSkateFoley, loadSkateFoleyBanks, seamlessFoleyLoop, recordedVoiceGain, SKATE_SCRAPE_WINDOWS } from './SkateFoley.js';
 export class SkateAudio {
   constructor() {
     this.enabled = true;
@@ -11,11 +12,17 @@ export class SkateAudio {
     this.baseGain = 0.85;
     this.effectsVolume = readAudioVolume('effects');
     this.announcerVolume = readAudioVolume('announcer');
+    this.crowdVolume = readAudioVolume('crowd');
+    this.voiceVolume = readAudioVolume('voice');
+    this.reactions = new AudioReactions();
+    this.banks = {}; this.lastSamples = new Map(); this.location = ''; this.surfaceTag = 'neutral';
     this.backgroundAudio = readBackgroundAudio();
     this.masterVolume = this.effectsVolume;
     this.lastImpactTime = -Infinity;
     this.lastImpacts = new Map();
     this.voices = new Set();
+    this.characterReactions = new Map(); this.voiceLevels = new WeakMap(); this.ambienceTails = new Map();
+    this.reactionDucks = new Map();
     this.disposed = false;
     this.lastBailImpact = null;
     this.recordedFoley = new Set();
@@ -40,6 +47,14 @@ export class SkateAudio {
       this.compressor.attack.value = 0.004; this.compressor.release.value = 0.12;
       this.master.connect(this.compressor); this.compressor.connect(c.destination);
       this.announcer.connect(this.compressor);
+      this.crowd = c.createGain(); this.crowd.gain.value = this.baseGain*this.crowdVolume; this.crowd.connect(this.compressor);
+      this.characterVoice = c.createGain(); this.characterVoice.gain.value = this.baseGain*this.voiceVolume; this.characterVoice.connect(this.compressor);
+      // Short, quiet Warehouse reflections. All critical contacts retain a dry path.
+      if (c.createDelay) {
+        this.reflection = c.createDelay(.15); this.reflection.delayTime.value = .052;
+        this.roomGain = c.createGain(); this.roomGain.gain.value = this.location.includes('warehouse') ? .035 : 0;
+        this.master.connect(this.reflection); this.reflection.connect(this.roomGain); this.roomGain.connect(this.compressor);
+      }
       this.buffer = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
       const samples = this.buffer.getChannelData(0);
       for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
@@ -48,6 +63,9 @@ export class SkateAudio {
       this.grind = this.loop('bandpass', 2100);
       this.brake = this.loop('highpass', 1400);
       this.wind = this.loop('lowpass', 700);
+      this.concreteScrape = this.loop('bandpass', 1700);
+      this.metalScrape = this.loop('bandpass', 2200);
+      this.ambience = this.loop('lowpass', 1600);
       this.impacts = Object.fromEntries(['pop','landing','grind','bail','loss','catch','push']
         .map(kind => [kind, createSkateImpact(c, kind)]));
       // Decode in the background without blocking controls or the first frame.
@@ -65,6 +83,19 @@ export class SkateAudio {
           if (kind === 'landing') this.impacts.catch = buffer;
         }
         this.recordedFoley.add(kind);
+      });
+      this.bankLoad = loadSkateFoleyBanks(c, (kind, buffer) => {
+        if (this.disposed || this.context !== c) return;
+        (this.banks[kind] ||= []).push(buffer);
+        if (kind === 'voicePain') this.voiceLevels.set(buffer, recordedVoiceGain(buffer));
+        if(kind.startsWith('ambience'))this.refreshAmbience();
+        if (['scrapeConcrete','scrapeMetal'].includes(kind)) {
+          const layer = kind === 'scrapeMetal' ? this.metalScrape : this.concreteScrape;
+          if (layer.recorded) return;
+          const previous = layer.source, source = c.createBufferSource();
+          source.buffer = seamlessFoleyLoop(c,buffer,SKATE_SCRAPE_WINDOWS[kind]); source.loop = true; source.connect(layer.filter); source.start(); layer.source = source; layer.recorded = true;
+          try { previous.stop(); previous.disconnect(); } catch {}
+        }
       });
       // Soft resonant steel vibration and damped, street-surface wheel noise.
       this.grind.filter.Q.value = 1.65;
@@ -91,20 +122,26 @@ export class SkateAudio {
     this.lastImpacts.set(kind, now);
     this.lastImpactTime = now;
     const power = Math.max(0.001,Math.min(1,Number(strength) || 0));
-    const recorded = this.recordedFoley.has(kind === 'catch' ? 'landing' : kind);
-    const pop = kind === 'pop', duration = this.impacts?.[kind]?.duration || (pop ? 0.11 : metal ? 0.25 : 0.24);
+    const variant = pickNonRepeating(this.banks[kind], this.lastSamples.get(kind));
+    if (variant) this.lastSamples.set(kind, variant);
+    const recorded = Boolean(variant) || this.recordedFoley.has(kind === 'catch' ? 'landing' : kind);
+    const pop = kind === 'pop', duration = variant?.duration || this.impacts?.[kind]?.duration || (pop ? 0.11 : metal ? 0.25 : 0.24);
     // The catch is a softer contact during flight, not another full landing.
-    const length = recorded && kind === 'catch' ? Math.min(.12,duration) : duration;
+    const sampleLength = recorded && kind === 'catch' ? Math.min(.18,duration) : duration;
     const source = c.createBufferSource();
     const filter = c.createBiquadFilter(), gain = c.createGain();
-    source.buffer = this.impacts?.[kind] || this.buffer;
+    source.buffer = variant || this.impacts?.[kind] || this.buffer;
+    const rate = .98 + Math.random()*.04;
+    if (source.playbackRate) source.playbackRate.value = rate;
+    // Buffer durations are in source time; a slower take needs its full tail.
+    const length = sampleLength / rate;
     filter.type = metal ? 'bandpass' : 'lowpass';
     filter.frequency.value = recorded ? 10000 : pop ? 6500 : metal ? 2800 : kind === 'push' ? 1500 : 4200;
     if(filter.Q)filter.Q.value = metal ? 2.1 : 0.72;
     // Attack envelope avoids digital clicks; the high-frequency pop gives
     // takeoff snap, low-band impact gives board-and-wheel landing weight.
     gain.gain.setValueAtTime(0.001, now);
-    const volume=power*(recorded&&kind==='catch'?.38:1);
+    const volume=power*(recorded&&kind==='catch'?.38:1)*(.95+Math.random()*.05);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.001,volume),now+0.003);
     if(recorded && typeof gain.gain.setValueAtTime === 'function')
       gain.gain.setValueAtTime(Math.max(0.001,volume),now+Math.max(.004,length-.018));
@@ -114,6 +151,10 @@ export class SkateAudio {
     source.start(now); source.stop(now+length+0.01);
     source.onended = () => { this.voices.delete(source); source.disconnect(); filter.disconnect(); gain.disconnect(); };
 
+    if (kind === 'landing') {
+      const layer = this.surfaceTag === 'metal' ? 'landingMetal' : this.surfaceTag === 'concrete' ? 'landingConcrete' : null;
+      if (layer) this.playBank(layer, this.master, power*(layer === 'landingMetal' ? .08 : .045));
+    }
     // A short low-frequency pitch fall gives heavier landings substance without
     // shipping samples. Guard for lightweight test/audio shims.
     if(kind === 'landing' && !this.impacts && typeof c.createOscillator === 'function'){
@@ -137,6 +178,12 @@ export class SkateAudio {
 
   cue(kind) {
     if (!this.enabled || this.disposed || this.isBackgroundMuted() || !this.context || this.context.state !== 'running') return;
+    const menu = kind === 'confirm' || kind === 'back';
+    const cueBus = menu ? this.master : (this.announcer || this.master);
+    const now = this.context.currentTime;
+    if (now - (this.lastImpacts.get(`cue:${kind}`) ?? -Infinity) < .07) return;
+    this.lastImpacts.set(`cue:${kind}`, now);
+    if (this.playBank(`cue:${kind}`, cueBus, menu ? .35 : .4, { maxDuration: kind === 'roundOver' ? .7 : .4 })) return;
     const cues = {
       confirm: [580, 760, .085, .08], back: [520, 390, .085, .065],
       ready: [330, 390, .16, .10], go: [660, 990, .19, .15],
@@ -145,9 +192,7 @@ export class SkateAudio {
     };
     const spec = cues[kind];
     if (!spec) return;
-    const context = this.context, now = context.currentTime;
-    if (now - (this.lastImpacts.get(`cue:${kind}`) ?? -Infinity) < .07) return;
-    this.lastImpacts.set(`cue:${kind}`, now);
+    const context = this.context;
     const [from, to, duration, level] = spec;
     const oscillator = context.createOscillator(), gain = context.createGain();
     oscillator.type = kind === 'finalFive' ? 'triangle' : 'sine';
@@ -166,11 +211,13 @@ export class SkateAudio {
 
   update(player, active) {
     if (!player) return;
+    let vocalReaction = false;
     const rawSpeed = Number(player.velocity?.length?.() || 0);
     const speed = Number.isFinite(rawSpeed) ? Math.max(0,rawSpeed) : 0;
     const p = player.presentation || {};
     const impact = player.rider?.ragdoll?.groundImpact || null;
     const surface = surfaceAudioFor(player);
+    this.surfaceTag = surfaceTagFor(player);
     const state = { grounded: Boolean(player.grounded), grind: Boolean(player.grind), bail: player.bailTime > 0,
       speed, pop: p.popTime > 0, flipPhase: p.flipPhase, pushPhase: p.pushPhase || 0,
       pushWeight: p.pushWeight || 0, respawn: player.respawnSerial,
@@ -186,15 +233,32 @@ export class SkateAudio {
       this.roll.source?.playbackRate?.setTargetAtTime(0.7 + level * 1.8, now, 0.06);
       this.texture?.gain.gain.setTargetAtTime(rolling ? rollLevel * 0.15 * surface.texture : 0, now, 0.035);
       this.texture?.filter.frequency.setTargetAtTime(1600 * surface.rollPitch, now, .06);
-      this.grind.gain.gain.setTargetAtTime(grinding ? 0.18 + level * 0.2 : 0, now, 0.025);
+      const metalGrind = grinding && this.surfaceTag === 'metal' && this.metalScrape?.recorded;
+      this.metalScrape?.gain.gain.setTargetAtTime(metalGrind ? .14+level*.12 : 0,now,.025);
+      this.metalScrape?.source.playbackRate?.setTargetAtTime(.8+level*.65,now,.06);
+      this.ambience?.gain.gain.setTargetAtTime(audible&&this.ambience.recorded ? (this.location.includes('orbit')?.025:.055) : 0,now,.35);
+      const concreteGrind = grinding && this.surfaceTag === 'concrete' && this.concreteScrape?.recorded;
+      this.concreteScrape?.gain.gain.setTargetAtTime(concreteGrind ? .09 + level*.08 : 0, now, .035);
+      this.concreteScrape?.source.playbackRate?.setTargetAtTime(.8 + level*.5, now, .06);
+      this.grind.gain.gain.setTargetAtTime(grinding ? (0.18 + level * 0.2)*(metalGrind ? .18 : concreteGrind ? .22 : this.surfaceTag === 'wood' ? .35 : 1) : 0, now, 0.025);
       this.grind.filter.frequency.setTargetAtTime(Math.min(4400,(1650 + speed * 83) * surface.scrapePitch), now, 0.07);
       this.grind.filter.Q?.setTargetAtTime?.(surface.resonance, now, .07);
       this.wind.gain.gain.setTargetAtTime(audible && !state.grounded && !state.grind && !state.bail ? level * 0.05 : 0, now, 0.1);
       this.brake?.gain.gain.setTargetAtTime(rolling && p.state === 'BRAKE' ? level * 0.2 : 0, now, 0.04);
       if (audible && this.previous && state.respawn === this.previous.respawn) {
-        if (state.bail && !this.previous.bail) this.impact(0.32, false, 'loss');
-        if (state.bail && impact && impact !== this.lastBailImpact)
-          this.impact(.45 + Math.min(.5, (Number(impact.speed) || 4) / 14), false, 'bail');
+        const newContact = state.bail && impact && impact !== this.lastBailImpact;
+        if (state.bail && !this.previous.bail) {
+          this.impact(0.32, false, 'loss'); this.playBank('cloth', this.master, .12);
+          // A same-frame body contact gets its immediate pain reaction alone.
+          if (!newContact && this.reactions.effort(speed, now)) this.playBank('voiceEffort', this.characterVoice, .17, { maxDuration: .45 });
+        }
+        if (newContact) {
+          const contactSpeed = Number(impact.speed) || 0;
+          this.impact(.45 + Math.min(.5, contactSpeed / 14), false, 'bail');
+          if (this.reactions.contact(contactSpeed, now)) vocalReaction = this.playBank('voicePain', this.characterVoice, .22 + Math.min(.2,contactSpeed/50), {
+            maxDuration: .85, musicDuck: contactSpeed >= 7 ? { amount: .7, releaseMs: 80 } : null,
+          }) && contactSpeed >= 7;
+        }
         if (!state.bail) {
           if (state.pop && !this.previous.pop && !state.grounded && !state.grind) this.impact(0.9, false, 'pop');
           if (state.grounded && !this.previous.grounded && !state.grind) {
@@ -212,14 +276,127 @@ export class SkateAudio {
     // old impact, and returning from a highlight must not invent a second hit.
     this.lastBailImpact = impact;
     this.previous = active ? state : null;
+    return vocalReaction;
+  }
+
+  setLocation(location) {
+    this.location = String(location || '').toLowerCase();
+    this.roomGain?.gain.setTargetAtTime(this.location.includes('warehouse') ? .035 : 0, this.context.currentTime, .15);
+    this.refreshAmbience();
+  }
+
+  refreshAmbience() {
+    if(!this.context||!this.ambience)return;
+    const kind=this.location.includes('paradise')?'ambienceParadise':this.location.includes('warehouse')||this.location.includes('orbit')?'ambienceWarehouse':null;
+    const buffer=this.banks[kind]?.[0],layer=this.ambience;
+    const now = this.context.currentTime;
+    if(!buffer){layer.gain.gain.setTargetAtTime(0,now,.12);layer.recorded=false;return;}
+    if(layer.recording!==buffer) {
+      const source=this.context.createBufferSource(),previous=layer.source,previousGain=layer.sourceGain,gain=this.context.createGain();
+      source.buffer=seamlessFoleyLoop(this.context,buffer);source.loop=true;source.connect(gain);gain.connect(layer.filter);
+      gain.gain.setValueAtTime(0,now);gain.gain.linearRampToValueAtTime(1,now+.35);source.start(now);
+      source.onended=()=>{source.disconnect();gain.disconnect();this.ambienceTails.delete(source);};
+      layer.source=source;layer.sourceGain=gain;layer.recorded=true;layer.recording=buffer;
+      if(previousGain) {
+        this.ambienceTails.set(previous,previousGain);
+        if(previousGain.gain.cancelAndHoldAtTime)previousGain.gain.cancelAndHoldAtTime(now);
+        else {previousGain.gain.cancelScheduledValues?.(now);previousGain.gain.setValueAtTime(previousGain.gain.value??1,now);}
+        previousGain.gain.linearRampToValueAtTime(0,now+.35);
+        try{previous.stop(now+.36);}catch{}
+      } else {try{previous.stop();previous.disconnect();}catch{}}
+    }
+    layer.recorded=true;
+    layer.source.playbackRate?.setTargetAtTime(this.location.includes('orbit')?.72:1,this.context.currentTime,.2);
+    layer.filter.frequency.setTargetAtTime(this.location.includes('orbit')?600:this.location.includes('paradise')?2200:1500,this.context.currentTime,.25);
+  }
+
+  // Shared bounded playback. Recordings fail independently; reactions never fall back to a fake voice.
+  playBank(kind, bus, level = .3, { maxDuration = 3, pan = 0, attack = .008, release = .08, musicDuck = null } = {}) {
+    if (!this.enabled || this.disposed || this.isBackgroundMuted() || this.context?.state !== 'running' || !bus || this.voices.size >= 16) return false;
+    const channel = kind.startsWith('crowd') ? this.crowdVolume : kind.startsWith('voice') ? this.voiceVolume : 1;
+    if (!(channel > 0)) return false;
+    const sampleKey = kind.startsWith('crowd') ? 'crowd' : kind;
+    const sample = pickNonRepeating(this.banks[kind], this.lastSamples.get(sampleKey));
+    if (!sample) return false;
+    const c = this.context, now = c.currentTime;
+    // Contact pain takes priority over a still-playing loss grunt, with no delay.
+    if (kind === 'voiceEffort' && [...this.characterReactions.values()].some(voice => voice.kind === 'voicePain' && voice.end > now)) return false;
+    if (kind === 'voicePain') for (const [source, voice] of this.characterReactions) {
+      if (voice.kind !== 'voiceEffort' || voice.end <= now) continue;
+      if (voice.gain.cancelAndHoldAtTime) voice.gain.cancelAndHoldAtTime(now);
+      else { voice.gain.cancelScheduledValues?.(now); voice.gain.setValueAtTime(voice.level, now); }
+      voice.gain.linearRampToValueAtTime(.0001, now+.025); source.stop(now+.03);
+      voice.end = now+.03;
+    }
+    this.lastSamples.set(sampleKey, sample);
+    const source = c.createBufferSource(), gain = c.createGain();
+    source.buffer = sample;
+    const rate = kind.startsWith('voice') || kind.startsWith('crowd') ? 1 : .985 + Math.random()*.03;
+    const duration = Math.min(maxDuration, sample.duration) / rate;
+    if (source.playbackRate) source.playbackRate.value = rate;
+    if (kind === 'voicePain') {
+      if (!this.voiceLevels.has(sample)) this.voiceLevels.set(sample, recordedVoiceGain(sample));
+      level *= this.voiceLevels.get(sample);
+    }
+    const volume = Math.max(.001,level), onset = Math.min(attack,duration*.2), tail = Math.min(release,duration*.6);
+    gain.gain.setValueAtTime(.0001, now); gain.gain.exponentialRampToValueAtTime(volume, now+onset);
+    gain.gain.setValueAtTime(volume, now+Math.max(onset,duration-tail));
+    gain.gain.exponentialRampToValueAtTime(.0001, now+duration);
+    source.connect(gain);
+    const panner = pan && c.createStereoPanner ? c.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; gain.connect(panner); panner.connect(bus); } else gain.connect(bus);
+    this.voices.add(source);
+    if (kind.startsWith('voice')) this.characterReactions.set(source, { kind, gain: gain.gain, level: volume, end: now+duration });
+    source.start(now); source.stop(now+duration+.01);
+    source.onended = () => { this.voices.delete(source); this.characterReactions.delete(source); this.reactionDucks.delete(source); source.disconnect(); gain.disconnect(); panner?.disconnect(); };
+    // Follow the take that actually started. Fixed event timers over-duck short
+    // pain takes and restore music before long applause reaches its decay.
+    if (musicDuck) {
+      const cancel = this.onMusicDuck?.({ durationMs: Math.ceil(Math.max(.08, duration - tail) * 1000), ...musicDuck });
+      if (typeof cancel === 'function') this.reactionDucks.set(source, { kind, cancel });
+    }
+    return true;
+  }
+
+  onComboSettled(event) {
+    const now = this.context?.currentTime ?? 0;
+    // Consume IDs even while muted/paused so later unmute cannot replay applause.
+    const reaction = this.reactions.combo({ ...event, location: event?.location ?? this.location }, now);
+    if (!reaction) return false;
+    const played = this.playBank(reaction.kind, this.crowd, reaction.level, {
+      maxDuration: reaction.exceptional ? 4.1 : reaction.kind === 'crowdSubdued' ? 1 : 1.8,
+      attack: .035, release: reaction.exceptional ? .7 : reaction.kind === 'crowdSubdued' ? .28 : .45,
+      pan: this.location.includes('paradise') ? -.32 : .25,
+      musicDuck: reaction.exceptional ? { amount: .65, releaseMs: 200 } : null,
+    });
+    return played && reaction.exceptional;
+  }
+
+  setCrowdVolume(value) {
+    this.crowdVolume = saveAudioVolume('crowd', value);
+    this.crowd?.gain.setTargetAtTime(this.baseGain*this.crowdVolume, this.context.currentTime, .045);
+    if (!this.crowdVolume) this.cancelMusicDucks('crowd');
+  }
+  setVoiceVolume(value) {
+    this.voiceVolume = saveAudioVolume('voice', value);
+    this.characterVoice?.gain.setTargetAtTime(this.baseGain*this.voiceVolume, this.context.currentTime, .045);
+    if (!this.voiceVolume) this.cancelMusicDucks('voice');
+  }
+
+  cancelMusicDucks(prefix = '') {
+    for (const [source, duck] of this.reactionDucks) if (duck.kind.startsWith(prefix)) {
+      duck.cancel(); this.reactionDucks.delete(source);
+    }
   }
 
   silence() {
     this.previous = null;
     if (!this.context) return;
-    for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind])
+    for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind, this.concreteScrape, this.metalScrape, this.ambience])
       layer?.gain.gain.setTargetAtTime(0, this.context.currentTime, 0.02);
     for (const voice of this.voices) { try { voice.stop(); } catch {} }
+    this.cancelMusicDucks();
+    this.characterReactions.clear();
   }
 
   setMasterVolume(value) {
@@ -257,15 +434,19 @@ export class SkateAudio {
     this.disposed = true;
     this.enabled = false;
     this.silence();
-    for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind]) {
+    for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind, this.concreteScrape, this.metalScrape, this.ambience]) {
       if (!layer) continue;
       try { layer.source.stop(); } catch {}
       layer.source.disconnect();
       layer.filter.disconnect();
       layer.gain.disconnect();
+      layer.sourceGain?.disconnect();
     }
+    for (const [source,gain] of this.ambienceTails) { try { source.stop(); } catch {} source.disconnect();gain.disconnect(); }
+    this.ambienceTails.clear();
     this.master?.disconnect();
     this.announcer?.disconnect();
+    this.crowd?.disconnect(); this.characterVoice?.disconnect(); this.reflection?.disconnect(); this.roomGain?.disconnect();
     this.compressor?.disconnect();
     globalThis.document?.removeEventListener?.('visibilitychange', this._visibility);
     const context = this.context;

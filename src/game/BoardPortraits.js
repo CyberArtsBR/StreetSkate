@@ -11,7 +11,7 @@ export function boardPortraits() {
 async function loadBakedBoards(){
   const images=SKATEBOARD_FINISHES.map((_,index)=>gameAssetUrl(`/assets/menu/decks/${index}.png`));
   await Promise.all(images.map(src=>new Promise((resolve,reject)=>{
-    const image=new Image();image.onload=resolve;image.onerror=reject;image.src=src;
+    const image=new Image();image.onload=()=>Promise.resolve(image.decode?.()).then(resolve,reject);image.onerror=reject;image.src=src;
   })));
   return images;
 }

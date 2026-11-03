@@ -85,6 +85,21 @@ export class StreetPhysics {
     this.groundDirection();
   }
 
+  /** Return the rider to spawn without restarting the surrounding round. */
+  resetRider(position = this.spawn, heading = this.spawnHeading || 0) {
+    const score = this.score, stance = this.stance, distance = this.distance;
+    const respawnSerial = this.respawnSerial || 0;
+    // Use the complete reset pipeline to discard an unfinished combo, buffered
+    // tricks and visual interpolation. Only already-earned round state survives.
+    this.reset(position, heading);
+    this.score = score;
+    this.stance = stance;
+    this.airTakeoffStance = stance;
+    this.distance = distance;
+    this.respawnSerial = respawnSerial + 1;
+    this.syncCanonicalState?.();
+  }
+
   groundDirection() {
     this.forward.copy(groundForwardFromHeading({ heading: this.heading, normal: this.normal }));
   }
@@ -235,7 +250,8 @@ export class StreetPhysics {
     }
     if (events.grab && !this.flipState && !this.grounded && !this.grind && !this.wallRide) {
       this.grabState = { ...events.grab, heldTime: 0 };
-      this.grabState.scoreEntry = this.recordTrick(events.grab.name, events.grab.points);
+      this.grabState.scoreEntry = this.tricks.recordAirGrab(events.grab.name, events.grab.points,{stance:this.stance});
+      this.feedback=this.tricks.comboText();this.feedbackTime=2.2;
     }
     if (events.grind && !this.grounded && !this.grind) {
       this.pendingGrindTrick = events.grind; this.grindIntentTime = 0.18;
@@ -247,7 +263,7 @@ export class StreetPhysics {
   }
 
   advance(delta, input = {}) {
-    if (input.reset) { this.reset(); return; }
+    if (input.reset) { this.resetRider(); return; }
     if (this.recoverInvalidState()) return;
     this.tricks.tick(delta);
     const context = {

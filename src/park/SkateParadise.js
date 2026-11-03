@@ -1,3 +1,4 @@
+import { fetchCompressedGlb } from '../game/CompressedAsset.js';
 import { gameAssetUrl } from '../game/AssetPaths.js';
 import { createTestMapWorld } from '../game/TestMapLoader.js';
 import { createParadiseSurfaceDetail } from '../graphics/ParadiseSurfaceDetail.js';
@@ -5,9 +6,7 @@ import { createParadiseSurfaceDetail } from '../graphics/ParadiseSurfaceDetail.j
 export const SKATE_PARADISE_ASSET='/assets/park/skate-paradise.glb';
 
 export async function createSkateParadise({signal}={}) {
-  const response=await fetch(gameAssetUrl(SKATE_PARADISE_ASSET),{signal});
-  if(!response.ok)throw new Error(`Skate Paradise unavailable (HTTP ${response.status}).`);
-  const buffer=await response.arrayBuffer();
+  const buffer=await fetchCompressedGlb(gameAssetUrl('/assets/park/skate-paradise.optimized.glb.gz'),gameAssetUrl(SKATE_PARADISE_ASSET),{signal});
   const world=await createTestMapWorld({name:'skate-paradise.glb',size:buffer.byteLength,arrayBuffer:async()=>buffer});
   return configureSkateParadise(world);
 }

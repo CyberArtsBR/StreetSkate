@@ -12,20 +12,28 @@ const CHAINS = [
 ];
 const NAMES = [...new Set([...TORSO, ...CHAINS.flatMap(chain => chain.slice(0, 3))])];
 
-function bodyFrame(nodes) {
-  const up = nodes.get('spine_03').p.clone().sub(nodes.get('pelvis').p).normalize();
-  const side = nodes.get('upperarm_l').p.clone().sub(nodes.get('upperarm_r').p)
+function bodyFrame(nodes, scratch) {
+  const up = scratch.up.copy(nodes.get('spine_03').p).sub(nodes.get('pelvis').p).normalize();
+  const side = scratch.side.copy(nodes.get('upperarm_l').p).sub(nodes.get('upperarm_r').p)
     .projectOnPlane(up).normalize();
   if (up.lengthSq() < .5 || side.lengthSq() < .5) return null;
-  const forward = side.clone().cross(up).normalize();
-  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, up, forward));
+  const forward = scratch.forward.copy(side).cross(up).normalize();
+  return scratch.frame.setFromRotationMatrix(scratch.basis.makeBasis(side, up, forward));
 }
 
 /** A small position-based articulated body, active only during a bail.
  * Real park contact, fixed bone lengths and bounded impulses keep falls modest.
  * Particle positions are world-space, independent of the board's visual pose. */
 export class SkateRagdoll {
-  constructor() { this.reset(); }
+  constructor() {
+    // The six constraint passes previously cloned 46,800 vectors/quaternions
+    // per simulated second. Scratch belongs to each body, never a shared pose.
+    this.scratch = Object.fromEntries(['up','side','forward','axis','pole','bend','hitPoint','hitNormal','offset','desired','current'].map(name=>[name,V()]));
+    this.scratch.frame = new THREE.Quaternion();
+    this.scratch.pelvisRotation = new THREE.Quaternion();
+    this.scratch.basis = new THREE.Matrix4();
+    this.reset();
+  }
 
   reset() {
     this.active = false;
@@ -59,8 +67,9 @@ export class SkateRagdoll {
         velocity: launch.clone().multiplyScalar(.92)
           .add(V().crossVectors(angular, p.clone().sub(centre))).clampLength(0, 12) });
     }
-    this.initialFrame = bodyFrame(this.nodes);
+    this.initialFrame = bodyFrame(this.nodes,this.scratch)?.clone();
     if (!this.initialFrame) return false;
+    this.initialFrameInverse = this.initialFrame.clone().invert();
     this.initialPelvisQ = rider.bones.pelvis.getWorldQuaternion(new THREE.Quaternion());
     for (const [bone] of rider.rest) this.pose.set(bone, bone.quaternion.clone());
     this.modelPosition = rider.model.position.clone();
@@ -97,22 +106,22 @@ export class SkateRagdoll {
   constrain() {
     for (const link of this.links) {
       const a = this.nodes.get(link.a), b = this.nodes.get(link.b);
-      const axis = b.p.clone().sub(a.p), length = axis.length();
+      const axis = this.scratch.axis.copy(b.p).sub(a.p), length = axis.length();
       if (length < 1e-7) continue;
       const target = THREE.MathUtils.clamp(length, link.min, link.max);
       const correction = (length - target) / (length * (a.inverseMass + b.inverseMass));
       a.p.addScaledVector(axis, correction * a.inverseMass);
       b.p.addScaledVector(axis, -correction * b.inverseMass);
     }
-    const frame = bodyFrame(this.nodes);
+    const frame = bodyFrame(this.nodes,this.scratch);
     if (!frame) return;
-    const rotation = frame.multiply(this.initialFrame.clone().invert());
+    const rotation = frame.multiply(this.initialFrameInverse);
     // Prevent elbows and knees from flipping to the other side of their hinge.
     for (const chain of this.chains) {
       const a = this.nodes.get(chain.a).p, b = this.nodes.get(chain.b).p, c = this.nodes.get(chain.c).p;
-      const axis = c.clone().sub(a).normalize();
-      const pole = chain.pole.clone().applyQuaternion(rotation).projectOnPlane(axis).normalize();
-      const bend = b.clone().sub(a).projectOnPlane(axis);
+      const axis = this.scratch.axis.copy(c).sub(a).normalize();
+      const pole = this.scratch.pole.copy(chain.pole).applyQuaternion(rotation).projectOnPlane(axis).normalize();
+      const bend = this.scratch.bend.copy(b).sub(a).projectOnPlane(axis);
       const reverse = bend.dot(pole);
       if (reverse < 0) b.addScaledVector(pole, -reverse * 1.2);
     }
@@ -129,7 +138,7 @@ export class SkateRagdoll {
 
   collide(node, surface) {
     if (!surface) return;
-    const hitPoint = V(), hitNormal = V();
+    const {hitPoint,hitNormal}=this.scratch;
     // Sweeps cover thin walls and ramps even when the initial fall is fast.
     if (surface.sweepSolidSphere?.(node.previous, node.p, node.radius, hitPoint, hitNormal)) {
       node.p.copy(hitPoint).addScaledVector(hitNormal, node.radius + .003);
@@ -143,7 +152,7 @@ export class SkateRagdoll {
     }
     const floor = surface.ground?.(node.p, node.radius + .12, node.radius + .16);
     if (floor) {
-      const depth = node.radius - node.p.clone().sub(floor.point).dot(floor.normal);
+      const depth = node.radius - this.scratch.offset.copy(node.p).sub(floor.point).dot(floor.normal);
       if (depth > 0) {
         node.p.addScaledVector(floor.normal, depth + .002);
         node.contactNormal.add(floor.normal);
@@ -176,7 +185,7 @@ export class SkateRagdoll {
       }
       // Keep visual fall distance within the gameplay recovery/camera area.
       if (anchor?.isVector3) {
-        const offset = this.nodes.get('pelvis').p.clone().sub(anchor).setY(0);
+        const offset = this.scratch.offset.copy(this.nodes.get('pelvis').p).sub(anchor).setY(0);
         const distance = offset.length();
         if (distance > 3) {
           offset.multiplyScalar((distance - 3) / distance);
@@ -190,16 +199,16 @@ export class SkateRagdoll {
   }
 
   apply(rider, setWorldQ, solveLimb) {
-    const frame = bodyFrame(this.nodes);
+    const frame = bodyFrame(this.nodes,this.scratch);
     if (!frame) return;
     for (const [bone, q] of this.pose) bone.quaternion.copy(q);
     rider.model.position.copy(this.modelPosition);
     rider.model.quaternion.copy(this.modelQuaternion);
     rider.root.updateWorldMatrix(true, true);
-    const rotation = frame.multiply(this.initialFrame.clone().invert());
-    setWorldQ(rider.bones.pelvis, rotation.clone().multiply(this.initialPelvisQ));
-    const desired = rider.root.worldToLocal(this.nodes.get('pelvis').p.clone());
-    const current = rider.root.worldToLocal(rider.bones.pelvis.getWorldPosition(V()));
+    const rotation = frame.multiply(this.initialFrameInverse);
+    setWorldQ(rider.bones.pelvis, this.scratch.pelvisRotation.copy(rotation).multiply(this.initialPelvisQ));
+    const desired = rider.root.worldToLocal(this.scratch.desired.copy(this.nodes.get('pelvis').p));
+    const current = rider.root.worldToLocal(rider.bones.pelvis.getWorldPosition(this.scratch.current));
     rider.model.position.add(desired.sub(current));
     rider.root.updateWorldMatrix(true, true);
     for (const chain of this.chains) solveLimb(rider.bones[chain.a], rider.bones[chain.b], rider.bones[chain.c],

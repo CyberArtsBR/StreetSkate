@@ -91,12 +91,17 @@ export class SkillStreetPhysics extends StreetPhysics {
     super.handleEvents(events);
 
     if (events.manual && this.manual && this.manual !== previousManual) {
-      this.manualBalanceState = createBalanceState(this.manual === 'noseManual' ? 2.05 : 0.72);
-      this.manualBalance = 0;
-      this.manualTime = 0;
-      this.manualInstability = 0;
+      // Nose/tail changes are one continuous balancing challenge. Reinitializing
+      // here let alternating manual sequences erase drift and restart assistance.
+      // A genuinely new manual still receives the existing initial grace/seed.
+      if (!previousManual) {
+        this.manualBalanceState = createBalanceState(this.manual === 'noseManual' ? 2.05 : 0.72);
+        this.manualBalance = 0;
+        this.manualTime = 0;
+        this.manualInstability = 0;
+        this.lastFlatlandAt = -Infinity;
+      }
       this.manualScoreEntry = this.tricks?.combo?.at(-1) || null;
-      this.lastFlatlandAt = -Infinity;
       this.stableGroundTime = 0;
     }
 

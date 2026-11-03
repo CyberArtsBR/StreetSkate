@@ -1,3 +1,7 @@
+import { surfaceTagFor } from './game/SurfaceAudio.js';
+import { installModuleLoadRecovery } from './game/ModuleLoadRecovery.js';
+import { freezeStaticParkTransforms } from './graphics/StaticParkTransforms.js';
+import { warmScenePrograms, renderGameplayWarmup } from './graphics/ShaderWarmup.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -50,6 +54,7 @@ import './graphics-glow.css';
 import './round-flow.css';
 
 const container = document.querySelector('#viewport');
+installModuleLoadRecovery();
 installGraffitiFallback();
 const app = document.querySelector('#app');
 let sceneNeedsRender=true;
@@ -180,6 +185,7 @@ let comboStartTime = 0;
 let pendingReplayMoments = [];
 let portalsPhase1 = null;
 let portalsOnline = null;
+let previousPresentationEvent = null;
 let practiceMarker = null;
 const practiceDrills = new PracticeDrills();
 let practiceInputsEnabled = false, practiceInputText = '', practiceInputTime = 0;
@@ -200,6 +206,7 @@ const highlightPlayback = new HighlightPlayback({
   camera,
   getSurface: () => collision,
   onFinish: () => gameShell.showResults(),
+  onEvent:event=>{skateAudio.impact(event.strength||.4,event.kind==='grind',event.kind);skateEffects.playRecordedEvent?.(event);},
   onMoment: moment => { highlightStatus = { ...moment, total: moment.count }; },
 });
 const gameShell = new GameShell({
@@ -212,6 +219,9 @@ const gameShell = new GameShell({
     playerPreferences=all;followCamera?.setPreferences(all);sceneNeedsRender=true;
     skateEffects.setLiquidEnabled(all.liquid);frameMetrics.setEnabled(all.performance);
     if(partial.effectsVolume!=null)skateAudio.setEffectsVolume(partial.effectsVolume);
+    if(partial.crowdVolume!=null)skateAudio.setCrowdVolume(partial.crowdVolume);
+    if(partial.voiceVolume!=null)skateAudio.setVoiceVolume(partial.voiceVolume);
+    if(partial.renderScale!=null)applyGraphicsPreset(graphicsPreset);
     if(partial.announcerVolume!=null)skateAudio.setAnnouncerVolume(partial.announcerVolume);
     if(partial.backgroundAudio!=null)skateAudio.setBackgroundAudio(partial.backgroundAudio);
   },
@@ -238,7 +248,7 @@ const gameShell = new GameShell({
       deckName: gameShell.boardLabel(), mapName: gameShell.locationName() }, skater);
     highlightRecorder.reset(skater);
     runInProgress = true; runFinished = false; highlightClips = []; highlightStatus = null;
-    sessionEventTime = 0; comboStartTime = 0; pendingReplayMoments = [];
+    sessionEventTime = 0; comboStartTime = 0; pendingReplayMoments = []; previousPresentationEvent=null;
   },
   pause: value => setPaused(value),
   drillsEnabled: () => practiceDrills.enabled,
@@ -270,10 +280,10 @@ const gameShell = new GameShell({
   },
   canWatchHighlights: () => highlightClips.length > 0,
   watchHighlights: () => highlightPlayback.start(highlightClips),
-  stopHighlights: () => { highlightPlayback.stop(); sceneNeedsRender = true; },
+  stopHighlights: () => { highlightPlayback.stop(); skateAudio.silence(); skateEffects.reset(skater); sceneNeedsRender = true; },
   replayStatus: () => highlightStatus,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
-  sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
+  sound: enabled => setSkateSound(enabled),
   deck: index => skater?.board?.setFinish(index),
   effectsVolume: value => skateAudio.setEffectsVolume(value),
   portalsPlayer: () => portalsPhase1?.gateway?.player || null,
@@ -293,6 +303,7 @@ const gameShell = new GameShell({
   loadout: ({hero,board,location}) => selectLocation(location?.id, {hero,finish:board.finishIndex}),
   testMap: ({file,hero,board,onProgress}) => selectLocation('test-map', {file,hero,finish:board.finishIndex,onProgress}),
 });
+skateAudio.onMusicDuck=({durationMs,amount,releaseMs})=>gameShell.music.duck(durationMs,amount,releaseMs);
 portalsPhase1 = new PortalsPhase1(gameShell);
 void portalsPhase1.start();
 portalsOnline = new PortalsOnlineBeta({
@@ -327,13 +338,32 @@ function observeRunScoring(controller) {
       if (gameShell.practice){practiceDrills.observe(controller,1/120);practiceDrills.accept(entries);updateDrillHud();}
       const moment = runSummary.recordCombo({ ...result, entries, durationSeconds,
         startTime: comboStartTime, endTime: sessionEventTime });
+      if(moment){
+        const oldBest=scoreRecords.get(currentWorld.id)?.bestCombo;
+        skateAudio.onComboSettled?.({points:moment.points,id:currentWorld.id+':'+sessionEventTime,location:currentWorld.id,
+          personalBest:!gameShell.practice&&oldBest>0&&moment.points>oldBest});
+        if(moment.points>=1200){const node=document.getElementById('trick-feedback');node?.classList.remove('exceptional-line');
+          requestAnimationFrame(()=>node?.classList.add('exceptional-line'));}
+      }
       if (moment) pendingReplayMoments.push({ start: moment.startTime, end: moment.endTime,
         points: moment.points, label: moment.label });
     }
     return result;
   };
 }
-gameShell.sound = skateAudio.enabled;
+setSkateSound(skateAudio.enabled);
+
+// Both menu and toolbar controls represent the same persisted audio state.
+function setSkateSound(enabled) {
+  if (skateAudio.enabled !== Boolean(enabled)) skateAudio.toggle();
+  gameShell.sound = skateAudio.enabled;
+  const button = document.querySelector('#sound-toggle');
+  if (button) {
+    button.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
+    button.setAttribute('aria-pressed', String(skateAudio.enabled));
+  }
+  return skateAudio.enabled;
+}
 skateAudio.setEffectsVolume(gameShell.effectsVolume);
 skateEffects.setLiquidEnabled(playerPreferences.liquid);
 applyGraphicsPreset(graphicsPreset);
@@ -347,7 +377,7 @@ function applyGraphicsPreset(name) {
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
   }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
-    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults });
+    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults, renderScale:playerPreferences.renderScale });
   skateEffects.setQuality(graphicsPipeline.settings);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
@@ -484,11 +514,9 @@ function toggleCameraMode() {
 function goToSpot(id) {
   const spot = manifest?.spots?.find(item => item.id === id);
   if (!loaded || !spot || !skater) return;
-  const score = skater.score;
   skater.spawn.set(...spot.position);
   skater.spawnHeading = spot.heading || 0;
-  skater.reset(skater.spawn, spot.heading || 0);
-  skater.score = score;
+  skater.resetRider(skater.spawn, spot.heading || 0);
   setMode('skate');
   followCamera.snap(skater);
   document.querySelectorAll('[data-spot]').forEach(button => {
@@ -498,7 +526,11 @@ function goToSpot(id) {
 }
 
 function setPaused(value) {
+  const wasPaused=paused;
   paused = Boolean(value) && mode === 'skate';
+  // Synchronous loading work belongs to the pause. Do not charge that old
+  // frame interval to the ready countdown or simulation on the first resume.
+  if(wasPaused&&!paused)clock.getDelta();
   app.dataset.paused = String(paused);
   input.clear();
   gameShell.syncPause(paused);
@@ -653,6 +685,8 @@ function prepareWorldVisuals(world) {
     }
   });
   world.park.updateMatrixWorld(true);
+  if(['orbit','grand-warehouse','skate-paradise'].includes(world.id))
+    world.staticTransformCount=freezeStaticParkTransforms(world.park);
 }
 
 function refreshLocationUi() {
@@ -681,6 +715,7 @@ function refreshLocationUi() {
     'grand-warehouse': 'MAP 3 / GRAND WAREHOUSE' }[currentWorld.id] || manifest.name;
   document.title = `Chimp Hawk Underground — ${locationTitle}`;
   document.querySelector('.edition').textContent = locationTitle;
+  skateAudio.setLocation?.(currentWorld.id);
   gameShell.setLocation(currentWorld.id, currentWorld.id === 'test-map' ? manifest.name : null);
   transitionDebug?.dispose();
   transitionDebug = null;
@@ -759,6 +794,13 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
     if (runtime) commitWorld(candidate, runtime);
     if (finish != null) skater.board.setFinish(finish);
     followCamera.snap(skater);
+    progress('PREPARING PARK LIGHTING…');
+    await warmScenePrograms(renderer,scene,camera,{
+      isCurrent:()=>request===loadoutRequest,
+      renderFirstFrame:()=>renderGameplayWarmup({skater,effects:skateEffects,
+        render:()=>graphicsPipeline.render({contactSource:skater,warmup:true})}),
+    });
+    if(request!==loadoutRequest)return false;
     return { locationId: currentWorld.id, manifest };
   } catch (error) {
     if (nextWorld && nextWorld !== currentWorld) disposeParkWorld(nextWorld, currentWorld);
@@ -778,7 +820,8 @@ async function loadGame() {
     await ensureWorldEnvironment(initialWorld);
     document.querySelector('#load-progress').textContent = 'Loading rider and skateboard';
     skater = await new StreetSkater({ collision: initialWorld.collision, spawn: initialWorld.manifest.spawn,
-      rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions }).load();
+      rails: initialWorld.manifest.rails, playableRegions: initialWorld.manifest.playableRegions })
+      .load({riderUrl:gameShell.heroes[0].url});
     observeRunScoring(skater);
     scene.add(skater.root);
     // Actor-only bloom: visual contains the skateboard and currently selected GLB rider.
@@ -806,9 +849,8 @@ async function loadGame() {
       finishes.append(button);
     });
     const soundButton = document.querySelector('#sound-toggle');
-    soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
-    soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
-    soundButton.onclick = () => { const enabled = skateAudio.toggle(); gameShell.sound=enabled; portalsPhase1?.settingsChanged(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
+    setSkateSound(skateAudio.enabled);
+    soundButton.onclick = () => { setSkateSound(!skateAudio.enabled); portalsPhase1?.settingsChanged(); soundButton.blur(); };
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
@@ -880,7 +922,7 @@ document.querySelectorAll('button[data-view]').forEach((button) => button.addEve
   setExploreView(button.dataset.view);
 }));
 document.querySelector('#reset').onclick = () => {
-  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); setPaused(false); }
+  if (mode === 'skate') { skater?.resetRider(); followCamera?.snap(skater); input.clear(); setPaused(false); }
   else setExploreView('overview');
 };
 document.querySelector('#topview').onclick = () => {
@@ -986,9 +1028,10 @@ renderer.setAnimationLoop(() => {
         }
         if (state.practiceReturn) {
           if (practiceMarker?.location === currentWorld.id) {
-            const score = skater.score;
-            skater.reset(practiceMarker.position.clone(), practiceMarker.heading);
-            skater.score = score; skater.stance = practiceMarker.stance;
+            skater.resetRider(practiceMarker.position.clone(), practiceMarker.heading);
+            skater.stance = practiceMarker.stance;
+            skater.airTakeoffStance = practiceMarker.stance;
+            skater.syncCanonicalState?.();
             practiceDrills.retry();
             followCamera.snap(skater);
             skater.feedback = 'RETURNED TO MARKER';
@@ -1003,6 +1046,21 @@ renderer.setAnimationLoop(() => {
       if (runInProgress) {
         runSummary.update(skater, realDelta);
         highlightRecorder.record(skater, realDelta);
+        const eventState={grounded:skater.grounded,pop:skater.presentation?.popTime>0,grind:!!skater.grind,
+          catch:skater.presentation?.flipPhase==='CATCH',impact:skater.rider?.ragdoll?.groundImpact,respawn:skater.respawnSerial};
+        if(previousPresentationEvent&&eventState.respawn===previousPresentationEvent.respawn){
+          const emit=(kind,strength)=>highlightRecorder.markEvent({kind,strength,surface:surfaceTagFor(skater),
+            point:(kind==='bail'?eventState.impact.point:skater.position).toArray(),
+            normal:(kind==='bail'?eventState.impact.normal:skater.normal).toArray()});
+          if(eventState.impact&&eventState.impact!==previousPresentationEvent.impact)emit('bail',Math.min(1,(eventState.impact.speed||4)/10));
+          if(!skater.bailTime){
+            if(eventState.pop&&!previousPresentationEvent.pop)emit('pop',.5);
+            if(eventState.grind&&!previousPresentationEvent.grind)emit('grind',.5);
+            if(eventState.grounded&&!previousPresentationEvent.grounded&&!eventState.grind)emit('landing',.5);
+            if(eventState.catch&&!previousPresentationEvent.catch)emit('catch',.2);
+          }
+        }
+        previousPresentationEvent=eventState;
         for (const moment of pendingReplayMoments) highlightRecorder.markMoment(moment);
         pendingReplayMoments.length = 0;
       }
@@ -1033,11 +1091,12 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
+  if(gameShell.phase==='highlights'&&highlightPlayback.active)skateEffects.updateReplay?.(realDelta);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
   portalsOnline?.tick(dt);
   const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
   if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
-  skateEffects.root.visible = Boolean(effectsActive);
+  skateEffects.root.visible = Boolean(effectsActive||(gameShell.phase==='highlights'&&highlightPlayback.active));
   effectsWereActive = Boolean(effectsActive);
   updateWorldVisibility();
   // Session menus use the supplied sunset artwork and need no hidden park render.

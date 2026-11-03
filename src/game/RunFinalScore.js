@@ -1,5 +1,5 @@
 export const RUN_SCORE_RULES = Object.freeze({
-  version: 'line-score-v2',
+  version: 'line-score-v3',
   // Linking and repetition are already valued by SkateTricks. A fixed reward
   // for each bank made three isolated ollies beat the same tricks in one line.
   // Keep these fields for transparent older result renderers, but award no

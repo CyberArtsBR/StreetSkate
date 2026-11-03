@@ -60,3 +60,25 @@ test('the rendered rider moves smoothly on frames between 120 Hz physics steps',
   assert.ok(skater._renderPhysicsPosition.distanceTo(skater.position) < 1e-9,
     'reset must not interpolate across a teleport');
 });
+
+test('all five views keep a stable rider-relative arm and recover after an obstruction',()=>{
+ for(const mode of CAMERA_MODES){
+  const p=player(),camera=new THREE.PerspectiveCamera(58,16/9,.08,1000),rig=new FollowCamera(camera);
+  let blocked=false;p.surface={camera(from,eye){return blocked?from.clone().lerp(eye,.35):eye.clone();}};
+  rig.setMode(mode,p);
+  const step=()=>{p.position.addScaledVector(p.velocity,1/120);rig.update(p,1/120,{});};
+  for(let i=0;i<720;i++)step();
+  let previous=camera.position.clone().sub(p.position),maxRelativeStep=0;
+  for(let i=0;i<120;i++){
+   step();const relative=camera.position.clone().sub(p.position);
+   maxRelativeStep=Math.max(maxRelativeStep,relative.distanceTo(previous));previous=relative;
+  }
+  assert.ok(maxRelativeStep<.001,`${mode}: camera-relative jitter ${maxRelativeStep}`);
+  const clearArm=camera.position.distanceTo(p.position);
+  blocked=true;for(let i=0;i<24;i++)step();
+  assert.ok(camera.position.distanceTo(p.position)<clearArm*.8,`${mode}: obstruction must compress the arm`);
+  blocked=false;for(let i=0;i<360;i++)step();
+  assert.ok(camera.position.toArray().every(Number.isFinite));
+  assert.ok(camera.position.distanceTo(p.position)>clearArm*.95,`${mode}: camera must recover after clearance`);
+ }
+});

@@ -13,3 +13,8 @@ Standalone test-map art pass, preserving the supplied park's 150% scale and game
 New map art includes inset cyan/amber bowl lighting, floodlight fixtures and local lights, brushed metal, vertex ambient occlusion, a landscaped promenade, palm trees, ornamental grasses, planters, illuminated branding and wayfinding.
 
 The GLB is self-contained. The source supplied by the user and the previous test edition remain unchanged. This edition is outside the public game map catalog.
+
+
+## Optimized delivery variant — 2026-11-02
+
+`skate-paradise.optimized.glb` and `.glb.gz` retain the original model, mesh/accessor bytes, transforms, materials, texture assignments, rails and collision metadata. Six ground photographs are resized from 4096² to 2048²; the sky panorama is resized from 8192×4096 to 4096×2048 and JPEGs are recompressed. Original texture licenses and credits above apply to these derived images. The original `skate-paradise.glb` remains the fallback/source. Rebuild with `tools/optimize-paradise-textures.py`; see `artifacts/paradise-textures/report.json` for per-image sizes and exact non-image preservation checks. This is lossy texture optimization followed by gzip, not a claim of lossless compression.

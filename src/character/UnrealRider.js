@@ -11,6 +11,8 @@ import { resolveHumanoidBones, humanoidIKAudit } from './RigMapping.js';
 import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, avatarPoseCalibration } from './SkatePoseConstraints.js';
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 import { SkateRagdoll } from './SkateRagdoll.js';
+import { calibrateFootSupportBounds } from './FootSupportClearance.js';
+import { grabReachPose, grabReachMargin, calibrateGrabPalms, grabPalmOrientation, grabDeckSurface } from './GrabReachPose.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -78,6 +80,7 @@ export class UnrealRider {
   constructor(url, { uploadFilename = '' } = {}) {
     this.url = url;
     this.uploadFilename = uploadFilename;
+    this.calibratedGrabReach = /\/(The_AdolescentUR|The_Heretic|The_Anchor|TuxR)\.glb(?:\?|$)/.test(url);
     this.ghostRider = shouldApplyGhostRiderPresentation(url, uploadFilename);
     this.root = new THREE.Group();
     this.root.name = 'street-rider';
@@ -89,7 +92,9 @@ export class UnrealRider {
     this.channels = new Map(Object.values(PRESENTATION_STATES)
       .map(state => [state, { value: state === 'IDLE' ? 1 : 0, velocity: 0 }]));
     this.scalar = { compression: { value: 0, velocity: 0 }, balance: { value: 0, velocity: 0 },
-      airBalance: { value: 0, velocity: 0 } };
+      airBalance: { value: 0, velocity: 0 }, grabGather: { value: 0, velocity: 0 } };
+    this.grabReachName = null;
+    this.grabReachDirection = 1;
     this.ragdoll = new SkateRagdoll();
     this.ft = { l: V(), r: V() };
     this.soleOffsets={l:0.05,r:0.05};
@@ -226,6 +231,8 @@ export class UnrealRider {
       this.kneeForward.negate();
     this.root.userData.rigAudit = this.rigAudit;
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
+    calibrateFootSupportBounds(this);
+    this.grabPalms = calibrateGrabPalms(this.model, { l: this.bones.hand_l, r: this.bones.hand_r });
     return this;
   }
 
@@ -233,6 +240,8 @@ export class UnrealRider {
     this.ragdoll.reset();
     this.smoothedHands.l = null;
     this.smoothedHands.r = null;
+    this.grabReachName = null;
+    this.grabReachDirection = 1;
     for (const [name, channel] of this.channels) Object.assign(channel, { value: name === 'IDLE' ? 1 : 0, velocity: 0 });
     for (const channel of Object.values(this.scalar)) Object.assign(channel, { value: 0, velocity: 0 });
     for (const [bone, quaternion] of this.rest) bone.quaternion.copy(quaternion);
@@ -275,12 +284,22 @@ export class UnrealRider {
   handstandTarget(side, board) { return handstandTarget.call(this, side, board); }
 
   grabTarget(name, side, stance, board) {
-    const sign = this.outward[side] || (side === 'l' ? -1 : 1);
+    // Toe/heel edges belong to the rider's anatomical facing, not to which
+    // hand is reaching. Per-foot signs inverted Indy/Stalefish in one stance.
+    const sign = Math.sign(this.kneeForward.x) || 1;
     const front = stance < 0 ? 'r' : 'l', rear = front === 'l' ? 'r' : 'l';
     const width = Math.max(.15, board?.contactRig?.deckWidth || .42) / .42;
     const length = Math.max(.6, board?.contactRig?.deckLength || 1.1) / 1.1;
-    const point = (x, y, z) => board?.pointWorld
-      ? plantedFootWorldPoint(board, x * width, y, z * length * (stance < 0 ? -1 : 1), V()) : null;
+    const point = (x, y, z) => {
+      if (!board?.pointWorld) return null;
+      if (!this.calibratedGrabReach)
+        return plantedFootWorldPoint(board, x * width, y, z * length * (stance < 0 ? -1 : 1), V());
+      const railX = Math.abs(x) === .14 ? Math.sign(x) * (board.contactRig?.deckWidth || .42) * .5 : x * width;
+      const endZ = Math.abs(z) >= .4 ? Math.sign(z) * (board.contactRig?.deckLength || 1.1) * .5 : z * length;
+      const local = grabDeckSurface(board, railX, endZ * (stance < 0 ? -1 : 1));
+      return local ? plantedFootWorldPoint(board, local.x, local.y, local.z, V())
+        : plantedFootWorldPoint(board, x * width, y, z * length * (stance < 0 ? -1 : 1), V());
+    };
     switch (name) {
       case 'Indy': return side === rear ? point(sign * 0.14, 0.04, 0) : null;
       case 'Melon': return side === front ? point(-sign * 0.14, 0.04, 0) : null;
@@ -346,11 +365,36 @@ export class UnrealRider {
     const compTarget = C(halfPipe.compression + grindShift.compression + manualW * 0.04 + supportShift * .08, 0, 1);
     const compression = C(springStep(this.scalar.compression, compTarget, halfPipe.response, dt), 0, 1);
     const inAir = airborne ?? ['AIR', 'VERT_AIR', 'OLLIE_POP'].includes(presentation?.state);
+    const calibratedGrab = this.calibratedGrabReach;
+    const requestedSides = grab > 0 && inAir && !bail && !flipState && !flatland && board
+      ? SIDES.filter(side => this.grabTarget(grabState?.name, side, stance, board)) : null;
+    if (calibratedGrab && (!inAir || bail || flipState || flatland)) {
+      // A different motion family must not inherit a residual grab gather.
+      Object.assign(this.scalar.grabGather, { value: 0, velocity: 0 });
+      this.grabReachName = null;
+    }
+    // Smooth only the newly authored body gather. The gameplay grip envelope,
+    // deck and original Hollow motion continue to use their existing weights.
+    const gather = calibratedGrab ? C(springStep(this.scalar.grabGather,
+      requestedSides?.length ? grab : 0, 8, dt), 0, 1) : grab;
+    if (calibratedGrab && requestedSides?.length && this.grabReachName !== grabState.name) {
+      const target = this.root.worldToLocal(this.grabTarget(grabState.name, requestedSides[0], stance, board));
+      const pelvis = this.root.worldToLocal(this.bones.pelvis.getWorldPosition(V()));
+      this.grabReachDirection = target.clone().sub(pelvis).dot(this.kneeForward) < -.025 ? -1 : 1;
+      this.grabReachName = grabState.name;
+    }
+    if (gather < 1e-5) this.grabReachName = null;
+    const reachingSides = calibratedGrab && gather > 1e-5 && inAir && !bail && !flipState && !flatland && board && this.grabReachName
+      ? SIDES.filter(side => this.grabTarget(this.grabReachName, side, stance, board)) : requestedSides;
+    const grabPose = reachingSides ? (calibratedGrab
+      ? grabReachPose(gather, reachingSides, true, { direction: this.grabReachDirection, compact: this.url.includes('The_Heretic') ? 1 : 0,
+        endGrab: ['Nosegrab', 'Tailgrab'].includes(this.grabReachName) })
+      : { pelvisHinge: .35 * grab, spineCurl: .15 * grab, shoulderBend: .25 * grab, weight: grab }) : null;
     // Hold the chosen flight pose through the descent. Only contact releases
     // it, so the arms do not drop as soon as vertical velocity turns negative.
     const airBalance = C(springStep(this.scalar.airBalance,
       inAir ? 1 : 0, inAir ? 3.5 : 2.6, dt), 0, 1);
-    this.root.position.y = wrap ? (board?.riderHeight ?? this.deckHeight) : (board?.root.position.y ?? this.deckHeight);
+    this.root.position.y = wrap || grab > .01 ? (board?.riderHeight ?? board?.root.position.y ?? this.deckHeight) : (board?.root.position.y ?? this.deckHeight);
     // Sit the hips back while the chest leans forward. The actual vertical
     // crouch is solved from each leg's lengths after foot targets are known.
     const hipSetback = compression * .09 * this.poseCalibration.crouchScale;
@@ -373,12 +417,27 @@ export class UnrealRider {
     this.root.updateWorldMatrix(true, true);
     const rootQ = this.root.getWorldQuaternion(Q());
     const apex = vert ? C(1 - Math.abs(verticalVelocity) / 4, 0, 1) : 0;
+    const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
+    // A low deck target needs a lower shoulder, not a stretched arm. Hinge
+    // before foot IK, then share the small extra curl across the spine.
+    let shoulderBendAxis = null;
+    if (grabPose?.weight > 0) {
+      this.rotate('pelvis', pitchAxis, -grabPose.pelvisHinge, rootQ);
+      const reachingOutward = V();
+      for (const side of reachingSides) if (this.armOutward[side])
+        reachingOutward.add(this.armOutward[side]);
+      shoulderBendAxis = V(0, 1, 0).cross(reachingOutward).normalize();
+    }
     for (const name of ['spine_01', 'spine_02', 'spine_03']) {
       this.rotate(name, V(0, 1, 0), (.075 * stance + balance * .07
         + (push?.armSwing || 0) * pushAmount * .065) / 3, rootQ);
-      const pitchAxis = this.kneeForward.clone().cross(V(0, 1, 0));
-      this.rotate(name, pitchAxis, -(halfPipe.torsoLean + grab * .12 + pump * .025 + supportShift * .10) / 3, rootQ);
+      const reachLean = calibratedGrab && grabPose?.weight > 0
+        ? (halfPipe.torsoLean + grab * .24) * (1 - grabPose.weight) + grabPose.spineCurl
+        : halfPipe.torsoLean + grab * .24 + (grabPose?.spineCurl || 0);
+      this.rotate(name, pitchAxis, -(reachLean + pump * .025 + supportShift * .10) / 3, rootQ);
       this.rotate(name, this.kneeForward, (-balance * .14 + brake * .04 - wall * .05 + apex * .03) / 3, rootQ);
+      if (shoulderBendAxis && shoulderBendAxis.lengthSq() > .5)
+        this.rotate(name, shoulderBendAxis, grabPose.shoulderBend / 3, rootQ);
     }
     this.rotate('pelvis', V(0, 0, 1), manualBalance * manualW * 0.08 - grindBalance * grind * 0.06, rootQ);
     this.rotate('neck_01', V(0, 1, 0), .12 * stance + balance * .04, rootQ);
@@ -493,6 +552,7 @@ export class UnrealRider {
     // The target is absolute from rest each frame, so it cannot accumulate.
     if (!bail && !flatland) {
       let hipCorrection = Infinity;
+      let grabMinimumHipCorrection = -Infinity;
       for (const side of SIDES) {
         const thigh = this.bones['thigh_' + side], calf = this.bones['calf_' + side],
           foot = this.bones['foot_' + side];
@@ -502,7 +562,15 @@ export class UnrealRider {
         const upperLength = hip.distanceTo(knee), lowerLength = knee.distanceTo(ankle);
         const hipLocal = this.root.worldToLocal(hip.clone()), target = this.ft[side];
         const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
-        const ridingFlex = .45 + compression * 1.65 + (side === rear ? air * .08 : 0);
+        if (grab > .01) {
+          const releasedJapan = calibratedGrab && grabState?.name === 'Japan' && side === rear;
+          const minimumReach = safeLimbReach(upperLength,lowerLength,0,releasedJapan ? 2.50 + .30 * gather : 2.50);
+          const minimumHeight = Math.sqrt(Math.max(0,minimumReach*minimumReach-horizontalSquared));
+          grabMinimumHipCorrection = Math.max(grabMinimumHipCorrection,target.y+minimumHeight-hipLocal.y);
+        }
+        // Pull the knees toward the chest for a grab instead of extending a
+        // short cartoon arm past its bone length to reach the board.
+        const ridingFlex = .45 + compression * 1.65 + grab * .38 + (side === rear ? air * .08 : 0);
         // The drive leg extends while the support knee absorbs the drop to
         // the pavement. Applying the same crouch to both caused a deep bob.
         const flex = side === rear && push
@@ -511,6 +579,10 @@ export class UnrealRider {
         hipCorrection = Math.min(hipCorrection, target.y + wantedHeight - hipLocal.y);
       }
       if (Number.isFinite(hipCorrection)) {
+        // Keep the pelvis steady while the grabbed deck and both knees rise.
+        // The following clearance guard still prevents torso/deck overlap.
+        hipCorrection -= grab > .01 ? (board?.grabLift || 0) : 0;
+        hipCorrection = Math.max(hipCorrection,grabMinimumHipCorrection);
         this.model.position.y += hipCorrection;
         this.root.updateWorldMatrix(true, true);
         // Guard both short and tall rigs from dipping the pelvis into the deck
@@ -520,7 +592,7 @@ export class UnrealRider {
           // TuxR's unusually compact pelvis pivot reaches the deck on a full
           // squat even with rig-relative calibration. Raise just this rider's
           // pelvis, without modifying foot anchors, proportions or board scale.
-          Math.max(this.url?.endsWith('/TuxR.glb') ? .355 : .19,
+          Math.max(this.url?.endsWith('/TuxR.glb') && !inAir ? .355 : .19,
             this.poseCalibration.pelvisClearance));
       }
     }
@@ -530,10 +602,11 @@ export class UnrealRider {
       const lateral = this.armOutward[side] || V(this.outward[side], 0, 0);
       const poleDirection = anatomicalKneeDirection(this.kneeForward, lateral, this.kneePoles[side], compression);
       const kneePole = upper.getWorldPosition(V()).add(poleDirection.applyQuaternion(rootQ));
-      limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole);
       const releasedFoot = (push && side === rear) || (grab > 0.01 && (
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
+      limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole,
+        calibratedGrab && grabState?.name === 'Japan' && releasedFoot ? 2.55 + .25 * gather : 2.55);
       // The board may have spun 180 degrees while the skater stayed facing
       // forward. Preserve the skater's ankle yaw and only align deck tilt.
       setWorldQ(foot, footWorldOrientation(
@@ -589,8 +662,20 @@ export class UnrealRider {
       );
       world.lerp(skatingPose.wrist, skatingWeight);
       const reachWeight = handstand ? flat : grab;
+      let palmRotation = null;
+      let wristReach = reach;
+      if (reach && !handstand && calibratedGrab && this.grabPalms?.[side] && board) {
+        const deckUp = V(0, 1, 0).applyQuaternion(board.root.getWorldQuaternion(Q()));
+        const center = plantedFootWorldPoint(board, 0, 0, 0, V());
+        palmRotation = grabPalmOrientation(this.grabPalms[side], reach.clone().sub(center), deckUp);
+        if (palmRotation) {
+          const padOffset = this.grabPalms[side].point.clone().multiply(hand.getWorldScale(V())).applyQuaternion(palmRotation);
+          wristReach = reach.clone().sub(padOffset);
+        }
+      }
       if (reach) {
-        world.lerp(boundedHandReach(shoulderWorld, reach, armLength), reachWeight);
+        world.lerp(boundedHandReach(shoulderWorld, wristReach, armLength,
+          grabPose?.weight > 0 ? grabReachMargin(armLength) : .035), reachWeight);
       }
       const outwardWorld = lateral.clone().applyQuaternion(rootQ);
       const headWorld = this.bones.head?.getWorldPosition(V()) || null;
@@ -660,9 +745,23 @@ export class UnrealRider {
         // Keep the wrist aligned to the deck surface without copying the
         // decorative 180-degree shove-it yaw into the rider's forearm.
         if (reach && board) {
-          setWorldQ(hand, footWorldOrientation(this.root, board, this.hands[side].q, true));
-          const grabLocal = hand.quaternion.clone();
-          hand.quaternion.copy(restHand).rotateTowards(grabLocal, .45 * reachWeight);
+          if (palmRotation) {
+            // Share pronation with the forearm around its actual wrist axis.
+            // This changes neither arm segment nor the solved wrist position.
+            const axis = hand.getWorldPosition(V()).sub(lower.getWorldPosition(V())).normalize();
+            const restWorld = lower.getWorldQuaternion(Q()).multiply(restHand);
+            const delta = palmRotation.clone().multiply(restWorld.invert());
+            if (delta.w < 0) delta.set(-delta.x, -delta.y, -delta.z, -delta.w);
+            const projection = V(delta.x, delta.y, delta.z).dot(axis);
+            const twist = C(2 * Math.atan2(projection, delta.w), -.85, .85) * reachWeight;
+            setWorldQ(lower, Q().setFromAxisAngle(axis, twist).multiply(lower.getWorldQuaternion(Q())));
+            const local = lower.getWorldQuaternion(Q()).invert().multiply(palmRotation);
+            hand.quaternion.copy(restHand).rotateTowards(local, .95 * reachWeight);
+          } else {
+            setWorldQ(hand, footWorldOrientation(this.root, board, this.hands[side].q, true));
+            const grabLocal = hand.quaternion.clone();
+            hand.quaternion.copy(restHand).rotateTowards(grabLocal, .45 * reachWeight);
+          }
         }
       }
     }

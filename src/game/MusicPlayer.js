@@ -138,22 +138,40 @@ export class MusicPlayer {
     this._visibility();
   }
 
-  duck(durationMs = 550, amount = .6) {
+  duck(durationMs = 550, amount = .6, releaseMs = 120) {
     if (this.disposed) return;
-    clearTimeout(this.duckTimer);
-    this.duckAmount = Math.max(.25, Math.min(1, Number(amount) || .6));
-    this.audio.volume = this.musicVolume * this.duckAmount;
-    this.duckTimer = setTimeout(() => {
-      this.duckTimer = null; this.duckAmount = 1;
-      if (!this.disposed) this.audio.volume = this.musicVolume;
-    }, Math.max(80, Math.min(1600, Number(durationMs) || 550)));
+    const now = Date.now(), hold = Math.max(80, Math.min(4500, Number(durationMs) || 550));
+    const depth = Math.max(.25, Math.min(1, Number(amount) || .6));
+    const release = Math.max(40, Math.min(500, Number(releaseMs) || 120));
+    // Each reaction owns its hold and release. A shorter cue cannot truncate
+    // applause, and a long crowd return cannot prolong a short contact voice.
+    const request = { until: now + hold, amount: depth, release };
+    (this.duckRequests ||= []).push(request);
+    const cancel = () => { request.until = Math.min(request.until, Date.now()); request.release = Math.min(request.release, 80); };
+    if (this.duckTimer) return cancel;
+    let previous = now;
+    const step = () => {
+      if (this.disposed) return;
+      const time = Date.now(), dt = Math.min(100, Math.max(1, time - previous)); previous = time;
+      const level = request => 1 - (1 - request.amount) * Math.exp(-Math.max(0, time - request.until) / request.release);
+      this.duckRequests = this.duckRequests.filter(request => 1 - level(request) >= .002);
+      const target = Math.min(1, ...this.duckRequests.map(level));
+      this.duckAmount = target < this.duckAmount
+        ? this.duckAmount + (target - this.duckAmount) * (1 - Math.exp(-dt / 25))
+        : target;
+      if (Math.abs(target - this.duckAmount) < .002) this.duckAmount = target;
+      this.audio.volume = this.musicVolume * this.duckAmount;
+      if (!this.duckRequests.length && this.duckAmount === 1) { clearInterval(this.duckTimer); this.duckTimer = null; }
+    };
+    this.duckTimer = setInterval(step, 16);
+    return cancel;
   }
 
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
     this.generation++;
-    clearTimeout(this.duckTimer); this.duckTimer = null;
+    clearInterval(this.duckTimer); this.duckTimer = null; this.duckRequests = [];
     this.audio.pause();
     this.audio.removeEventListener('ended', this._ended);
     this.audio.removeEventListener('error', this._error);

@@ -21,6 +21,7 @@ export class SkateTricks {
     this.pendingManual = null;
     this.pendingAirFlip = null;
     this.pendingAirGrab = null;
+    this.airGrabEntries = new Map();
     this.airTrickQueue = [];
     this.buttonBuffer = [];
     this.variantTaps = {};
@@ -64,6 +65,9 @@ export class SkateTricks {
 
   resolve(input, context) {
     if (context.bailing) { this.cancelCombo(); return {}; }
+    // One scoring opportunity per grab family per flight, even after release
+    // or an intervening flip. A real landing/rail/wall starts the next segment.
+    if(context.grounded||context.grinding||context.wallRiding)this.airGrabEntries.clear();
     const events = {};
     const direction = directionKey(input.steer, input.drive);
     if (context.grounded && this.wasAirborne) this.variantTaps = {};
@@ -209,6 +213,20 @@ export class SkateTricks {
     this.recalculateCombo();
     this.lastLabel = name;
     this.settleTimer = 0;
+    return entry;
+  }
+
+  recordAirGrab(name, points, options = {}) {
+    const family = Object.entries(DOUBLE_GRAB_TRICKS).find(([,variant])=>variant.name===name)?.[0] || name;
+    const previous=this.airGrabEntries.get(family);
+    if(previous&&this.combo.includes(previous)){
+      // A deliberate double tap upgrades the existing trick instead of adding
+      // a second multiplier. Further taps cannot downgrade/reaward it.
+      if(points>previous.basePoints)this.upgrade(previous,name,points);
+      return previous;
+    }
+    const entry=this.record(name,points,options);
+    if(entry)this.airGrabEntries.set(family,entry);
     return entry;
   }
 

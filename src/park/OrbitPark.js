@@ -6,6 +6,7 @@ import { batchWarehouseVisuals } from './WarehouseVariants.js';
 import { warehouseObjectName } from './ImportedWarehouseCollision.js';
 import { buildParkRouteMetadata } from './ParkRegistry.js';
 import { createOrbitVisualPass } from '../graphics/OrbitVisualPass.js';
+import { applyOrbitFloorFinish } from '../graphics/OrbitSurfaceMaterials.js';
 import { shippingSurfaceTag } from '../game/SurfaceAudio.js';
 
 const authoredName = warehouseObjectName;
@@ -57,8 +58,7 @@ function prepareOrbitMaterials(object) {
       material.roughnessMap = null;
       material.metalnessMap = null;
       material.color.set('#52677b');
-      material.roughness = .48;
-      material.metalness = .12;
+      applyOrbitFloorFinish(material);
     }
     // Preserve neon color and shape without saturating the ramps around it.
     if (/^(LED|Grind) \/ /.test(material.name)) {
@@ -106,7 +106,10 @@ export function splitOrbitScene(scene, sourceRails = []) {
       prepareOrbitMaterials(object);
       visuals.push(object);
     } else if (/^COL_/.test(name)) proxies.push(object);
-    else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ expansion joint/.test(name)) helpers.push(object);
+    // The deck's two decorative seam directions form one grid. Keeping only
+    // its short counterparts left hundreds of disconnected black bars above
+    // the polished floor. Ramp panel joins and utility grilles stay visible.
+    else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ (?:expansion|short) joint/.test(name)) helpers.push(object);
     else if (object.visible) {
       prepareOrbitMaterials(object);
       visuals.push(object);

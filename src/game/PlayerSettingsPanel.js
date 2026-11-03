@@ -6,6 +6,7 @@ const escape = value => String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'
 const options = [
   ['uiScale','Text size','Scale supporting text and controls, including tutorial instructions.'],
   ['highContrast','High-contrast HUD','Solid backing and plain numerals for speed, score and timer.'],
+  ['renderScale','Render scale','Native (100%) preserves sharpness; lowering saves GPU work.'],
   ['cameraDistance','Camera distance','Closer framing or a wider view of the next obstacle.'],
   ['cameraFov','Field of view','Base camera lens; a larger angle shows more of the park.'],
   ['speedFov','Speed zoom','Amount the view opens up at speed. Zero keeps the lens steady.'],
@@ -23,9 +24,10 @@ export function renderPlayerSettings(preferences=readPlayerPreferences(),input,m
   const bindings=input?.bindings;
   return `<article class="player-settings" aria-label="Player settings">
     <header><span class="session-eyebrow">YOUR SETUP / SAVED AUTOMATICALLY</span><h2>Make it yours.</h2><p>Adjust the view and feel. Menu navigation always keeps its familiar controls.</p></header>
-    <section aria-labelledby="settings-view"><h3 id="settings-view">View & readability</h3>${options.map(([key,label,detail])=>preferenceRow(key,label,detail,preferences[key])).join('')}</section>
+    <nav class="settings-section-links" aria-label="Settings sections"><button data-menu data-action="settingsSection" data-section="settings-view">Accessibility</button><button data-menu data-action="settingsSection" data-section="settings-camera">Camera</button><button data-menu data-action="settingsSection" data-section="settings-graphics">Graphics</button><button data-menu data-action="settingsSection" data-section="settings-audio">Sound</button><button data-menu data-action="settingsSection" data-section="settings-controls">Controls</button></nav>
+    ${[['settings-view','Accessibility',['uiScale','highContrast','liquid']],['settings-camera','Camera',['cameraDistance','cameraFov','speedFov']],['settings-graphics','Graphics',['renderScale','performance']]].map(([id,title,keys])=>`<section aria-labelledby="${id}"><h3 id="${id}">${title}</h3>${options.filter(([key])=>keys.includes(key)).map(([key,label,detail])=>preferenceRow(key,label,detail,preferences[key])).join('')}</section>`).join('')}
     <section aria-labelledby="settings-audio"><h3 id="settings-audio">Sound</h3>
-      ${['music','effects','announcer'].map((key,index)=>preferenceRow(key,['Music','Skating effects','Countdown & session cues'][index],['Soundtrack volume.','Wheels, tricks, landings and impacts.','Ready, start and time warnings.'][index],readAudioVolume(key))).join('')}
+      ${['music','effects','announcer','crowd','voice'].map((key,index)=>preferenceRow(key,['Music','Skating effects','Countdown & session cues','Crowd reactions','Character voice'][index],['Soundtrack volume.','Wheels, tricks, landings and impacts.','Ready, start and time warnings.','Applause for accepted landed lines.','Effort and contact reactions.'][index],readAudioVolume(key))).join('')}
       ${preferenceRow('backgroundAudio','Music in background','Keep the soundtrack playing when you switch tabs. Skating pauses.',readBackgroundAudio())}</section>
     <section aria-labelledby="settings-controls"><h3 id="settings-controls">Controls</h3><p class="settings-note">Select a binding, then press the new key or button. Conflicts offer a swap. Escape cancels. Left stick moves; right stick looks. Directions combine with trick buttons. Hold both spin buttons + Up / Down for practice markers.</p>
       <div class="binding-head"><span>Action</span><span>Keyboard</span><button data-menu data-action="bindingLabels" aria-label="Change controller label style">${mode==='playstation'?'PLAYSTATION':'XBOX'} LABELS</button></div>
@@ -63,9 +65,14 @@ export class PlayerSettingsPanel {
   get capturing(){return !!this.capture;}
   status(message){const el=this.root.querySelector('[data-settings-status]');if(el)el.textContent=message;}
   handleAction(action,button) {
+    if(action==='settingsSection'){
+      const section=this.root.querySelector('#'+button.dataset.section)?.closest('section');
+      const first=section?.querySelector('[data-menu]');first?.focus({preventScroll:true});
+      section?.scrollIntoView({block:'start',behavior:'instant'});return true;
+    }
     const setting=button?.dataset?.setting;
     if(action==='preferenceStep'||action==='preferenceToggle'){
-      const audio=['music','effects','announcer'].includes(setting);
+      const audio=['music','effects','announcer','crowd','voice'].includes(setting);
       if(audio){const value=saveAudioVolume(setting,readAudioVolume(setting)+Number(button.dataset.delta)*.1);this.onChange({[`${setting}Volume`]:value});this.updateValue(setting,value);}
       else if(setting==='backgroundAudio'){const value=saveBackgroundAudio(!readBackgroundAudio());this.onChange({backgroundAudio:value});this.updateValue(setting,value);}
       else if(Object.hasOwn(this.preferences,setting)){
@@ -104,7 +111,7 @@ export class PlayerSettingsPanel {
     if(!this.input)return;
     this.capture={id,device,button};this.conflict=null;this.previousPad=[];this.armed=false;
     const dialog=this.root.querySelector('.binding-capture');dialog.hidden=false;
-    this.root.querySelectorAll('.player-settings>header,.player-settings>section,.player-settings>footer').forEach(node=>{node.inert=true;});
+    this.root.querySelectorAll('.player-settings>header,.player-settings>nav,.player-settings>section,.player-settings>footer').forEach(node=>{node.inert=true;});
     dialog.querySelector('[data-capture-label]').textContent=`${CONTROL_ACTIONS.find(a=>a.id===id).label} · ${device}`;
     dialog.querySelector('[data-capture-status]').textContent=device==='keyboard'?'Press one key. Escape cancels.':'Release all controller buttons, then press one button. Escape cancels.';
     dialog.querySelector('[data-action="swapBinding"]').hidden=true;
@@ -136,7 +143,7 @@ export class PlayerSettingsPanel {
   endCapture(message){
     const button=this.capture?.button;this.capture=null;this.conflict=null;
     const dialog=this.root.querySelector('.binding-capture');if(dialog)dialog.hidden=true;
-    this.root.querySelectorAll('.player-settings>header,.player-settings>section,.player-settings>footer').forEach(node=>{node.inert=false;});
+    this.root.querySelectorAll('.player-settings>header,.player-settings>nav,.player-settings>section,.player-settings>footer').forEach(node=>{node.inert=false;});
     this.input?.clear();button?.focus();if(message)this.status(message);
   }
   dispose(){this.events.abort();this.endCapture();}

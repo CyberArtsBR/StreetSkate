@@ -1,4 +1,4 @@
-export const AUDIO_DEFAULTS = Object.freeze({ music: 0.5, effects: 0.35, announcer: 0.45 });
+export const AUDIO_DEFAULTS = Object.freeze({ music: 0.5, effects: 0.35, announcer: 0.45, crowd: 0.3, voice: 0.45 });
 
 export function clampVolume(value, fallback = 0) {
   const number = Number(value);
