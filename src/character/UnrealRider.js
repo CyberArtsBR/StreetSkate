@@ -592,7 +592,7 @@ export class UnrealRider {
           // TuxR's unusually compact pelvis pivot reaches the deck on a full
           // squat even with rig-relative calibration. Raise just this rider's
           // pelvis, without modifying foot anchors, proportions or board scale.
-          Math.max(this.url?.endsWith('/TuxR.glb') ? .355 : .19,
+          Math.max(this.url?.endsWith('/TuxR.glb') && !inAir ? .355 : .19,
             this.poseCalibration.pelvisClearance));
       }
     }
