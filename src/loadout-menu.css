@@ -130,3 +130,56 @@
 }
 
 #game-shell.loadout-screen [data-location='skate-paradise'] .location-art{background:linear-gradient(0deg,#25252666,#15151900),url('/assets/menu/skate-paradise.webp') center/cover}
+
+/* Give the whole crew one readable row, including an optional uploaded rider. */
+#game-shell.loadout-screen .loadout-roster.loadout-roster-band{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;
+  flex:0 0 auto;
+}
+#game-shell.loadout-screen .loadout-roster-band .loadout-character{
+  min-height:80px;
+  grid-template-columns:48px minmax(0,1fr);
+  padding:7px!important;
+  text-align:left;
+}
+#game-shell.loadout-screen .loadout-roster-band .loadout-character.is-chosen{
+  border-color:var(--rider-accent)!important;
+  box-shadow:inset 3px 0 var(--rider-accent)!important;
+}
+#game-shell.loadout-screen .loadout-roster-band .loadout-character strong,
+#game-shell.loadout-screen .loadout-roster-band .loadout-character small{
+  overflow:visible;
+  overflow-wrap:normal;
+}
+#game-shell.loadout-screen .loadout-roster-band .loadout-character .rider-portrait{
+  width:48px;
+  height:58px;
+}
+@media(min-width:1000px) and (min-height:650px){
+  #game-shell.loadout-screen .loadout-shell:has(.loadout-roster-band){
+    grid-template-rows:auto auto minmax(0,1fr) auto auto;
+  }
+  #game-shell.loadout-screen .loadout-roster-band ~ .loadout-panels .selected-rider{
+    min-height:130px;
+  }
+}
+@media(max-width:999px){
+  #game-shell.loadout-screen .loadout-roster.loadout-roster-band{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media(max-width:620px){
+  #game-shell.loadout-screen .loadout-roster.loadout-roster-band{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:380px){
+  #game-shell.loadout-screen .loadout-roster-band .loadout-character{
+    grid-template-columns:34px minmax(0,1fr);
+    padding:5px!important;
+  }
+  #game-shell.loadout-screen .loadout-roster-band .loadout-character .rider-portrait{
+    width:34px;
+  }
+}

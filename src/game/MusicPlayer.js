@@ -134,26 +134,33 @@ export class MusicPlayer {
     this._visibility();
   }
 
-  duck(durationMs = 550, amount = .6) {
+  duck(durationMs = 550, amount = .6, releaseMs = 120) {
     if (this.disposed) return;
-    const now = Date.now(), hold = Math.max(80, Math.min(3200, Number(durationMs) || 550));
+    const now = Date.now(), hold = Math.max(80, Math.min(4500, Number(durationMs) || 550));
     const depth = Math.max(.25, Math.min(1, Number(amount) || .6));
-    // Stronger overlapping reactions retain priority until their own hold expires.
-    (this.duckRequests ||= []).push({ until: now + hold, amount: depth });
-    if (this.duckTimer) return;
+    const release = Math.max(40, Math.min(500, Number(releaseMs) || 120));
+    // Each reaction owns its hold and release. A shorter cue cannot truncate
+    // applause, and a long crowd return cannot prolong a short contact voice.
+    const request = { until: now + hold, amount: depth, release };
+    (this.duckRequests ||= []).push(request);
+    const cancel = () => { request.until = Math.min(request.until, Date.now()); request.release = Math.min(request.release, 80); };
+    if (this.duckTimer) return cancel;
     let previous = now;
     const step = () => {
       if (this.disposed) return;
       const time = Date.now(), dt = Math.min(100, Math.max(1, time - previous)); previous = time;
-      this.duckRequests = this.duckRequests.filter(request => request.until > time);
-      const target = Math.min(1, ...this.duckRequests.map(request => request.amount));
-      const tau = target < this.duckAmount ? 25 : 120;
-      this.duckAmount += (target - this.duckAmount) * (1 - Math.exp(-dt / tau));
+      const level = request => 1 - (1 - request.amount) * Math.exp(-Math.max(0, time - request.until) / request.release);
+      this.duckRequests = this.duckRequests.filter(request => 1 - level(request) >= .002);
+      const target = Math.min(1, ...this.duckRequests.map(level));
+      this.duckAmount = target < this.duckAmount
+        ? this.duckAmount + (target - this.duckAmount) * (1 - Math.exp(-dt / 25))
+        : target;
       if (Math.abs(target - this.duckAmount) < .002) this.duckAmount = target;
       this.audio.volume = this.musicVolume * this.duckAmount;
       if (!this.duckRequests.length && this.duckAmount === 1) { clearInterval(this.duckTimer); this.duckTimer = null; }
     };
     this.duckTimer = setInterval(step, 16);
+    return cancel;
   }
 
   dispose() {

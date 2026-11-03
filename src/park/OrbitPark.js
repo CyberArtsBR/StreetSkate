@@ -106,7 +106,10 @@ export function splitOrbitScene(scene, sourceRails = []) {
       prepareOrbitMaterials(object);
       visuals.push(object);
     } else if (/^COL_/.test(name)) proxies.push(object);
-    else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ expansion joint/.test(name)) helpers.push(object);
+    // The deck's two decorative seam directions form one grid. Keeping only
+    // its short counterparts left hundreds of disconnected black bars above
+    // the polished floor. Ramp panel joins and utility grilles stay visible.
+    else if (/collision.bar|^07 \/ reused \/.*Street double-bank funbox|^Deck \/ (?:expansion|short) joint/.test(name)) helpers.push(object);
     else if (object.visible) {
       prepareOrbitMaterials(object);
       visuals.push(object);

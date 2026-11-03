@@ -20,7 +20,7 @@ try {
     await page.screenshot({ path: `${output}/before-${viewport.width}.png` });
     await page.evaluate(() => { window.__loadoutHeadings = [...document.querySelectorAll('.loadout-heading .graffiti-lettering')]; });
 
-    for (const [action, index] of [['hero', 1], ['board', 5], ['location', 1]]) {
+    for (const [action, index] of [['hero', 2], ['board', 5], ['location', 1]]) {
       const button = page.locator(`[data-action="${action}"][data-index="${index}"]`);
       await button.scrollIntoViewIfNeeded();
       const before = await page.locator('.shell-content').evaluate(el => el.scrollTop);
@@ -52,14 +52,14 @@ try {
 
     // A late portrait request must not replace a newer choice during rapid input.
     await page.evaluate(() => {
-      for (const index of [0, 2, 3]) document.querySelector(`[data-action="hero"][data-index="${index}"]`).click();
+      for (const index of [0, 3, 4]) document.querySelector(`[data-action="hero"][data-index="${index}"]`).click();
     });
     await page.waitForFunction(() => {
       const portrait = document.querySelector('.selected-rider [data-portrait-url]');
       return portrait.dataset.previewState === 'ready' && portrait.querySelector('img')?.src.includes('TuxR.png');
     }, null, { timeout: 30000 });
     assert.equal(await page.locator('.selected-rider-copy strong').textContent(), 'Tuxr');
-    await page.locator('[data-action="hero"][data-index="1"]').click();
+    await page.locator('[data-action="hero"][data-index="2"]').click();
     if (viewport.width === 1280) {
       await page.locator('[data-action="confirmLoadout"]').click();
       await page.locator('body[data-screen="playing"]').waitFor({ timeout: 120000 });

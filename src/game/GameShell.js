@@ -32,6 +32,8 @@ const number = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value
 const points = value => Math.round(number(value)).toLocaleString();
 const seconds = value => `${number(value).toFixed(1)} s`;
 const meters = value => number(value)>=1000 ? `${(number(value)/1000).toFixed(2)} km` : `${Math.round(number(value))} m`;
+// Hidden binding dialogs and inert background controls cannot accept focus.
+const availableMenuTarget = node => !node.disabled && !node.hidden && !node.closest?.('[hidden], [inert]');
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
@@ -139,7 +141,7 @@ export class GameShell {
     }
     this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();
   }
-  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled&&!b.closest?.('[hidden]'));}
+  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(availableMenuTarget);}
   focusSelection(reveal=true){
     const buttons=this.menuButtons();
     if(!buttons.length){this.selection=0;return;}
@@ -223,6 +225,8 @@ export class GameShell {
     </div>`;
   }
   render(){
+    // Bindings may have changed in Settings since the guide was first created.
+    if(this.phase==='tutorial')this.pages=[this.pages[0],...tutorialPages(this.actions.input?.bindings)];
     this.settingsPanel?.dispose();this.settingsPanel=null;
     this.flipPlayer?.dispose();this.flipPlayer=null;
     // Keep the music panel alive while replacing menu contents; selection
@@ -252,12 +256,13 @@ export class GameShell {
         <span class="location-art" aria-hidden="true"><span class="map-number">MAP ${String(spot.number).padStart(2,'0')}</span><span class="location-stamp">${spot.id==='skate-paradise'?'SUNSET / SKATEPARK':spot.id==='rooftop'?'STEEL / FREIGHT':spot.id === 'grand-warehouse' ? 'ARTIST BUILD' : 'AFTER HOURS'}</span></span><strong>${safe(spot.name)}</strong><small>${safe(spot.subtitle)}</small></button>`).join('');
       body=`<div class="loadout-shell"><header><small>CHIMP HAWK / THE SESSION LAB <span class="session-mode">${this.pendingMode==='practice'?'FREE SKATE':'90 SECOND RUN'}</span></small><h2>${graffitiLettering('BUILD YOUR LINE')}</h2>
         <p>PICK YOUR RIDER. PAINT YOUR DECK. OWN YOUR SPOT.</p><p class="session-rule">${this.pendingMode==='practice'?'Unlimited practice. Save a marker, retry your line, and work through drills at your own pace.':'90 seconds. Your last attempt gets up to 6 extra seconds to land. Bail or time limit loses pending points.'}</p><div class="music-menu-slot"></div></header>
+        <div class="loadout-roster loadout-roster-band" role="group" aria-label="Choose your rider">${cards}</div>
         <div class="loadout-panels">
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
         <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}"><span class="rider-stage-number" aria-hidden="true">${String(this.heroIndex+1).padStart(2,'0')}</span>
           <span class="rider-portrait" data-portrait-url="${safe(this.heroes[this.heroIndex].url)}" data-preview-state="loading"><span class="preview-status">Loading preview…</span></span>
           <div class="selected-rider-copy"><span>${this.heroConfirmed?'YOUR RIDER':'MEET THE CREW'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong><small>${safe(this.heroes[this.heroIndex].subtitle)}</small></div>
-        </div><div class="loadout-roster">${cards}</div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
+        </div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
         <section class="loadout-section deck-panel" aria-label="Choose your skateboard"><div class="loadout-heading"><span class="section-number">02</span><h3>${graffitiLettering('DECK','gold')}</h3><span class="panel-kicker">GRADIENT GLOW</span></div>
         <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
         <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">THREE PARKS. YOUR LINE.</span></div>
@@ -311,7 +316,7 @@ export class GameShell {
       const page=this.pages[this.page];
       const returnLabel=this.tutorialReturn==='select'?'BACK TO LOADOUT':this.tutorialReturn==='playing'?'RESUME SESSION':this.tutorialReturn==='pause'?'BACK TO PAUSE':this.tutorialReturn==='options'?'BACK TO OPTIONS':this.tutorialReturn==='graphics'?'BACK TO GRAPHICS':this.tutorialReturn==='results'?'BACK TO RESULTS':'BACK TO MENU';
       const navigation=`<footer>${this.button('← PREVIOUS','previous')}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?returnLabel:'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
-      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
+      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Default keyboard and Xbox controls overview. Next opens readable tables using your saved controls.">${navigation.replace('DETAILS / NEXT →','YOUR CONTROLS / NEXT →')}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
@@ -336,7 +341,7 @@ export class GameShell {
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
     else if(['pause','options','graphics','settings','creator'].includes(this.phase))this.loadPortraits();
-    if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode);
+    if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode,this.actions.input?.bindings);
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
       const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
@@ -654,7 +659,7 @@ export class GameShell {
     if(event.code==='Tab'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
       // Include native disclosures as well as actions; their Enter/Space behavior
       // stays native so rendering details remain keyboard-accessible.
-      const buttons=this.content?[...this.content.querySelectorAll('button[data-menu]:not(:disabled),summary')]:this.menuButtons();
+      const buttons=this.content?[...this.content.querySelectorAll('button[data-menu]:not(:disabled),summary')].filter(availableMenuTarget):this.menuButtons();
       if(!buttons.length)return;
       event.preventDefault();event.stopImmediatePropagation();
       const current=buttons.indexOf(document.activeElement);

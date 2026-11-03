@@ -79,8 +79,8 @@ test('active skate bank uses real skateboard takes and excludes rejected cheer a
 });
 
 test('location ambience reuses a bounded loop, returns after an unknown park and pauses with effects',()=>{
-  const audio=new SkateAudio(),parameter=()=>({setTargetAtTime(){}});let created=0;
-  audio.context={currentTime:1,createBufferSource(){created++;return{connect(){},start(){},stop(){},disconnect(){},playbackRate:parameter()};}};
+  const audio=new SkateAudio(),parameter=()=>({setTargetAtTime(){},setValueAtTime(){},linearRampToValueAtTime(){}});let created=0;
+  audio.context={currentTime:1,createGain:()=>({gain:parameter(),connect(){},disconnect(){}}),createBufferSource(){created++;return{connect(){},start(){},stop(){},disconnect(){},playbackRate:parameter()};}};
   audio.ambience={gain:{gain:parameter()},filter:{frequency:parameter()},source:{stop(){},disconnect(){}}};
   audio.banks.ambienceWarehouse=[{duration:12}];audio.banks.ambienceParadise=[{duration:16}];
   audio.setLocation('grand-warehouse');assert.equal(created,1);assert.equal(audio.ambience.recorded,true);
