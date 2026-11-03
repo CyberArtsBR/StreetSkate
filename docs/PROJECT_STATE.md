@@ -2,7 +2,9 @@
 
 Updated 2026-11-03. **The Hollow local polish is ready:** fifth rider first in the roster, preserved source rig, calibrated palm reach on the existing crew, smoother grab gather, recording-length music ducks and first-bail/respawn shader preparation. Base: `66fcd65`. Branch: `codex/hollow-grip-mix-20261103`. [Current report and evidence](hollow-grip-mix-status-2026-11-03.md).
 
-Local game: http://127.0.0.1:5185/ . Current soundtrack/reaction A/B: http://127.0.0.1:5187/mix-v3/ . Refresh the game tab to load the updated bundle. No merge, push, deployment or Portals synchronization in this cycle. [Previous cycle 2 milestone](evolution-cycle2-status.md) remains recorded at `66fcd65`.
+Release follow-up: the owner authorized main deployment and a Portals branch update. Main runtime `401ee4b` is live on Render; the served JS bytes and original Hollow GLB match the verified local build. Main's full suite passes 1,078 tests plus board/vert/pump checks. The Portals integration preserves online/identity/host adapters and TuxR's ground clearance while allowing the calibrated airborne grabs; its full suite passes 1,083 tests and the relative-base build passes. The release browser gate now checks the five stock riders plus an uploaded sixth, visible clipped card bounds, and actual deformed torso clearance instead of a common pelvis-pivot height. Platform synchronization remains manual.
+
+Live game: https://streetskate.onrender.com/ . Local game: http://127.0.0.1:5185/ . Current soundtrack/reaction A/B: http://127.0.0.1:5187/mix-v3/ . Refresh to load the latest bundle. No Portals platform synchronization was performed. [Previous cycle 2 milestone](evolution-cycle2-status.md) remains recorded at `66fcd65`.
 
 ## Previous milestone — cycle 1
 
