@@ -110,6 +110,7 @@ export class GraphicsPipeline {
     this.bloomEnvironmentEmissives = [];
     this.bloomSceneChildCount = -1;
     this.bloomGlowMeshCount = -1;
+    this.bloomGlowChildren = null;
     this.bloomCacheAge = 0;
     this.shadowAnchor = null;
     this.shadowWorldPosition = new THREE.Vector3();
@@ -178,6 +179,7 @@ export class GraphicsPipeline {
   setGlowTarget(root) {
     this.glowRoot = root;
     this.bloomSceneMeshes = null;
+    this.bloomGlowChildren = null;
   }
 
   setEffectsTarget(root) {
@@ -214,6 +216,7 @@ export class GraphicsPipeline {
     this.bloomSceneMeshes = meshes;
     this.bloomEnvironmentEmissives = environmentEmissives;
     this.bloomSceneChildCount = this.scene.children?.length ?? 0;
+    this.bloomGlowChildren = (this.glowRoot?.children || []).slice();
     this.bloomCacheAge = 0;
   }
 
@@ -267,9 +270,19 @@ export class GraphicsPipeline {
       if(materials.some(material=>material?.emissive?.getHex?.()>0 && material.emissiveIntensity>0))allowed.add(object);
     });
     const childCount = this.scene.children?.length ?? 0;
+    // A rider swap replaces a child of the stable visual group, often with
+    // exactly the same mesh/emissive counts. Compare its few direct children
+    // so the new costume is masked on its first frame and disposed meshes are
+    // dropped immediately. Static scenery still avoids a full scene walk.
+    const glowChildren = this.glowRoot.children || [];
+    const previousChildren = this.bloomGlowChildren;
+    let actorChanged = !previousChildren || glowChildren.length !== previousChildren.length;
+    if (!actorChanged) for (let i = 0; i < glowChildren.length; i++) {
+      if (glowChildren[i] !== previousChildren[i]) { actorChanged = true; break; }
+    }
     // Recheck occasionally for procedural objects, immediately for rider swaps
     // and top-level scene changes; ordinary frames avoid two full traversals.
-    if (!this.bloomSceneMeshes || this.bloomCacheAge >= 120 ||
+    if (!this.bloomSceneMeshes || actorChanged || this.bloomCacheAge >= 120 ||
         this.bloomSceneChildCount !== childCount || this.bloomGlowMeshCount !== allowed.size) {
       this.refreshBloomSceneCache();
       this.bloomGlowMeshCount = allowed.size;

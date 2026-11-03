@@ -276,7 +276,7 @@ const gameShell = new GameShell({
   stopHighlights: () => { highlightPlayback.stop(); skateAudio.silence(); skateEffects.reset(skater); sceneNeedsRender = true; },
   replayStatus: () => highlightStatus,
   countdownWarning: seconds => skateAudio.countdownCue(seconds),
-  sound: enabled => { if (skateAudio.enabled !== enabled) skateAudio.toggle(); },
+  sound: enabled => setSkateSound(enabled),
   deck: index => skater?.board?.setFinish(index),
   effectsVolume: value => skateAudio.setEffectsVolume(value),
   cancelLoadout: () => { loadoutRequest++; skater?.cancelRiderSwap?.(); },
@@ -321,7 +321,19 @@ function observeRunScoring(controller) {
     return result;
   };
 }
-gameShell.sound = skateAudio.enabled;
+setSkateSound(skateAudio.enabled);
+
+// Both menu and toolbar controls represent the same persisted audio state.
+function setSkateSound(enabled) {
+  if (skateAudio.enabled !== Boolean(enabled)) skateAudio.toggle();
+  gameShell.sound = skateAudio.enabled;
+  const button = document.querySelector('#sound-toggle');
+  if (button) {
+    button.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
+    button.setAttribute('aria-pressed', String(skateAudio.enabled));
+  }
+  return skateAudio.enabled;
+}
 skateAudio.setEffectsVolume(gameShell.effectsVolume);
 skateEffects.setLiquidEnabled(playerPreferences.liquid);
 applyGraphicsPreset(graphicsPreset);
@@ -472,11 +484,9 @@ function toggleCameraMode() {
 function goToSpot(id) {
   const spot = manifest?.spots?.find(item => item.id === id);
   if (!loaded || !spot || !skater) return;
-  const score = skater.score;
   skater.spawn.set(...spot.position);
   skater.spawnHeading = spot.heading || 0;
-  skater.reset(skater.spawn, spot.heading || 0);
-  skater.score = score;
+  skater.resetRider(skater.spawn, spot.heading || 0);
   setMode('skate');
   followCamera.snap(skater);
   document.querySelectorAll('[data-spot]').forEach(button => {
@@ -794,9 +804,8 @@ async function loadGame() {
       finishes.append(button);
     });
     const soundButton = document.querySelector('#sound-toggle');
-    soundButton.textContent = skateAudio.enabled ? 'SOUND ON' : 'SOUND OFF';
-    soundButton.setAttribute('aria-pressed', String(skateAudio.enabled));
-    soundButton.onclick = () => { const enabled = skateAudio.toggle(); soundButton.textContent = enabled ? 'SOUND ON' : 'SOUND OFF'; soundButton.setAttribute('aria-pressed', String(enabled)); soundButton.blur(); };
+    setSkateSound(skateAudio.enabled);
+    soundButton.onclick = () => { setSkateSound(!skateAudio.enabled); soundButton.blur(); };
     document.querySelector('#loading').classList.add('done');
     loaded = true;
     setMode('skate');
@@ -865,7 +874,7 @@ document.querySelectorAll('button[data-view]').forEach((button) => button.addEve
   setExploreView(button.dataset.view);
 }));
 document.querySelector('#reset').onclick = () => {
-  if (mode === 'skate') { skater?.reset(); followCamera?.snap(skater); input.clear(); setPaused(false); }
+  if (mode === 'skate') { skater?.resetRider(); followCamera?.snap(skater); input.clear(); setPaused(false); }
   else setExploreView('overview');
 };
 document.querySelector('#topview').onclick = () => {
@@ -961,9 +970,10 @@ renderer.setAnimationLoop(() => {
         }
         if (state.practiceReturn) {
           if (practiceMarker?.location === currentWorld.id) {
-            const score = skater.score;
-            skater.reset(practiceMarker.position.clone(), practiceMarker.heading);
-            skater.score = score; skater.stance = practiceMarker.stance;
+            skater.resetRider(practiceMarker.position.clone(), practiceMarker.heading);
+            skater.stance = practiceMarker.stance;
+            skater.airTakeoffStance = practiceMarker.stance;
+            skater.syncCanonicalState?.();
             practiceDrills.retry();
             followCamera.snap(skater);
             skater.feedback = 'RETURNED TO MARKER';

@@ -99,21 +99,25 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       new UnrealRider(gameAssetUrl('/assets/rider/TheanchoURi.glb')).load(),
     ]);
     this.visual.add(this.board.root, this.rider.root);
+    this.captureRiderFlashMaterials();
+    this.rider.deckHeight = this.board.deckHeight;
+    this.setBoardContactRig(this.board.contactRig);
+    this.balanceHud = ensureBalanceHud();
+    this.update(0, {}, 0);
+    return this;
+  }
+
+  captureRiderFlashMaterials() {
     this.flashMaterials = [];
-    // Respawn ghosting belongs to the rider, NEVER the skateboard. Flashing
-    // all visual materials made the deck translucent while riding near ramps.
-    this.rider.root.traverse(mesh => {
+    // Character changes must retain the same rider-only respawn effect as boot.
+    // Traversing visual here would also make the skateboard translucent.
+    this.rider?.root.traverse(mesh => {
       if (!mesh.isMesh) return;
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material])
         if (material && !this.flashMaterials.some(item => item.material === material))
           this.flashMaterials.push({ material,
             opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
     });
-    this.rider.deckHeight = this.board.deckHeight;
-    this.setBoardContactRig(this.board.contactRig);
-    this.balanceHud = ensureBalanceHud();
-    this.update(0, {}, 0);
-    return this;
   }
 
   /** Invalidate an in-flight GLB load without changing the active character. */
@@ -151,13 +155,7 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
     this.visual.add(candidate.root);
     this.rider = candidate;
     previous?.dispose();
-    this.flashMaterials = [];
-    this.visual.traverse(mesh => {
-      if(!mesh.isMesh)return;
-      for(const material of Array.isArray(mesh.material)?mesh.material:[mesh.material])
-        if(material && !this.flashMaterials.some(item=>item.material===material))
-          this.flashMaterials.push({material,opacity:material.opacity,transparent:material.transparent,depthWrite:material.depthWrite});
-    });
+    this.captureRiderFlashMaterials();
     this.resetPresentationAfterSwap();
     return this.rider;
   }

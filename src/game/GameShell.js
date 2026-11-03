@@ -32,6 +32,8 @@ const number = value => Number.isFinite(Number(value)) ? Math.max(0,Number(value
 const points = value => Math.round(number(value)).toLocaleString();
 const seconds = value => `${number(value).toFixed(1)} s`;
 const meters = value => number(value)>=1000 ? `${(number(value)/1000).toFixed(2)} km` : `${Math.round(number(value))} m`;
+// Hidden binding dialogs and inert background controls cannot accept focus.
+const availableMenuTarget = node => !node.disabled && !node.hidden && !node.closest?.('[hidden], [inert]');
 export class GameShell {
   constructor(actions) {
     this.actions=actions;this.phase='title';this.ready=false;this.practice=false;this.remaining=90;
@@ -139,7 +141,7 @@ export class GameShell {
     }
     this.phase=phase;this.selection=0;this.navRepeat=.2;this.render();
   }
-  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(b=>!b.disabled&&!b.closest?.('[hidden]'));}
+  menuButtons(){return [...this.content.querySelectorAll('button[data-menu]')].filter(availableMenuTarget);}
   focusSelection(reveal=true){
     const buttons=this.menuButtons();
     if(!buttons.length){this.selection=0;return;}
@@ -223,6 +225,8 @@ export class GameShell {
     </div>`;
   }
   render(){
+    // Bindings may have changed in Settings since the guide was first created.
+    if(this.phase==='tutorial')this.pages=[this.pages[0],...tutorialPages(this.actions.input?.bindings)];
     this.settingsPanel?.dispose();this.settingsPanel=null;
     this.flipPlayer?.dispose();this.flipPlayer=null;
     // Keep the music panel alive while replacing menu contents; selection
@@ -311,7 +315,7 @@ export class GameShell {
       const page=this.pages[this.page];
       const returnLabel=this.tutorialReturn==='select'?'BACK TO LOADOUT':this.tutorialReturn==='playing'?'RESUME SESSION':this.tutorialReturn==='pause'?'BACK TO PAUSE':this.tutorialReturn==='options'?'BACK TO OPTIONS':this.tutorialReturn==='graphics'?'BACK TO GRAPHICS':this.tutorialReturn==='results'?'BACK TO RESULTS':'BACK TO MENU';
       const navigation=`<footer>${this.button('← PREVIOUS','previous')}${this.button('SKIP TUTORIAL','skipTutorial')}<span>LB / RB · B / ESC BACK</span>${this.button(this.page===this.pages.length-1?returnLabel:'DETAILS / NEXT →',this.page===this.pages.length-1?'closeTutorial':'next')}</footer>`;
-      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Complete keyboard and Xbox trick guide. Next opens readable tables for each section.">${navigation}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
+      body=page.image?`<div class="tutorial-poster"><img src="${page.image}" alt="Default keyboard and Xbox controls overview. Next opens readable tables using your saved controls.">${navigation.replace('DETAILS / NEXT →','YOUR CONTROLS / NEXT →')}</div>`:`<div class="tutorial-frame"><header><small>CHIMP HAWK / TUTORIAL ${this.page+1} OF ${this.pages.length}</small><h2>${page.title}</h2><p>${page.subtitle}</p>${this.page===2?this.button('FLIP SCHOOL · WATCH VIDEO LESSONS','flipSchool'):''}</header><div class="tutorial-body">${page.html}</div>${navigation}</div>`;
     }
     this.content.innerHTML=['title','tutorial','select','timeup','results','highlights','flipSchool'].includes(this.phase)?body:this.renderMenuFrame(title,body);
     if(this.phase==='select')this.content.querySelector('.music-menu-slot')?.append(this.song);
@@ -336,7 +340,7 @@ export class GameShell {
     }
     if(this.phase==='select'){this.loadPortraits();this.loadBoardPreviews();}
     else if(['pause','options','graphics','settings','creator'].includes(this.phase))this.loadPortraits();
-    if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode);
+    if(this.phase==='flipSchool')this.flipPlayer=new FlipSchoolPlayer(this.content,this.flipLessonIndex,this.flipInputMode,this.actions.input?.bindings);
     if(this.phase==='tutorial')this.selection=this.menuButtons().length-1;
     if(this.focusHint){
       const index=this.menuButtons().findIndex(button=>button.dataset.action===this.focusHint.action
@@ -644,7 +648,7 @@ export class GameShell {
     if(event.code==='Tab'&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
       // Include native disclosures as well as actions; their Enter/Space behavior
       // stays native so rendering details remain keyboard-accessible.
-      const buttons=this.content?[...this.content.querySelectorAll('button[data-menu]:not(:disabled),summary')]:this.menuButtons();
+      const buttons=this.content?[...this.content.querySelectorAll('button[data-menu]:not(:disabled),summary')].filter(availableMenuTarget):this.menuButtons();
       if(!buttons.length)return;
       event.preventDefault();event.stopImmediatePropagation();
       const current=buttons.indexOf(document.activeElement);

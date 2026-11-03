@@ -91,7 +91,11 @@ export class SkateEffects {
   setLiquidEnabled(value) { this.bailLiquid.setEnabled(value); }
 
   setSize(height,pixelRatio=1) {
-    const pixels=Math.max(1,Number(height)||720)*clamp(Number(pixelRatio)||1,1,2.25);
+    // The shader sizes points in drawing-buffer pixels. Use the actual render
+    // ratio, including sub-native resolution and high-DPI native rendering,
+    // to keep their apparent CSS size independent of the graphics preset.
+    const h=Number(height),ratio=Number(pixelRatio);
+    const pixels=(Number.isFinite(h)&&h>0?h:720)*(Number.isFinite(ratio)&&ratio>0?ratio:1);
     this.dust.points.material.uniforms.viewportHeight.value=pixels;
     this.glints.points.material.uniforms.viewportHeight.value=pixels;
   }

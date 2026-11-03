@@ -1,5 +1,7 @@
 # StreetSkate
 
+Current technical profile, independent review findings, local candidate and verification: [Game Evolution project state](docs/PROJECT_STATE.md). Historical audits below describe their own release milestones.
+
 The local coping/presentation quality pass is documented in [docs/coping-quality-pass-2026-10-27.md](docs/coping-quality-pass-2026-10-27.md), including the confirmed cause, before/after captures and validation. Run `npm run test:browser` against a local preview with `STREETSKATE_URL` set to its URL; the smoke test covers the current three-map game.
 
 Playable Three.js street skateboarding prototype, using the reconstructed Insanity-inspired park, the user-supplied TheanchoURi character, and the skateboard from CyberArtsBR/Skate.
@@ -16,11 +18,11 @@ Simulation pauses when the page loses focus; Esc / Start resumes it. Explore mod
 
 PC browsers with keyboard/mouse or a standard gamepad are supported. Mobile/touch controls and phone layouts are not supported.
 
-The default **144 FPS** graphics profile follows the display refresh rate, enables lightweight glow, and caps internal rendering at 1920 × 1080 pixels (preserving aspect ratio). Turning glow off skips post-processing. Set your display to 144 Hz in the operating system; actual frame rate depends on the GPU and browser. Higher visual presets remain available in Options → Graphics. The simulation stays at a fixed 120 Hz across display refresh rates.
+The default **144 FPS** graphics profile follows the display refresh rate and enables lightweight glow, native-resolution rendering and 2× edge smoothing. Graphics includes a saved 60–125% render scale. Turning glow off skips post-processing in the two lean presets. Set your display to 144 Hz in the operating system; actual frame rate depends on the GPU and browser. Higher visual presets remain available in Options → Graphics. The simulation stays at a fixed 120 Hz across display refresh rates.
 
 ## Controls
 
-Open **Tutorial** on the title screen to start with Flip School: eight looping flip-trick demonstrations, synchronized Xbox/PlayStation/keyboard inputs, numbered button order, pause/replay, and 0.5× slow motion. The pause menu also provides a direct Flip School shortcut. Only the selected clip loads, and exiting the menu stops playback. Free Practice opens the normal unlimited session setup.
+Open **Tutorial** on the title screen to start with Flip School: twelve looping flip-trick demonstrations, synchronized Xbox/PlayStation/keyboard inputs, numbered button order, pause/replay, and 0.5× slow motion. The readable detail pages and controller overlay use your saved controls. The pause menu also provides a direct Flip School shortcut. Only the selected clip loads, and exiting the menu stops playback. Free Practice opens the normal unlimited session setup.
 
 In Free Practice, press **M** to save a grounded practice marker and **N** to return to it. On a controller, hold both shoulder buttons and press D-pad up to save or down to return. The marker restores position, facing, and stance; save a new marker after changing parks.
 
@@ -29,7 +31,7 @@ The pause menu also offers an optional **Input Display** showing your recent ska
 
 Options includes a controller stick dead zone setting (8%, 16%, or 24%) for skating and camera movement. Increase it if the sticks drift; menu navigation and trick-direction taps keep their separate thresholds.
 
-Graphics includes optional 2× edge smoothing for the 144 FPS preset with glow enabled. It can reduce frame rate; it is off by default and can be compared locally on your hardware.
+Graphics includes a toggle for 2× edge smoothing in the 144 FPS preset with glow enabled. It starts on and can be compared locally on your hardware. All six presets share default glow values of 1.50× world emissive, 1.09 bloom strength, 0.10 glow contribution and 0.11 radius; your adjustments remain saved per preset.
 
 | Action | Keyboard | Standard gamepad |
 | --- | --- | --- |
@@ -44,10 +46,10 @@ Graphics includes optional 2× edge smoothing for the 144 FPS preset with glow e
 | Exit vert after apex | Left Ctrl | LT / L2 |
 | Switch stance | Right Ctrl | RT / R2 |
 | Manual / nose manual | W then S / S then W | Forward then back / back then forward |
-| Fixed / Classic camera | C or toolbar camera button | Right-stick click (R3) |
-| Lookaround in Classic | Drag with left mouse button | Right stick |
+| Cycle Follow / Follow Close / Follow Low / Classic / Fixed | C or toolbar camera button | Right-stick click (R3) |
+| Lookaround in follow cameras | Drag with left mouse button | Right stick |
 | Pause | Esc | Start / Options |
-| Reset | R | — |
+| Respawn rider, retain banked score | R | Assign in Settings |
 
 The toolbar switches between Skate and Explore. Aerial steering rotates the rider without redirecting momentum. Land aligned with the travel direction (or switch); unfinished flips and sideways landings cause a bail.
 
@@ -55,7 +57,7 @@ Bowl and quarter-pipe lips launch into a locked vertical air. Speed controls air
 
 Hold grind while descending close to a rail to catch it; release an ollie to jump off. A short cooldown prevents immediate recapture. Direction + flip, grab, or grind selects the trick. Quick pairs of trick buttons during a manual select flatland variations.
 
-The [THUG behavior adaptation](docs/thug-adaptation.md) adds crouch-specific speed/drag, shoulder-priority air rotation, queued air tricks, combo repetition decay and synchronized procedural animation. Fixed is the initial camera preference; C / R3 selects Classic and saves the choice.
+The [THUG behavior adaptation](docs/thug-adaptation.md) adds crouch-specific speed/drag, shoulder-priority air rotation, queued air tricks, combo repetition decay and synchronized procedural animation. Follow is the initial camera preference; C / R3 cycles the five modes and saves the choice. Balance against the marker: correct a left lean to the right and a right lean to the left; manual nose/tail changes retain the accumulated balancing challenge. Restart Session starts a new round and clears its score.
 
 ## Build and deploy
 
