@@ -1,9 +1,9 @@
 // Real CC0 skateboard recordings with a synthesized fallback when unavailable.
 import { readAudioVolume, saveAudioVolume, readBackgroundAudio, saveBackgroundAudio } from './AudioSettings.js';
 import { createSkateImpact } from './SkateSoundSynthesis.js';
-import { surfaceAudioFor, surfaceTagFor } from './SurfaceAudio.js';
+import { surfaceAudioFor, surfaceTagFor, validatedSurfaceTag } from './SurfaceAudio.js';
 import { AudioReactions, pickNonRepeating } from './AudioReactions.js';
-import { loadSkateFoley, loadSkateFoleyBanks, seamlessFoleyLoop, recordedVoiceGain, SKATE_SCRAPE_WINDOWS } from './SkateFoley.js';
+import { loadSkateFoley, loadSkateFoleyBanks, foleyCacheStatus, disposeFoleyCache, seamlessFoleyLoop, recordedVoiceGain, SKATE_SCRAPE_WINDOWS } from './SkateFoley.js';
 export class SkateAudio {
   constructor() {
     this.enabled = true;
@@ -21,6 +21,9 @@ export class SkateAudio {
     this.lastImpactTime = -Infinity;
     this.lastImpacts = new Map();
     this.voices = new Set();
+    this.replayVoices = new Set();
+    this.replayGrind = null;
+    this.replayLastImpacts = new Map();
     this.characterReactions = new Map(); this.voiceLevels = new WeakMap(); this.ambienceTails = new Map();
     this.reactionDucks = new Map();
     this.disposed = false;
@@ -70,8 +73,31 @@ export class SkateAudio {
         .map(kind => [kind, createSkateImpact(c, kind)]));
       // Decode in the background without blocking controls or the first frame.
       // Each clip replaces its fallback independently when it is ready.
+      this.retryFoley();
+      // Soft resonant steel vibration and damped, street-surface wheel noise.
+      this.grind.filter.Q.value = 1.65;
+      this.roll.filter.Q.value = 0.55;
+      this.texture.filter.Q.value = 0.7;
+    }
+    if(this.getAudioStatus().failed && (this.foleyAttempts||0)<3 && Date.now()-(this.foleyLastAttempt||0)>2000)this.retryFoley();
+    if (this.context.state === 'suspended' || this.context.state === 'interrupted')
+      await this.context.resume().catch(() => {});
+  }
+
+  getAudioStatus() {
+    const counts=this.context?foleyCacheStatus(this.context):{total:0,ready:0,failed:0,loading:0};
+    return {...counts,state:this.disposed?'disposed':!this.context?'locked':counts.loading?'loading':counts.failed?'degraded':counts.ready?'ready':'loading',
+      attempts:this.foleyAttempts||0,canRetry:!this.disposed&&Boolean(this.context)&&counts.failed>0};
+  }
+
+  retryFoley() {
+    if(this.disposed||!this.context)return Promise.resolve(false);
+    if(this.foleyPending)return this.foleyPending;
+    const c=this.context;
+    this.foleyAttempts=(this.foleyAttempts||0)+1;this.foleyLastAttempt=Date.now();
       this.foleyLoad = loadSkateFoley(c, (kind, buffer) => {
         if (this.disposed || this.context !== c) return;
+        if (this.recordedFoley.has(kind)) return;
         if (kind === 'roll') {
           const previous = this.roll.source, source = c.createBufferSource();
           source.buffer = buffer; source.loop = true; source.connect(this.roll.filter);
@@ -86,7 +112,9 @@ export class SkateAudio {
       });
       this.bankLoad = loadSkateFoleyBanks(c, (kind, buffer) => {
         if (this.disposed || this.context !== c) return;
-        (this.banks[kind] ||= []).push(buffer);
+        const bank=this.banks[kind] ||= [];
+        if(bank.includes(buffer))return;
+        bank.push(buffer);
         if (kind === 'voicePain') this.voiceLevels.set(buffer, recordedVoiceGain(buffer));
         if(kind.startsWith('ambience'))this.refreshAmbience();
         if (['scrapeConcrete','scrapeMetal'].includes(kind)) {
@@ -97,13 +125,10 @@ export class SkateAudio {
           try { previous.stop(); previous.disconnect(); } catch {}
         }
       });
-      // Soft resonant steel vibration and damped, street-surface wheel noise.
-      this.grind.filter.Q.value = 1.65;
-      this.roll.filter.Q.value = 0.55;
-      this.texture.filter.Q.value = 0.7;
-    }
-    if (this.context.state === 'suspended' || this.context.state === 'interrupted')
-      await this.context.resume().catch(() => {});
+    const pending=Promise.all([this.foleyLoad,this.bankLoad]).then(()=>this.getAudioStatus());
+    this.foleyPending=pending;
+    pending.finally(()=>{if(this.foleyPending===pending)this.foleyPending=null;});
+    return pending;
   }
 
   loop(type, frequency) {
@@ -113,14 +138,15 @@ export class SkateAudio {
     return { source, filter, gain };
   }
 
-  impact(strength = 0.5, metal = false, kind = 'landing') {
+  impact(strength = 0.5, metal = false, kind = 'landing', {surface=this.surfaceTag,replay=false}={}) {
     if (!this.context || !this.enabled || this.disposed || this.isBackgroundMuted() || this.context.state !== 'running') return;
     const c = this.context, now = c.currentTime;
     kind = metal ? 'grind' : kind;
     // Keep different events audible when a catch and landing share a frame.
-    if (now - (this.lastImpacts.get(kind) ?? -Infinity) < 0.075) return;
-    this.lastImpacts.set(kind, now);
-    this.lastImpactTime = now;
+    const impacts=replay?this.replayLastImpacts:this.lastImpacts;
+    if (now - (impacts.get(kind) ?? -Infinity) < 0.075) return;
+    impacts.set(kind, now);
+    if(!replay)this.lastImpactTime = now;
     const power = Math.max(0.001,Math.min(1,Number(strength) || 0));
     const variant = pickNonRepeating(this.banks[kind], this.lastSamples.get(kind));
     if (variant) this.lastSamples.set(kind, variant);
@@ -148,12 +174,13 @@ export class SkateAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, now+length);
     source.connect(filter); filter.connect(gain); gain.connect(this.master);
     this.voices.add(source);
+    if(replay)this.replayVoices.add(source);
     source.start(now); source.stop(now+length+0.01);
-    source.onended = () => { this.voices.delete(source); source.disconnect(); filter.disconnect(); gain.disconnect(); };
+    source.onended = () => { this.voices.delete(source); this.replayVoices.delete(source); source.disconnect(); filter.disconnect(); gain.disconnect(); };
 
     if (kind === 'landing') {
-      const layer = this.surfaceTag === 'metal' ? 'landingMetal' : this.surfaceTag === 'concrete' ? 'landingConcrete' : null;
-      if (layer) this.playBank(layer, this.master, power*(layer === 'landingMetal' ? .08 : .045));
+      const layer = surface === 'metal' ? 'landingMetal' : surface === 'concrete' ? 'landingConcrete' : null;
+      if (layer) this.playBank(layer, this.master, power*(layer === 'landingMetal' ? .08 : .045),{replay});
     }
     // A short low-frequency pitch fall gives heavier landings substance without
     // shipping samples. Guard for lightweight test/audio shims.
@@ -174,6 +201,50 @@ export class SkateAudio {
 
   countdownCue(seconds) {
     this.cue(seconds === 5 ? 'finalFive' : 'tenSeconds');
+  }
+
+  playRecordedEvent(event) {
+    if(!event)return false;
+    if(event.kind==='grindEnd'){this.stopReplayGrind();return true;}
+    if(!['pop','landing','bail','catch','grind'].includes(event.kind))return false;
+    if(!this.enabled||this.disposed||this.isBackgroundMuted()||this.context?.state!=='running')return false;
+    const surface=validatedSurfaceTag(event.surface);
+    this.impact(Number(event.strength)||.4,event.kind==='grind',event.kind,{surface,replay:true});
+    if(event.kind==='grind') {
+      this.stopReplayGrind();
+      const layer=surface==='metal'?this.metalScrape:surface==='concrete'?this.concreteScrape:null;
+      if(layer?.recorded&&layer.source?.buffer) {
+        const source=this.context.createBufferSource(),gain=this.context.createGain();
+        source.buffer=layer.source.buffer;source.loop=true;source.connect(gain);gain.connect(this.master);
+        gain.gain.value=surface==='metal'?.18:.12;
+        this.replayGrind={source,gain,remaining:Math.min(8,Math.max(.1,Number(event.duration)||8))};
+        this.replayVoices.add(source);this.voices.add(source);
+        source.onended=()=>{this.replayVoices.delete(source);this.voices.delete(source);source.disconnect();gain.disconnect();};
+        source.start();source.stop(this.context.currentTime+20);
+      }
+    }
+    return true;
+  }
+
+  stopReplayGrind() {
+    if(!this.replayGrind)return;
+    const {source,gain}=this.replayGrind;this.replayGrind=null;
+    try{source.stop();}catch{}
+    source.disconnect();gain.disconnect();this.replayVoices.delete(source);this.voices.delete(source);
+  }
+
+  updateReplay(sourceDelta) {
+    if(this.isBackgroundMuted()||!this.enabled){this.resetReplay();return;}
+    if(this.replayGrind&&Number.isFinite(sourceDelta)&&sourceDelta>=0) {
+      this.replayGrind.remaining-=sourceDelta;
+      if(this.replayGrind.remaining<=0)this.stopReplayGrind();
+    }
+  }
+
+  resetReplay() {
+    this.stopReplayGrind();
+    for(const source of this.replayVoices){try{source.stop();}catch{}this.voices.delete(source);}
+    this.replayVoices.clear();this.replayLastImpacts.clear();
   }
 
   cue(kind) {
@@ -311,7 +382,7 @@ export class SkateAudio {
   }
 
   // Shared bounded playback. Recordings fail independently; reactions never fall back to a fake voice.
-  playBank(kind, bus, level = .3, { maxDuration = 3, pan = 0, attack = .008, release = .08, musicDuck = null } = {}) {
+  playBank(kind, bus, level = .3, { maxDuration = 3, pan = 0, attack = .008, release = .08, musicDuck = null, replay = false } = {}) {
     if (!this.enabled || this.disposed || this.isBackgroundMuted() || this.context?.state !== 'running' || !bus || this.voices.size >= 16) return false;
     const channel = kind.startsWith('crowd') ? this.crowdVolume : kind.startsWith('voice') ? this.voiceVolume : 1;
     if (!(channel > 0)) return false;
@@ -346,9 +417,10 @@ export class SkateAudio {
     const panner = pan && c.createStereoPanner ? c.createStereoPanner() : null;
     if (panner) { panner.pan.value = pan; gain.connect(panner); panner.connect(bus); } else gain.connect(bus);
     this.voices.add(source);
+    if(replay)this.replayVoices.add(source);
     if (kind.startsWith('voice')) this.characterReactions.set(source, { kind, gain: gain.gain, level: volume, end: now+duration });
     source.start(now); source.stop(now+duration+.01);
-    source.onended = () => { this.voices.delete(source); this.characterReactions.delete(source); this.reactionDucks.delete(source); source.disconnect(); gain.disconnect(); panner?.disconnect(); };
+    source.onended = () => { this.voices.delete(source); this.characterReactions.delete(source); this.replayVoices.delete(source); this.reactionDucks.delete(source); source.disconnect(); gain.disconnect(); panner?.disconnect(); };
     // Follow the take that actually started. Fixed event timers over-duck short
     // pain takes and restore music before long applause reaches its decay.
     if (musicDuck) {
@@ -390,6 +462,7 @@ export class SkateAudio {
   }
 
   silence() {
+    this.resetReplay();
     this.previous = null;
     if (!this.context) return;
     for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind, this.concreteScrape, this.metalScrape, this.ambience])
@@ -432,6 +505,7 @@ export class SkateAudio {
   async dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    if(this.context)disposeFoleyCache(this.context);
     this.enabled = false;
     this.silence();
     for (const layer of [this.roll, this.texture, this.grind, this.brake, this.wind, this.concreteScrape, this.metalScrape, this.ambience]) {

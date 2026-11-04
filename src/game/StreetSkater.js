@@ -129,15 +129,21 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
 
   /** Hot-swap a rigged GLB without resetting physics, collision, or the skateboard. */
   async setRiderModel(url, { uploadFilename = '' } = {}) {
+    const prepared=await this.prepareRiderModel(url,{uploadFilename});
+    return prepared.commit();
+  }
+
+  /** Load/validate without replacing the resumable run's current rider. */
+  async prepareRiderModel(url, { uploadFilename = '' } = {}) {
     if (!url || typeof url !== 'string') throw new Error('Choose a character GLB.');
     // A slow previous GLB is never allowed to replace a newer user selection.
     const request = (this._riderSwapGeneration || 0) + 1;
     this._riderSwapGeneration = request;
-    if (this.rider?.url === url) return this.rider;
+    if (this.rider?.url === url) return {commit:()=>this.rider,dispose(){}};
     const candidate = await new UnrealRider(url, { uploadFilename }).load();
     if (request !== this._riderSwapGeneration) {
       candidate.dispose();
-      return this.rider;
+      return {commit:()=>this.rider,dispose(){}};
     }
     const required = ['pelvis','head','upperarm_l','upperarm_r','thigh_l','thigh_r','foot_l','foot_r'];
     const missing = required.filter(name => !candidate.bones[name]);
@@ -153,13 +159,19 @@ export class StreetSkater extends StatefulSkillStreetPhysics {
       throw new Error('GLB avatar needs complete thigh → calf → foot and upper arm → forearm → hand joints on both sides.');
     }
     candidate.deckHeight = this.board.deckHeight;
-    const previous = this.rider;
-    this.visual.add(candidate.root);
-    this.rider = candidate;
-    previous?.dispose();
-    this.captureRiderFlashMaterials();
-    this.resetPresentationAfterSwap();
-    return this.rider;
+    let consumed=false;
+    return {
+      root:candidate.root,
+      dispose:()=>{if(!consumed){consumed=true;candidate.dispose();}},
+      commit:()=>{
+        if(consumed)return this.rider;
+        consumed=true;
+        if(request!==this._riderSwapGeneration){candidate.dispose();return this.rider;}
+        const previous=this.rider;
+        this.visual.add(candidate.root);this.rider=candidate;previous?.dispose();
+        this.captureRiderFlashMaterials();this.resetPresentationAfterSwap();return this.rider;
+      },
+    };
   }
 
   resetPresentationAfterSwap() {

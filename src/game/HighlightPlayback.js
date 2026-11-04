@@ -16,13 +16,15 @@ function applyPose(nodes, pose) {
 
 /** Cinematic presentation of recorded visual poses, with live state untouched. */
 export class HighlightPlayback {
-  constructor({ camera, surface = null, getSurface = null, onFinish = null, onMoment = null, onEvent = null } = {}) {
+  constructor({ camera, surface = null, getSurface = null, onFinish = null, onMoment = null, onEvent = null, onAdvance = null, onStop = null } = {}) {
     this.camera = camera;
     this.surface = surface;
     this.getSurface = getSurface;
     this.onFinish = onFinish;
     this.onMoment = onMoment;
     this.onEvent = onEvent;
+    this.onAdvance = onAdvance;
+    this.onStop = onStop;
     this.active = false;
     this._anchor = new THREE.Vector3();
     this._eye = new THREE.Vector3();
@@ -58,6 +60,7 @@ export class HighlightPlayback {
     this.eventIndex = 0;
     this._cameraCache = { minimumDistance: 2.2 };
     this.onMoment?.({ index: this.index, count: this.clips.length, points: this.clip.points, label: this.clip.label });
+    this._events();
   }
 
   update(dt) {
@@ -68,15 +71,21 @@ export class HighlightPlayback {
     while (remaining > 1e-8 && this.active) {
       const trick = this.time >= this.clip.trickStart && this.time < this.clip.trickEnd;
       const rate = trick ? 0.45 : 1;
-      const boundary = this.time < this.clip.trickStart ? this.clip.trickStart
+      let boundary = this.time < this.clip.trickStart ? this.clip.trickStart
         : this.time < this.clip.trickEnd ? this.clip.trickEnd : this.clip.end;
+      const nextEvent = this.clip.events?.[this.eventIndex];
+      if (nextEvent && nextEvent.time > this.time) boundary = Math.min(boundary, nextEvent.time);
       const wallSeconds = Math.max(0, (boundary - this.time) / rate);
       if (remaining < wallSeconds) {
-        this.time += remaining * rate;
+        const sourceDelta = remaining * rate;
+        this.time += sourceDelta;
+        this.onAdvance?.(sourceDelta);
         this._events();
         remaining = 0;
       } else {
+        const sourceDelta = boundary - this.time;
         this.time = boundary;
+        if (sourceDelta > 0) this.onAdvance?.(sourceDelta);
         this._events();
         remaining -= wallSeconds;
         if (this.time >= this.clip.end - 1e-8) {
@@ -154,6 +163,7 @@ export class HighlightPlayback {
     this.savedNodes = null;
     this.savedCamera = null;
     this.pose = null;
+    this.onStop?.();
     return true;
   }
 }

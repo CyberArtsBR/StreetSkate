@@ -61,8 +61,13 @@ export class HighlightRecorder {
   get byteLength() { return (this.poses?.byteLength || 0) + (this.times?.byteLength || 0); }
 
   markEvent(event) {
-    if (!this.enabled || this.finished || !event || !['pop','landing','grind','bail','catch'].includes(event.kind)) return false;
-    this.events.push({ ...event, time:this.time });
+    if (!this.enabled || this.finished || !event || !['pop','landing','grind','grindEnd','bail','catch'].includes(event.kind)) return false;
+    const captured = { kind:event.kind, strength:Number.isFinite(event.strength)?event.strength:.4,
+      surface:typeof event.surface==='string'?event.surface:'neutral',
+      mapId:typeof event.mapId==='string'?event.mapId:null, time:this.time };
+    for(const key of ['point','normal','forward']) if(Array.isArray(event[key])&&event[key].length===3&&event[key].every(Number.isFinite))
+      captured[key]=Object.freeze([...event[key]]);
+    this.events.push(Object.freeze(captured));
     if(this.events.length>1024)this.events.shift();
     return true;
   }
@@ -121,11 +126,15 @@ export class HighlightRecorder {
       const start = Math.max(earliest, moment.start - 2.5);
       const end = Math.min(latest, moment.end + 2.5);
       if (end <= start || selected.some(clip => start < clip.end && end > clip.start)) continue;
+      const events = this.events.filter(event=>event.time>=start&&event.time<=end);
+      // A selected clip may begin in the middle of an existing grind.
+      const previousGrind = this.events.filter(event=>event.time<start&&['grind','grindEnd','bail'].includes(event.kind)).at(-1);
+      if(previousGrind?.kind==='grind')events.unshift(Object.freeze({...previousGrind,time:start}));
       selected.push({
         start, end, duration: end - start, trickStart: moment.start, trickEnd: moment.end,
         points: moment.points, label: moment.label, nodes: this.nodes,
         stride: this.stride, sampleHz: this.sampleHz,
-        events: this.events.filter(event=>event.time>=start&&event.time<=end),
+        events: Object.freeze(events),
         sample: (time, target) => this.sample(time, target),
       });
       if (selected.length === 3) break;

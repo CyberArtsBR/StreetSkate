@@ -12,7 +12,7 @@ import { ensurePelvisDeckClearance, boundedHandReach, boundedNeutralHandTarget, 
 import { footWorldOrientation, plantedFootWorldPoint } from './FootOrientation.js';
 import { SkateRagdoll } from './SkateRagdoll.js';
 import { calibrateFootSupportBounds } from './FootSupportClearance.js';
-import { grabReachPose, grabReachMargin, calibrateGrabPalms, grabPalmOrientation, grabDeckSurface } from './GrabReachPose.js';
+import { grabReachPose, grabReachMargin, calibrateGrabPalms, grabPalmOrientation, grabDeckSurface, calibrateGrabFingers, applyGrabFingers } from './GrabReachPose.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const Q = () => new THREE.Quaternion();
@@ -233,6 +233,8 @@ export class UnrealRider {
     this.root.userData.rig = `Unreal-style ${this.rest.size}-bone skeleton; procedural presentation + IK`;
     calibrateFootSupportBounds(this);
     this.grabPalms = calibrateGrabPalms(this.model, { l: this.bones.hand_l, r: this.bones.hand_r });
+    this.grabFingers = Object.fromEntries(SIDES.map(side => [side,
+      calibrateGrabFingers(this.bones[`hand_${side}`], this.grabPalms[side])]));
     return this;
   }
 
@@ -281,6 +283,15 @@ export class UnrealRider {
 
   boardPoint(board, x, y, z) { return board?.pointWorld?.(x, y, z, V()) || null; }
 
+  /** Local review opt-in only; Hollow's supplied motion remains the default.
+   * This does not persist a preference or modify the GLB. */
+  setGrabContactCandidate(enabled = false) {
+    if (!/\/thehollowf\.glb(?:\?|$)/i.test(this.url)) return false;
+    this.calibratedGrabReach = Boolean(enabled);
+    this.resetPresentation();
+    return true;
+  }
+
   handstandTarget(side, board) { return handstandTarget.call(this, side, board); }
 
   grabTarget(name, side, stance, board) {
@@ -316,6 +327,7 @@ export class UnrealRider {
       case 'Judo': return side === front ? point(0, 0.05, -0.4) : null;
       case 'Crail': return side === rear ? point(0, 0.05, -0.4) : null;
       case 'Christ Air': return side === front ? point(-sign * 0.14, 0.04, 0) : null;
+      case 'Airwalk': return this.calibratedGrabReach && side === front ? point(0, 0.05, -0.35) : null;
       default: return null;
     }
   }
@@ -388,7 +400,7 @@ export class UnrealRider {
       ? SIDES.filter(side => this.grabTarget(this.grabReachName, side, stance, board)) : requestedSides;
     const grabPose = reachingSides ? (calibratedGrab
       ? grabReachPose(gather, reachingSides, true, { direction: this.grabReachDirection, compact: this.url.includes('The_Heretic') ? 1 : 0,
-        endGrab: ['Nosegrab', 'Tailgrab'].includes(this.grabReachName) })
+        endGrab: ['Nosegrab', 'Tailgrab', 'Airwalk'].includes(this.grabReachName) })
       : { pelvisHinge: .35 * grab, spineCurl: .15 * grab, shoulderBend: .25 * grab, weight: grab }) : null;
     // Hold the chosen flight pose through the descent. Only contact releases
     // it, so the arms do not drop as soon as vertical velocity turns negative.
@@ -537,7 +549,8 @@ export class UnrealRider {
       this.ft.l.z -= 0.20 * grab; this.ft.r.z += 0.20 * grab;
     }
     if (grabState?.name === 'Airwalk') {
-      this.ft.l.y += 0.28 * grab; this.ft.r.y += 0.28 * grab;
+      const lift = calibratedGrab ? .10 : .28;
+      this.ft.l.y += lift * grab; this.ft.r.y += lift * grab;
       this.ft.l.x -= 0.2 * grab; this.ft.r.x += 0.2 * grab;
       this.ft.l.z -= 0.13 * grab; this.ft.r.z += 0.13 * grab;
     }
@@ -564,13 +577,18 @@ export class UnrealRider {
         const horizontalSquared = (hipLocal.x - target.x) ** 2 + (hipLocal.z - target.z) ** 2;
         if (grab > .01) {
           const releasedJapan = calibratedGrab && grabState?.name === 'Japan' && side === rear;
-          const minimumReach = safeLimbReach(upperLength,lowerLength,0,releasedJapan ? 2.50 + .30 * gather : 2.50);
+          const releasedAirwalk = calibratedGrab && grabState?.name === 'Airwalk';
+          const minimumReach = safeLimbReach(upperLength,lowerLength,0,releasedAirwalk ? 2.8 : releasedJapan ? 2.50 + .30 * gather : 2.50);
           const minimumHeight = Math.sqrt(Math.max(0,minimumReach*minimumReach-horizontalSquared));
           grabMinimumHipCorrection = Math.max(grabMinimumHipCorrection,target.y+minimumHeight-hipLocal.y);
         }
         // Pull the knees toward the chest for a grab instead of extending a
         // short cartoon arm past its bone length to reach the board.
-        const ridingFlex = .45 + compression * 1.65 + grab * .38 + (side === rear ? air * .08 : 0);
+        const ordinaryFlex = .45 + compression * 1.65 + grab * .38 + (side === rear ? air * .08 : 0);
+        // Both Airwalk ankles are free: fold the knees to bring the shoulder
+        // within anatomical reach instead of raising the whole torso with them.
+        const ridingFlex = calibratedGrab && this.grabReachName === 'Airwalk'
+          ? THREE.MathUtils.lerp(ordinaryFlex, 2.15, gather) : ordinaryFlex;
         // The drive leg extends while the support knee absorbs the drop to
         // the pavement. Applying the same crouch to both caused a deep bob.
         const flex = side === rear && push
@@ -606,7 +624,7 @@ export class UnrealRider {
         (['Japan', 'Madonna', 'Judo'].includes(grabState?.name) && side === rear)
         || (grabState?.name === 'Benihana' && side === front) || ['Airwalk', 'Christ Air'].includes(grabState?.name)));
       limb(upper, lower, foot, this.root.localToWorld(this.ft[side].clone()), kneePole,
-        calibratedGrab && grabState?.name === 'Japan' && releasedFoot ? 2.55 + .25 * gather : 2.55);
+        calibratedGrab && grabState?.name === 'Airwalk' ? 2.8 : calibratedGrab && grabState?.name === 'Japan' && releasedFoot ? 2.55 + .25 * gather : 2.55);
       // The board may have spun 180 degrees while the skater stayed facing
       // forward. Preserve the skater's ankle yaw and only align deck tilt.
       setWorldQ(foot, footWorldOrientation(
@@ -635,7 +653,7 @@ export class UnrealRider {
       target.z += sign * (0.07 * grind + 0.14 * wall);
       target.y += 0.06 * (wall + flat);
       if (bail) { target.y += 0.24 + bailProgress * 0.12; target.z += sign * 0.16; }
-      const grabTarget = this.grabTarget(grabState?.name, side, stance, board);
+      const grabTarget = this.grabTarget(calibratedGrab ? this.grabReachName : grabState?.name, side, stance, board);
       if (grabState?.name === 'Madonna' && side === rear) target.addScaledVector(V(-0.04, 0.34, sign * 0.26), grab);
       if (grabState?.name === 'Japan' && side === rear) target.addScaledVector(V(-0.03, 0.18, sign * 0.14), grab);
       if (grabState?.name === 'Airwalk') target.addScaledVector(V(0, 0.18, sign * 0.2), grab);
@@ -661,7 +679,7 @@ export class UnrealRider {
           breathing: Math.sin(poseTime * 1.8 + (side === front ? .3 : 0)) * .006 * (1 - air) },
       );
       world.lerp(skatingPose.wrist, skatingWeight);
-      const reachWeight = handstand ? flat : grab;
+      const reachWeight = handstand ? flat : calibratedGrab ? gather : grab;
       let palmRotation = null;
       let wristReach = reach;
       if (reach && !handstand && calibratedGrab && this.grabPalms?.[side] && board) {
@@ -764,6 +782,7 @@ export class UnrealRider {
           }
         }
       }
+      if (calibratedGrab) applyGrabFingers(this.grabFingers?.[side], reach && !handstand ? reachWeight : 0);
     }
     for (const [bone, quaternion] of this.rest) if (!finiteQ(bone.quaternion)) bone.quaternion.copy(quaternion);
     this.root.updateWorldMatrix(true, true);

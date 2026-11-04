@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { TransitionGuide } from '../src/game/TransitionGuide.js';
 import { VERT_LAUNCH_ENVELOPE } from '../src/game/transitions/TransitionController.js';
+import { PHYSICS } from '../src/game/StreetPhysics.js';
 
 // Map 4's deleted urban-warehouse.glb cannot provide valid launch routes.
 // Keep five deterministic *real vert controller* launch/reentry scenarios,
 // while Grand Warehouse's authored collision is verified by its own GLB tests.
-const DT=1/120, GRAVITY=20;
+// Component-level TransitionGuide check; whole-runtime geometry coverage is in charged-ramp-runtime.mjs.
+const DT=1/120, GRAVITY=PHYSICS.gravity;
 const rail={name:'04 / eastern quarter coping',points:[[-3,2,0],[3,2,0]]};
 const scenarios=[
   {name:'low-speed quarter',speed:5,boost:0},

@@ -7,7 +7,7 @@ import { SSRPass } from 'three/addons/postprocessing/SSRPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { resolveGraphicsSettings, resolveRenderPixelRatio } from './GraphicsSettings.js';
+import { resolveGraphicsSettings, resolveRenderPixelRatio, validateRenderAllocation } from './GraphicsSettings.js';
 import { normalizeGlowOverrides, resolveGlowTuning } from './GlowTuning.js';
 import { MapContactDepthPass } from './MapContactDepthPass.js';
 
@@ -178,12 +178,14 @@ export class GraphicsPipeline {
   // runtime rider GLB swaps and changes to the skateboard finish.
   setGlowTarget(root) {
     this.glowRoot = root;
+    this.contactDepth?.setDynamicRoots([root,this.effectsRoot]);
     this.bloomSceneMeshes = null;
     this.bloomGlowChildren = null;
   }
 
   setEffectsTarget(root) {
     this.effectsRoot = root;
+    this.contactDepth?.setDynamicRoots([this.glowRoot,root]);
   }
 
   configureContactDepth() {
@@ -195,6 +197,7 @@ export class GraphicsPipeline {
       this.composer.insertPass(this.contactDepth,1);
     }
     if(this.contactDepth) {
+      this.contactDepth.setDynamicRoots([this.glowRoot,this.effectsRoot]);
       this.contactDepth.resolutionScale=this.settings.name==='cinematic'?.65:.5;
       this.contactDepth.setSize(this.width*this.settings.pixelRatio,this.height*this.settings.pixelRatio);
       this.contactDepth.exclusionsAge=120;
@@ -373,7 +376,37 @@ export class GraphicsPipeline {
     });
   }
 
+  allocationCapabilities(capabilities=this.capabilities||{}) {
+    const gl=this.renderer.getContext?.();
+    const read=key=>{try{return gl?.getParameter?.(gl[key]);}catch{return undefined;}};
+    return {...capabilities,maxTextureSize:read('MAX_TEXTURE_SIZE')||capabilities.maxTextureSize,
+      maxRenderbufferSize:read('MAX_RENDERBUFFER_SIZE')||capabilities.maxRenderbufferSize};
+  }
+
   setQuality(key, capabilities, overrides) {
+    const caps=this.allocationCapabilities(capabilities);
+    const next=resolveGraphicsSettings(key,{...caps,width:this.width,height:this.height},overrides);
+    const check=validateRenderAllocation(this.width,this.height,next.pixelRatio,caps);
+    if(!check.valid) {
+      this.allocationStatus={state:'rejected',...check,requestedPreset:key,recovery:'Resize the window or choose a supported render scale.'};
+      if(this.settings)return this.settings;
+      throw new Error('This render size exceeds the GPU limit. Resize the window and retry.');
+    }
+    const previous=this.lastQualityRequest;
+    try {
+      const result=this.applyQuality(key,caps,overrides);
+      this.lastQualityRequest={key,capabilities:caps,overrides:{...overrides}};
+      this.allocationStatus={state:'ready',...check};return result;
+    } catch(error) {
+      let restored=false;
+      if(previous)try{this.applyQuality(previous.key,previous.capabilities,previous.overrides);restored=true;}catch{}
+      this.allocationStatus={state:restored?'rolled-back':'failed',reason:'allocation-failed',recovery:'Resize the window or choose a supported render scale.'};
+      if(restored)return this.settings;
+      throw error;
+    }
+  }
+
+  applyQuality(key, capabilities, overrides) {
     this.capabilities = capabilities;
     const settings = resolveGraphicsSettings(key, { ...capabilities, width:this.width, height:this.height }, overrides);
     this.settings = settings;
@@ -414,13 +447,14 @@ export class GraphicsPipeline {
     this.cas.uniforms.strength.value = settings.sharpen;
     this.shadowAnchor = null;
     this.updateMaterials();
-    this.resize(this.width, this.height);
+    if(this.resize(this.width, this.height)===false)throw new Error('Render target allocation failed');
     return settings;
   }
 
   getStatus() {
     if (!this.settings) return null;
     return { ...this.settings,
+      allocation: this.allocationStatus || {state:'ready'},
       glowTuning:resolveGlowTuning(this.settings, Boolean(this.world?.userData?.environmentBloom)),
       bloomEnabled: !this.faulted && this.settings.bloomStrength > 0,
       postProcessingAvailable: !this.faulted,
@@ -455,6 +489,24 @@ export class GraphicsPipeline {
   }
 
   resize(width, height) {
+    if(!this.settings){this.width=Math.max(1,width);this.height=Math.max(1,height);return true;}
+    const caps=this.allocationCapabilities();
+    const ratio=resolveRenderPixelRatio(this.settings,{...caps,width,height})*(this.settings.renderScale||1);
+    const check=validateRenderAllocation(width,height,ratio,caps);
+    if(!check.valid){this.allocationStatus={state:'rejected',...check,recovery:'Resize the window or choose a supported render scale.'};return false;}
+    const previous={width:this.width,height:this.height,pixelRatio:this.settings.pixelRatio};
+    try{this.applySize(width,height);this.allocationStatus={state:'ready',...check};return true;}
+    catch(error){
+      this.width=previous.width;this.height=previous.height;this.settings.pixelRatio=previous.pixelRatio;
+      let restored=false;
+      try{this.applySize(previous.width,previous.height);restored=true;}catch{}
+      this.allocationStatus={state:restored?'rolled-back':'failed',reason:'allocation-failed',recovery:'Resize the window or choose a supported render scale.'};
+      if(!restored)throw error;
+      return false;
+    }
+  }
+
+  applySize(width, height) {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     if (!this.settings) return;

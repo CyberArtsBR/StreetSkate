@@ -1,5 +1,35 @@
 import { gameAssetUrl } from './AssetPaths.js';
 
+const contexts = new WeakMap();
+export function foleyCacheStatus(context) {
+  const cache=contexts.get(context);
+  const states=[...(cache?.entries.values()||[])];
+  return { total:states.length, ready:states.filter(e=>e.state==='ready').length,
+    failed:states.filter(e=>e.state==='failed').length, loading:states.filter(e=>e.state==='loading').length };
+}
+export function disposeFoleyCache(context) {
+  const cache=contexts.get(context);if(!cache)return;
+  cache.disposed=true;cache.abort.abort();cache.entries.clear();contexts.delete(context);
+}
+async function decodedClip(context,path,fetcher,assetUrl) {
+  let cache=contexts.get(context);
+  if(!cache){cache={entries:new Map(),abort:new AbortController(),disposed:false};contexts.set(context,cache);}
+  const url=assetUrl(path),existing=cache.entries.get(url);
+  if(existing&&existing.state!=='failed')return existing.promise;
+  const entry={state:'loading'};cache.entries.set(url,entry);
+  entry.promise=(async()=>{
+    try {
+      const response=await fetcher(url,{signal:cache.abort.signal});
+      if(!response.ok)throw new Error(`Audio unavailable: ${path}`);
+      const buffer=await context.decodeAudioData(await response.arrayBuffer());
+      if(cache.disposed)throw new Error('Audio context disposed');
+      if(!buffer?.duration||!Number.isFinite(buffer.duration))throw new Error(`Invalid audio: ${path}`);
+      entry.state='ready';return buffer;
+    } catch(error){entry.state='failed';throw error;}
+  })();
+  return entry.promise;
+}
+
 // Original field recordings; license and provenance are in public/audio/foley/CREDITS.md.
 export const SKATE_FOLEY_FILES = Object.freeze({
   pop:'/audio/foley/pop.wav', landing:'/audio/foley/land.wav',
@@ -39,10 +69,7 @@ export function loadSkateFoleyBanks(context, onClip, { fetcher=globalThis.fetch,
   // Decode each URL once even when shared by two intensity banks.
   const urls = [...new Set(Object.values(SKATE_FOLEY_BANKS).flat())];
   return Promise.allSettled(urls.map(async path => {
-    const response = await fetcher(assetUrl(path));
-    if (!response.ok) throw new Error(`Audio unavailable: ${path}`);
-    const buffer = await context.decodeAudioData(await response.arrayBuffer());
-    if (!buffer?.duration || !Number.isFinite(buffer.duration)) throw new Error(`Invalid audio: ${path}`);
+    const buffer = await decodedClip(context,path,fetcher,assetUrl);
     for (const [kind, paths] of Object.entries(SKATE_FOLEY_BANKS)) if (paths.includes(path)) onClip(kind, buffer);
     return path;
   }));
@@ -52,11 +79,7 @@ export function loadSkateFoleyBanks(context, onClip, { fetcher=globalThis.fetch,
 export function loadSkateFoley(context, onClip, { fetcher=globalThis.fetch, assetUrl=gameAssetUrl }={}) {
   if (!context?.decodeAudioData || typeof fetcher!=='function') return Promise.resolve([]);
   return Promise.allSettled(Object.entries(SKATE_FOLEY_FILES).map(async ([kind,path])=>{
-    const response=await fetcher(assetUrl(path));
-    if(!response.ok)throw new Error(`Audio unavailable: ${kind}`);
-    const encoded=await response.arrayBuffer();
-    const decoded=await context.decodeAudioData(encoded);
-    if(!decoded?.duration || !Number.isFinite(decoded.duration))throw new Error(`Invalid audio: ${kind}`);
+    const decoded=await decodedClip(context,path,fetcher,assetUrl);
     onClip(kind,decoded);
     return kind;
   }));

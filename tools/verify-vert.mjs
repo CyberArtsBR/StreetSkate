@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { TransitionGuide } from '../src/game/TransitionGuide.js';
 import { ParkCollision } from '../src/game/ParkCollision.js';
 import { SkateTricks } from '../src/game/SkateTricks.js';
+import { PHYSICS } from '../src/game/StreetPhysics.js';
 
 const DT = 1 / 120;
-const GRAVITY = 20;
+// TransitionGuide component checks use the shipping gravity; runtime integration is tested separately.
+const GRAVITY = PHYSICS.gravity;
 const UP = new THREE.Vector3(0, 1, 0);
 const QUARTER_NAME = '04 / eastern quarter coping';
 const tests = [];

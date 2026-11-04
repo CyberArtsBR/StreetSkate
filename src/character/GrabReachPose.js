@@ -132,3 +132,37 @@ export function grabPalmOrientation(palm, outward, deckUp) {
   const world = new THREE.Matrix4().makeBasis(forward, normal, worldSide);
   return new THREE.Quaternion().setFromRotationMatrix(world.multiply(local.invert())).normalize();
 }
+
+/** Derive flexion from the supplied phalanges, not assumed exporter axes.
+ * Only articulated fingers are authored; missing chains remain untouched. */
+export function calibrateGrabFingers(hand, palm) {
+  if (!hand || !palm) return [];
+  hand.updateWorldMatrix(true, true);
+  const normal = palm.normal.clone().applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
+  const joints = [];
+  for (const root of hand.children) {
+    if (!root.isBone || !/(index|middle|ring|pinky)/i.test(root.name)) continue;
+    let bone = root;
+    for (let depth = 0; depth < 3 && bone; depth++) {
+      const child = bone.children.find(node => node.isBone);
+      if (!child) break;
+      const direction = child.getWorldPosition(new THREE.Vector3()).sub(bone.getWorldPosition(new THREE.Vector3())).normalize();
+      const axis = direction.cross(normal);
+      if (axis.lengthSq() > .01) {
+        axis.normalize().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+        joints.push({ bone, rest: bone.quaternion.clone(), flex: new THREE.Quaternion().setFromAxisAngle(axis, [.48, .68, .42][depth]) });
+      }
+      bone = child;
+    }
+  }
+  return joints;
+}
+
+const fingerBlend = new THREE.Quaternion();
+export function applyGrabFingers(joints, weight) {
+  const amount = THREE.MathUtils.clamp(Number.isFinite(weight) ? weight : 0, 0, 1);
+  for (const joint of joints || []) {
+    fingerBlend.identity().slerp(joint.flex, amount);
+    joint.bone.quaternion.copy(joint.rest).multiply(fingerBlend);
+  }
+}

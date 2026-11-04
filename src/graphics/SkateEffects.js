@@ -177,23 +177,26 @@ export class SkateEffects {
   }
 
   // Recorded presentation events never read or mutate the live skater/score.
-  playRecordedEvent(event) {
+  playRecordedEvent(event, surface = null) {
     if(!event||!Array.isArray(event.point)||event.point.length!==3||!event.point.every(Number.isFinite))return false;
     this.origin.fromArray(event.point);
     if(Array.isArray(event.normal)&&event.normal.length===3&&event.normal.every(Number.isFinite))this.normal.fromArray(event.normal).normalize();else this.normal.set(0,1,0);
     if(this.normal.lengthSq()<.1)this.normal.set(0,1,0);
-    this.forward.set(0,0,-1);
+    if(Array.isArray(event.forward)&&event.forward.length===3&&event.forward.every(Number.isFinite))this.forward.fromArray(event.forward).normalize();else this.forward.set(0,0,-1);
     const tag=validatedSurfaceTag(event.surface||event.audioSurfaceTag);
     if(event.kind==='landing')this.landing(null,(Number(event.strength)||.4)*9,tag);
     else if(event.kind==='grind'&&!this.performance){const profile=SURFACE_PARTICLES[tag];for(let i=0;i<Math.round(profile.grind*4);i++)this.grindParticle(profile);}
-    else if(event.kind==='bail')this.bailLiquid.spawn({point:this.origin,normal:this.normal,speed:(Number(event.strength)||.4)*10},this.performance);
+    else if(event.kind==='bail')this.bailLiquid.spawn({point:this.origin,normal:this.normal,speed:(Number(event.strength)||.4)*10},this.performance,surface);
     else return false;
     return true;
   }
 
   updateReplay(delta) {
-    const dt=clamp(Number(delta)||0,0,.05);
-    this.stepPool(this.dust,dt,true);this.stepPool(this.glints,dt,false);this.bailLiquid.update(dt);
+    if(!Number.isFinite(delta)||delta<=0)return;
+    // Preserve the full source-time interval while keeping integration stable.
+    let remaining=delta;
+    while(remaining>1e-8){const dt=Math.min(remaining,.05);
+      this.stepPool(this.dust,dt,true);this.stepPool(this.glints,dt,false);this.bailLiquid.update(dt);remaining-=dt;}
   }
 
   update(delta,skater) {
