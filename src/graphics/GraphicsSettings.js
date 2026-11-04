@@ -29,6 +29,17 @@ export const GRAPHICS_STORAGE_KEY = 'streetskate.graphicsPreset.v2';
 export function normalizedGraphicsPreset(value) {
   return Object.hasOwn(GRAPHICS_PRESETS, value) ? value : DEFAULT_GRAPHICS_PRESET;
 }
+
+/** Dimension preflight only; it does not guess VRAM or silently change quality. */
+export function validateRenderAllocation(width,height,pixelRatio,capabilities={}) {
+  const w=Math.ceil(width*pixelRatio),h=Math.ceil(height*pixelRatio);
+  const limits=[capabilities.maxTextureSize,capabilities.maxRenderbufferSize]
+    .filter(value=>Number.isFinite(value)&&value>0);
+  const limit=limits.length?Math.min(...limits):Infinity;
+  const valid=Number.isFinite(w)&&Number.isFinite(h)&&w>0&&h>0&&w<=limit&&h<=limit;
+  return {valid,width:w,height:h,limit:Number.isFinite(limit)?limit:null,
+    reason:valid?null:'unsupported-render-size'};
+}
 export function resolveRenderPixelRatio(preset, capabilities = {}) {
   const devicePixelRatio = Math.max(1, Number(capabilities.devicePixelRatio) || 1);
   const width = Math.max(1, Number(capabilities.width) || 1920);

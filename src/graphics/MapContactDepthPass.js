@@ -23,6 +23,21 @@ export class MapContactDepthPass extends GTAOPass {
     this.excluded=[];
     this.exclusions=[];
     this.exclusionsAge=120;
+    this.dynamicRoots=[];
+  }
+
+  setDynamicRoots(roots=[]) {
+    const next=roots.filter(Boolean);
+    if(next.length===this.dynamicRoots.length&&next.every((root,i)=>root===this.dynamicRoots[i]))return;
+    this.dynamicRoots=next;this.exclusions.length=0;this.exclusionsAge=120;
+  }
+
+  excludes(object) {
+    if(object.userData?.skateEffects)return true;
+    if(!object.isMesh)return false;
+    const list=Array.isArray(object.material)?object.material:[object.material];
+    return object.userData?.streetSkateRole==='sky'||list.some(m=>m&&
+      (!m.depthWrite||(m.transparent&&m.opacity<1)||m.isMeshBasicMaterial));
   }
 
   setSize(width,height) {
@@ -32,14 +47,12 @@ export class MapContactDepthPass extends GTAOPass {
 
   refreshExclusions() {
     this.exclusions.length=0;
-    this.scene.traverse(object=>{
-      if(object.userData?.skateEffects){this.exclusions.push(object);return;}
-      if(!object.isMesh)return;
-      const list=Array.isArray(object.material)?object.material:[object.material];
-      if(object.userData?.streetSkateRole==='sky'||list.some(m=>m&&
-        (!m.depthWrite||(m.transparent&&m.opacity<1)||m.isMeshBasicMaterial)))
-        this.exclusions.push(object);
-    });
+    const visit=object=>{
+      if(this.dynamicRoots.includes(object))return;
+      if(this.excludes(object))this.exclusions.push(object);
+      for(const child of object.children)visit(child);
+    };
+    visit(this.scene);
     this.exclusionsAge=0;
     this.sceneChildren=this.scene.children.length;
   }
@@ -48,6 +61,9 @@ export class MapContactDepthPass extends GTAOPass {
     super._overrideVisibility();
     if(this.exclusionsAge++>=120||this.sceneChildren!==this.scene.children.length)this.refreshExclusions();
     for(const object of this.exclusions)if(object.visible){object.visible=false;this.excluded.push(object);}
+    for(const root of this.dynamicRoots)root.traverse(object=>{
+      if(object.visible&&this.excludes(object)){object.visible=false;this.excluded.push(object);}
+    });
   }
 
   _restoreVisibility() {
@@ -81,5 +97,6 @@ export class MapContactDepthPass extends GTAOPass {
     this.gtaoMaterial.dispose();this.blendMaterial.dispose();
     super.dispose();
     this.exclusions.length=0;
+    this.dynamicRoots.length=0;
   }
 }

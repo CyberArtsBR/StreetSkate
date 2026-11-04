@@ -18,6 +18,7 @@ import { rampLaunchBonus, updateRampLaunchMemory } from './core/LaunchEnergyMode
 import { captureTakeoffContext } from './core/TakeoffContext.js';
 import { VERT_LAUNCH_ENVELOPE } from './transitions/TransitionController.js';
 import { resolveRuntimeMovementMode } from './core/MovementStateResolver.js';
+import { LaunchTelemetry } from './core/LaunchTelemetry.js';
 import {
   applyLandingPostPipeline,
   captureLandingPostContext,
@@ -72,6 +73,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
 
   reset(position = this.spawn, heading = this.spawnHeading || 0) {
     super.reset(position, heading);
+    this.launchTelemetry = new LaunchTelemetry();
     this.landingYawInvariantViolations = 0;
     this.lastLandingYawInvariant = null;
     this.playerState ||= new PlayerState();
@@ -112,6 +114,8 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
 
   emitGameplayEvent(type, data = {}) { this.gameplayEvents.push({ type, ...data }); }
   drainGameplayEvents() { const events = this.gameplayEvents; this.gameplayEvents = []; return events; }
+  getLaunchTelemetry() { return this.launchTelemetry.snapshot(); }
+  drainLaunchTelemetry() { return this.launchTelemetry.drain(); }
 
   rememberRampClimb(dt = 0) {
     if (this.coreController) return this.coreController.updateRampEnergy(this, dt);
@@ -238,7 +242,9 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
         pumpMinHold: PUMP_CONFIG.minHold,
       });
 
+      this.launchTelemetry.resolve(releaseCommand, { nearCoping, coyote: this.coyote > 0 });
       if (releaseCommand === OLLIE_COMMAND.PUMP) {
+        this.launchTelemetry.claim('pump');
         this.applyPump(this.pumpQuality, { normal: supportNormal, contactCount: contacts.contactCount, curvature: eligibility.curvature });
         this.pumpCooldown = PUMP_CONFIG.cooldown;
         this.pumpState = 'PUMP';
@@ -250,7 +256,8 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
         // Allow the held charge to finish just after the wheels leave a lip.
         // It is consumed once and cannot turn a later release into a double jump.
         if (this.airTakeoffFromRamp && !this.takeoffOllieRequested
-          && this.airTime <= .14 && this.velocity.y > 0 && this.charge > .05) {
+          && this.airTime <= .14 && this.velocity.y > 0 && this.charge > .05
+          && this.launchTelemetry.claim('late-ramp')) {
           const impulse = THREE.MathUtils.lerp(PHYSICS.minJump, PHYSICS.maxJump, this.charge);
           this.velocity.y = Math.min(VERT_LAUNCH_ENVELOPE.maximumVerticalSpeed,
             Math.hypot(this.velocity.y, impulse * .85));
@@ -282,6 +289,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
 
   advance(delta, input = {}) {
     this.gameplayEvents = [];
+    if (input.ollieReleased && !this.bailTime) this.launchTelemetry.beginRelease(this);
     const immediateCommand = this.coreController.interpretOllieRelease({
       ollieReleased: Boolean(input.ollieReleased),
       grinding: Boolean(this.grind),
@@ -289,6 +297,8 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
     });
 
     if (immediateCommand === OLLIE_COMMAND.GRIND_OLLIE_OUT) {
+      this.launchTelemetry.resolve(immediateCommand);
+      this.launchTelemetry.claim('grind');
       // Preserve the validated immediate grind-pop timing, but execute the command
       // here so the base class never reinterprets this physical button release.
       this.exitGrind(true);
@@ -306,6 +316,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
   }
 
   step(dt, input = {}) {
+    this.launchTelemetry.time += dt;
     this.copingTrace?.begin(this, input, dt);
     const releaseNow = this.pumpReleaseQueued;
     this.updatePumpState(dt, { ...input, ollieReleased: releaseNow });
@@ -317,6 +328,7 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
     this.copingTrace?.finish(this);
     this.syncMovementState();
     this.syncCanonicalState();
+    this.launchTelemetry.observe(this);
   }
 
   stepGround(dt, input = {}, drive = 0) {
@@ -368,6 +380,8 @@ export class StatefulSkillStreetPhysics extends SafeCopingExitSkillStreetPhysics
 
     this.takeoffOllieRequested = context.requestedImpulse >= 4;
     const result = super.takeoff(context.composedImpulse, edge);
+    if (this.takeoffOllieRequested && result !== false)
+      this.launchTelemetry.claim(edge ? 'buffered-vert' : 'ground-or-coyote');
 
     // This is the actual shipping composition root (not the compatibility
     // UnifiedRampFeel prototype). A generic ramp lip can miss the coping edge

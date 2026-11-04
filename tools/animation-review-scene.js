@@ -108,4 +108,5 @@ window.reviewGrabRecord=async({name='Indy',stance=1}={})=>{
  const blob=new Blob(chunks,{type:mime});return await new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.readAsDataURL(blob);});
 };
 window.reviewSwapRider=async name=>{for(const actor of actors){actor.rider.dispose();actor.rider=await new UnrealRider(`/assets/rider/${name}.glb`).load();actor.rider.deckHeight=actor.board.deckHeight;actor.root.add(actor.rider.root);reset(actor);}return true;};
+window.reviewGrabContactCandidate=enabled=>{for(const actor of actors){actor.rider.setGrabContactCandidate(enabled);reset(actor);}return true;};
 window.reviewReady=true;

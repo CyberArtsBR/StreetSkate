@@ -296,6 +296,7 @@ export class GameShell {
       const effective=this.actions.graphicsStatus?.();
       title='GRAPHICS';
       body='<p class="graphics-intro">Keep your line clear. Choose the detail and responsiveness that suit your display.</p>'
+        +(effective?.allocation&&effective.allocation.state!=='ready'?`<p class="graphics-details" role="status">Your last supported graphics settings are still active. ${safe(effective.allocation.recovery||'Choose another setting and retry.')}</p>`:'')
         +GRAPHICS_PRESET_ORDER.map((name,i)=>`<button class="graphics-preset" data-menu data-action="graphicsSet" data-index="${i}" aria-pressed="${i===this.graphicsIndex}"><strong>${i===this.graphicsIndex?'✓ ':''}${GRAPHICS_PRESETS[name].label}</strong><span>${GRAPHICS_DESCRIPTIONS[name]}</span></button>`).join('')
         +`<button class="graphics-toggle" data-menu data-action="bloomToggle" aria-pressed="${this.bloomEnabled}">NEON GLOW · ${this.bloomEnabled?'ON':'OFF'}</button>`
         +this.glowControls(effective,key)
@@ -422,6 +423,9 @@ export class GameShell {
   }
   begin(practice=false){
     if(!this.ready)return;
+    if(this.phase!=='select')this.pendingSelection={returnScreen:this.phase,selection:this.selection,
+      heroIndex:this.heroIndex,boardIndex:this.boardIndex,locationIndex:this.locationIndex,finishIndex:this.finishIndex,
+      heroConfirmed:this.heroConfirmed,boardConfirmed:this.boardConfirmed};
     this.pendingMode=practice?'practice':'timed';
     this.selectError='';this.heroConfirmed=false;this.boardConfirmed=false;
     this.focusHint={action:'hero',index:this.heroIndex};
@@ -530,6 +534,7 @@ export class GameShell {
       this.tutorialSeen=true;
       const practice=this.pendingMode==='practice';
       this.pendingMode=null;
+      this.pendingSelection=null;
       this.start(practice);
     }catch(error){
       if(generation!==this.loadoutGeneration||this.phase!=='select')return;
@@ -556,7 +561,14 @@ export class GameShell {
     if(this.tutorialReturn==='playing')this.resume();
     else this.setScreen(this.tutorialReturn==='tutorial'?'title':this.tutorialReturn);
   }
-  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup'){this.skipTimeup();return;}else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(['graphics','settings','creator'].includes(this.phase))this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.setScreen('title');else if(this.phase==='title')this.choose('launcher');}
+  cancelSelection(){
+    const pending=this.pendingSelection;
+    this.pendingSelection=null;this.pendingMode=null;this.selectError='';
+    if(pending){for(const key of ['heroIndex','boardIndex','locationIndex','finishIndex','heroConfirmed','boardConfirmed'])this[key]=pending[key];}
+    this.setScreen(pending?.returnScreen||'title');
+    if(pending){this.selection=pending.selection||0;this.focusSelection();}
+  }
+  back(){if(this.phase==='flipSchool'){this.closeFlipSchool();return;}if(this.phase==='timeup'){this.skipTimeup();return;}else if(this.phase==='highlights')this.showResults();else if(this.phase==='tutorial'){this.closeTutorial();}else if(this.phase==='options')this.setScreen(this.optionsReturn||'title');else if(['graphics','settings','creator'].includes(this.phase))this.setScreen('options');else if(this.phase==='pause')this.resume();else if(this.phase==='results')this.choose('title');else if(this.phase==='select')this.cancelSelection();else if(this.phase==='title')this.choose('launcher');}
   choose(action,index=0){
     if(this.phase==='timeup'){this.skipTimeup();return;}
     this.actions.cue?.(action==='back'?'back':'confirm');

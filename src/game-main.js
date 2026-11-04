@@ -199,8 +199,10 @@ const highlightPlayback = new HighlightPlayback({
   camera,
   getSurface: () => collision,
   onFinish: () => gameShell.showResults(),
-  onEvent:event=>{skateAudio.impact(event.strength||.4,event.kind==='grind',event.kind);skateEffects.playRecordedEvent?.(event);},
-  onMoment: moment => { highlightStatus = { ...moment, total: moment.count }; },
+  onEvent:event=>{skateAudio.playRecordedEvent?.(event);skateEffects.playRecordedEvent?.(event,collision);},
+  onAdvance:delta=>{skateEffects.updateReplay(delta);skateAudio.updateReplay?.(delta);},
+  onStop:()=>{skateEffects.reset(skater);skateAudio.resetReplay?.();},
+  onMoment: moment => { skateEffects.reset();skateAudio.resetReplay?.();highlightStatus = { ...moment, total: moment.count }; },
 });
 const gameShell = new GameShell({
   input,
@@ -253,6 +255,8 @@ const gameShell = new GameShell({
   setDeadZone: value => { input.stickDeadZone = value; },
   graphics: name => applyGraphicsPreset(name),
   graphicsStatus: () => graphicsPipeline.getStatus(),
+  audioStatus:()=>skateAudio.getAudioStatus(),
+  retryAudio:()=>skateAudio.retryFoley(),
   graphicsGlow: (key,value) => setGlowValue(key,value),
   graphicsGlowReset: () => resetGlowValues(),
   screenChanged: phase => {
@@ -342,13 +346,14 @@ document.querySelector('#trick-guide-button').onclick = () => gameShell.openTuto
 
 function applyGraphicsPreset(name) {
   sceneNeedsRender=true;
-  graphicsPreset = normalizedGraphicsPreset(name);
-  graphicsPipeline.setQuality(graphicsPreset, {
+  const requestedPreset = normalizedGraphicsPreset(name);
+  const accepted = graphicsPipeline.setQuality(requestedPreset, {
     devicePixelRatio: window.devicePixelRatio,
     maxAnisotropy: renderer.capabilities.getMaxAnisotropy(),
     maxSamples: renderer.capabilities.maxSamples || 2,
   }, { bloomEnabled: gameShell.bloomEnabled, smoothEdges: gameShell.smoothEdges,
-    glowTuning:glowPresets[graphicsPreset], legacyGlowDefaults, renderScale:playerPreferences.renderScale });
+    glowTuning:glowPresets[requestedPreset], legacyGlowDefaults, renderScale:playerPreferences.renderScale });
+  graphicsPreset=accepted.name;
   skateEffects.setQuality(graphicsPipeline.settings);
   skateEffects.setSize(innerHeight,renderer.getPixelRatio());
   gameShell.graphicsIndex = GRAPHICS_PRESET_ORDER.indexOf(graphicsPreset);
@@ -735,7 +740,7 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
   switchingWorld = true;
   const request = ++loadoutRequest;
   setPaused(true);
-  let nextWorld;
+  let nextWorld, preparedRider;
   const progress = message => {
     onProgress?.(message);
     gameShell.selectError = message;
@@ -753,24 +758,34 @@ async function selectLocation(id, { hero, finish, file, onProgress } = {}) {
     const runtime = nextWorld ? prepareParkRuntime(candidate, skater.board.contactRig) : null;
     if (hero?.url) {
       progress('LOADING YOUR CHARACTER…');
-      await skater.setRiderModel(hero.url, { uploadFilename: hero.id === 'custom' ? hero.uploadFilename : '' });
+      preparedRider=await skater.prepareRiderModel(hero.url, { uploadFilename: hero.id === 'custom' ? hero.uploadFilename : '' });
     }
-    if (request !== loadoutRequest) { if (nextWorld) disposeParkWorld(nextWorld, currentWorld); return false; }
-    if (runtime) commitWorld(candidate, runtime);
-    if (finish != null) skater.board.setFinish(finish);
-    followCamera.snap(skater);
     progress('PREPARING PARK LIGHTING…');
+    // Compile staged assets against the current lighting without attaching them
+    // to the resumable run. No live rider/world mutation precedes these awaits.
+    if(renderer.compileAsync){
+      for(const root of [nextWorld?.park,preparedRider?.root])if(root){
+        try{await renderer.compileAsync(root,camera,scene);}catch{/* normal renderer fallback */}
+        if(request!==loadoutRequest)break;
+      }
+    }
     await warmScenePrograms(renderer,scene,camera,{
       isCurrent:()=>request===loadoutRequest,
-      renderFirstFrame:()=>renderGameplayWarmup({skater,effects:skateEffects,
-        render:()=>graphicsPipeline.render({contactSource:skater,warmup:true})}),
     });
-    if(request!==loadoutRequest)return false;
+    if(request!==loadoutRequest){if(nextWorld)disposeParkWorld(nextWorld,currentWorld);return false;}
+    // One synchronous commit boundary: Back cannot interleave halfway through.
+    if(runtime)commitWorld(candidate,runtime);
+    preparedRider?.commit();
+    if(finish!=null)skater.board.setFinish(finish);
+    followCamera.snap(skater);
+    try{renderGameplayWarmup({skater,effects:skateEffects,
+      render:()=>graphicsPipeline.render({contactSource:skater,warmup:true})});}catch(error){console.warn('Presentation warmup skipped',error);}
     return { locationId: currentWorld.id, manifest };
   } catch (error) {
     if (nextWorld && nextWorld !== currentWorld) disposeParkWorld(nextWorld, currentWorld);
     throw new Error(`Could not load the selected location. ${error.message || 'Choose another location and retry.'}`);
   } finally {
+    preparedRider?.dispose();
     switchingWorld = false;
   }
 }
@@ -1001,10 +1016,12 @@ renderer.setAnimationLoop(() => {
         const eventState={grounded:skater.grounded,pop:skater.presentation?.popTime>0,grind:!!skater.grind,
           catch:skater.presentation?.flipPhase==='CATCH',impact:skater.rider?.ragdoll?.groundImpact,respawn:skater.respawnSerial};
         if(previousPresentationEvent&&eventState.respawn===previousPresentationEvent.respawn){
-          const emit=(kind,strength)=>highlightRecorder.markEvent({kind,strength,surface:surfaceTagFor(skater),
+          const emit=(kind,strength)=>highlightRecorder.markEvent({kind,strength,surface:surfaceTagFor(skater),mapId:currentWorld.id,
+            forward:skater.forward.toArray(),
             point:(kind==='bail'?eventState.impact.point:skater.position).toArray(),
             normal:(kind==='bail'?eventState.impact.normal:skater.normal).toArray()});
           if(eventState.impact&&eventState.impact!==previousPresentationEvent.impact)emit('bail',Math.min(1,(eventState.impact.speed||4)/10));
+          if(previousPresentationEvent.grind&&(!eventState.grind||skater.bailTime))emit('grindEnd',0);
           if(!skater.bailTime){
             if(eventState.pop&&!previousPresentationEvent.pop)emit('pop',.5);
             if(eventState.grind&&!previousPresentationEvent.grind)emit('grind',.5);
@@ -1043,7 +1060,6 @@ renderer.setAnimationLoop(() => {
     paused, focused: document.hasFocus(),
   });
   transitionDebug?.update(skater);
-  if(gameShell.phase==='highlights'&&highlightPlayback.active)skateEffects.updateReplay?.(realDelta);
   skateAudio.update(skater, loaded && mode === 'skate' && !paused && gameShell.simulating && document.hasFocus());
   const effectsActive = loaded && mode === 'skate' && !paused && gameShell.active && document.hasFocus();
   if (!effectsActive && effectsWereActive) skateEffects.reset(skater);
