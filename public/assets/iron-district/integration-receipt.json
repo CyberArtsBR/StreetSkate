@@ -3,7 +3,7 @@
   "source": "User-supplied IRONMAP.rar / edited IronDistrictSource.glb",
   "license": "LICENSES.md: original project assets; use, editing and redistribution with this project authorized.",
   "archiveSha256": "6597fd0fe1e5d84e01aa11f53342ea6c2f6f153ab5ba1ed8f47cd4f0184c9e10",
-  "editedSourceSha256": "531860cd46cd610352c75146b2cd5a867e744a2ef73c36005daf4ea33e28e663",
+  "editedSourceSha256": "ba8860244612a184266d4afc8a116844b72f73e59106014a7c619061f184c636",
   "verifiedOriginalRoster": [
     {
       "path": "IronDistrict_Collision.glb",
@@ -177,7 +177,7 @@
   "outputs": [
     {
       "path": "IronDistrictSource.glb",
-      "sha256": "531860cd46cd610352c75146b2cd5a867e744a2ef73c36005daf4ea33e28e663"
+      "sha256": "ba8860244612a184266d4afc8a116844b72f73e59106014a7c619061f184c636"
     },
     {
       "path": "IronDistrict_Metadata.json",

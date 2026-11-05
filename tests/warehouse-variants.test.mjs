@@ -11,7 +11,7 @@ import { PARK_REGISTRY } from '../src/game/ParkRegistry.js';
 const assets = [
   { id:'orbit', file:'public/assets/spacepark/orbit.glb', minMeshes:100 },
   { id:'grand-warehouse', file:'public/assets/warehouse/granwarehouse.glb', minMeshes:1400,
-    sha256:'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c' },
+    sha256:'759af97a43197371f68704e7f93092f5b416e7b282355a8b5554125a6c318c38' },
 ];
 function readGlb(file) {
   const bytes=readFileSync(resolve(file));

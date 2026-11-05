@@ -13,7 +13,7 @@ assert.ok(scripts.length>0,'No production JS');
 for(const x of scripts)await nonempty('assets/'+x);
 for(const x of ['thehollowf.glb','The_Heretic.glb','The_AdolescentUR.glb','The_Anchor.glb','TuxR.glb'])await nonempty('assets/rider/'+x);
 await nonempty('assets/menu/riders/thehollowf.png');
-for(const x of ['title-screen.png','trick-guide-16x9.png'])await nonempty('media/'+x);
+for(const x of ['title-screen.webp','trick-guide-16x9.webp'])await nonempty('media/'+x);
 for(const x of ['orbit.glb'])await nonempty('assets/spacepark/'+x);
 await nonempty('assets/warehouse/granwarehouse.glb');
 for(const x of ['rooftop.webp','urban-warehouse.webp'])await nonempty('assets/menu/'+x);

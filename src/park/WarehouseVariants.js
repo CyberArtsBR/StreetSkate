@@ -30,8 +30,8 @@ const VARIANTS = Object.freeze({
   },
   'grand-warehouse': {
     name: 'GRAND WAREHOUSE',
-    url: gameAssetUrl('/assets/warehouse/granwarehouse.glb?v=fbc46ba3'),
-    compressedUrl: gameAssetUrl('/assets/warehouse/granwarehouse.glb.gz?v=fbc46ba3'),
+    url: gameAssetUrl('/assets/warehouse/granwarehouse.glb?v=759af97a'),
+    compressedUrl: gameAssetUrl('/assets/warehouse/granwarehouse.glb.gz?v=759af97a'),
     exposure: 1.06,
     light: '#ffe4bc',
     ambient: '#d4ddf2',

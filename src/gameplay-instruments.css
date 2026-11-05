@@ -21,7 +21,7 @@ body[data-screen='playing'] .skate-hud{position:fixed;left:max(24px,env(safe-are
 .skate-hud .speed{display:flex;align-items:center;gap:10px}
 .skate-hud .speed>#speed-value{--glyph-height:54px;font-size:54px;line-height:1;letter-spacing:0;color:#ffeaa1;text-shadow:none;-webkit-text-stroke:0}
 .skate-hud .speed>small{display:flex;flex-direction:column;gap:4px;align-self:center;margin:0;font:800 12px/1 'DM Sans',Arial,sans-serif;letter-spacing:.09em;color:#d6f6f4}
-.skate-hud .speed>small::before{content:'SPEED';font-size:8px;letter-spacing:.16em;color:#a6c0ce}
+.skate-hud .speed>small::before{content:'SPEED';font-size:10px;letter-spacing:.16em;color:#a6c0ce}
 .skate-hud .ride-state{display:flex;flex-direction:column;align-items:flex-start;align-self:center;gap:5px;min-width:83px;padding-left:16px;border-left:1px solid #88b2c32e}
 .skate-hud .ride-state>#state-value{font:800 9px/1 'DM Sans',Arial,sans-serif;letter-spacing:.06em;color:#c4d7e2}
 .skate-hud .ride-state>#state-value.air{color:#ffe399}
@@ -30,30 +30,30 @@ body[data-screen='playing'] .skate-hud{position:fixed;left:max(24px,env(safe-are
 .skate-hud .ride-state>.charge-label{font:700 7px/1 'DM Sans',Arial,sans-serif;letter-spacing:.09em;color:#96b3c6}
 body[data-screen='playing'] #now-playing,body[data-screen='playing'] #now-playing.song-compact{left:auto;top:auto;right:max(24px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));z-index:9;width:242px;max-width:calc(100vw - 330px);min-width:0;padding:8px 11px;gap:8px;border:1px solid #9acbd12e;border-radius:11px 4px 4px 11px;background:#141a29db;box-shadow:0 4px 16px #0002}
 body[data-screen='playing'] #now-playing .song-copy{gap:3px}
-body[data-screen='playing'] #now-playing .song-label{display:block;font-size:7px;letter-spacing:.14em;color:#a9bdcf}
+body[data-screen='playing'] #now-playing .song-label{display:block;font-size:10px;letter-spacing:.14em;color:#a9bdcf}
 body[data-screen='playing'] #now-playing .song-title,body[data-screen='playing'] #now-playing.song-compact .song-title{font-size:12px;line-height:1.3;color:#dfeaf0}
 body[data-screen='playing'] #now-playing .song-emblem,body[data-screen='playing'] #now-playing.song-compact .song-emblem{flex-basis:25px;height:25px;background:#3144555c;border-color:#8ae8eb2e;border-radius:7px}
 body[data-screen='playing'] #now-playing .song-emblem svg{width:17px;height:17px}
-body[data-screen='playing'] #now-playing .song-note{font-size:8px}
+body[data-screen='playing'] #now-playing .song-note{font-size:10px}
 @media(max-width:720px){
   .hud-total{left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));padding:10px 12px 11px;gap:7px;min-width:125px;max-width:calc(100vw - 146px);border-radius:4px 11px 11px 4px}
-  .hud-total>small{font-size:8px;letter-spacing:.12em}
+  .hud-total>small{font-size:10px;letter-spacing:.12em}
   #score-value{--glyph-height:min(34px,calc((100vw - 160px)/var(--hud-glyph-units,1)))}
   #score-value[data-digit-count='7'],#score-value[data-digit-count='8'],#score-value[data-digit-count='9']{--glyph-height:min(26px,calc((100vw - 160px)/var(--hud-glyph-units,1)))}
   #run-timer{--glyph-height:35px;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));min-width:112px;padding:9px 11px 10px;gap:7px;border-radius:4px 4px 11px 11px}
-  #run-timer::before{font-size:8px}
+  #run-timer::before{font-size:10px}
   body[data-screen='playing'] .skate-hud{left:max(12px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom))!important;padding:10px 12px;gap:10px;border-radius:4px 11px 11px 4px}
   .skate-hud .speed>#speed-value{--glyph-height:44px;font-size:44px}
   .skate-hud .speed>#speed-value[data-digit-count='3']{--glyph-height:34px}
   .skate-hud .speed{gap:7px}
   .skate-hud .speed>small{font-size:10px;letter-spacing:.04em}
-  .skate-hud .speed>small::before{font-size:7px}
+  .skate-hud .speed>small::before{font-size:10px}
   .skate-hud .ride-state{padding-left:10px;min-width:67px;gap:5px}
-  .skate-hud .ride-state>#state-value{font-size:7px;letter-spacing:.015em}
+  .skate-hud .ride-state>#state-value{font-size:10px;letter-spacing:.015em}
   .skate-hud .charge{width:56px;height:4px}
   .skate-hud .ride-state>.charge-label{font-size:6px}
   body[data-screen='playing'] #now-playing,body[data-screen='playing'] #now-playing.song-compact{right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));padding:7px;gap:5px;width:138px;max-width:calc(100vw - 245px)}
-  body[data-screen='playing'] #now-playing .song-title,body[data-screen='playing'] #now-playing.song-compact .song-title{font-size:9px}
+  body[data-screen='playing'] #now-playing .song-title,body[data-screen='playing'] #now-playing.song-compact .song-title{font-size:11px}
   body[data-screen='playing'] #now-playing .song-emblem,body[data-screen='playing'] #now-playing.song-compact .song-emblem{flex-basis:20px;height:20px}
   body[data-screen='playing'] #now-playing .song-emblem svg{width:13px;height:13px}
   body[data-screen='playing'] #now-playing .song-label{font-size:6px;letter-spacing:.07em}

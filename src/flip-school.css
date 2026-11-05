@@ -24,10 +24,10 @@ body[data-screen='flipSchool'] #now-playing,body[data-screen='flipSchool'] .menu
 .flip-lesson-detail{min-width:0}
 .flip-detail-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px}
 .flip-detail-heading h3{font:700 32px/1 'Barlow Condensed',sans-serif;margin:6px 0 0;letter-spacing:-.01em}
-.flip-loop-label{font-size:9px;color:var(--flip-acid);letter-spacing:.12em;white-space:nowrap}
+.flip-loop-label{font-size:11px;color:var(--flip-acid);letter-spacing:.12em;white-space:nowrap}
 .flip-video-stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#17262f;border:1px solid #5c7b8550;border-radius:5px}
 .flip-video-stage video{width:100%;height:100%;object-fit:contain;display:block}
-.flip-video-caption{position:absolute;top:14px;left:16px;font-size:8px;font-weight:700;letter-spacing:.15em;color:#d2e2e0;pointer-events:none}
+.flip-video-caption{position:absolute;top:14px;left:16px;font-size:10px;font-weight:700;letter-spacing:.15em;color:#d2e2e0;pointer-events:none}
 .flip-input-overlay{position:absolute;right:12px;bottom:12px;width:clamp(145px,16vw,208px);padding:10px 12px 8px;background:#0c1b26ed;border:1px solid #8badb54d;border-radius:7px;pointer-events:none}
 .flip-overlay-label{display:block;font:700 8px/1.3 'DM Sans',sans-serif;letter-spacing:.12em;color:#a6bbc1}
 .flip-pad{display:block;width:100%;height:auto;margin:6px 0}
@@ -45,7 +45,7 @@ body[data-screen='flipSchool'] #now-playing,body[data-screen='flipSchool'] .menu
 .flip-video-error{position:absolute;left:12px;bottom:12px;max-width:60%;padding:12px;background:#14232bf5;color:#ffe4af;font-size:12px;line-height:1.5}
 .flip-player-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
 .flip-transport,.flip-input-modes{display:flex;gap:5px}
-#game-shell .flip-player-controls button{padding:8px 9px;font-size:9px;letter-spacing:.04em;background:#1d3440;border-color:#6c8c9650;border-radius:3px;min-height:32px}
+#game-shell .flip-player-controls button{padding:8px 9px;font-size:11px;letter-spacing:.04em;background:#1d3440;border-color:#6c8c9650;border-radius:3px;min-height:32px}
 #game-shell .flip-input-modes button{background:none;color:#a2b7bc}
 #game-shell .flip-input-modes button[aria-pressed='true']{color:var(--flip-acid);border-color:#b9de7b}
 .flip-progress{height:3px;background:#314c56;margin-top:14px;overflow:hidden}
@@ -55,11 +55,11 @@ body[data-screen='flipSchool'] #now-playing,body[data-screen='flipSchool'] .menu
 .flip-step-number{font:700 10px monospace;color:var(--flip-muted);padding-top:3px}
 .flip-steps b{display:block;font:700 17px/1.2 'Barlow Condensed',sans-serif}
 .flip-steps strong{display:block;font-size:11px;line-height:1.45;color:#c5d6d6;margin-top:5px}
-.flip-steps small{display:block;font-size:9px;line-height:1.5;color:#93adb4;margin-top:5px}
+.flip-steps small{display:block;font-size:11px;line-height:1.5;color:#93adb4;margin-top:5px}
 .flip-steps li.is-active{border-color:var(--flip-acid);background:#263d35}
 .flip-steps li.is-active :is(b,.flip-step-number){color:var(--flip-acid)}
 .flip-coach-note{border-left:2px solid #86abb5;padding:0 0 0 12px;margin:16px 0}
-.flip-coach-note>span{font-size:8px;letter-spacing:.15em;color:#a4c2ca;font-weight:800}
+.flip-coach-note>span{font-size:10px;letter-spacing:.15em;color:#a4c2ca;font-weight:800}
 .flip-coach-note p{font-size:12px;line-height:1.6;margin:5px 0;color:#deeadf}
 .flip-coach-note small{display:block;font-size:10px;line-height:1.5;color:#9db5be}
 .flip-school-footer{position:sticky;bottom:-14px;z-index:2;background:#0a1821;display:flex;align-items:center;justify-content:space-between;gap:18px;border-top:1px solid #78919a50;margin-top:8px;padding:14px 0}

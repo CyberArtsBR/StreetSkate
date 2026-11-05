@@ -7,7 +7,7 @@ export function graffitiLettering(text, palette = 'cyan-purple') {
   const tone = palettes.has(palette) ? palette : 'cyan-purple';
   const words = String(text).toUpperCase().split(/\s+/).filter(Boolean).map(word =>
     `<span class="graffiti-word">${[...word].map(letter => /[A-Z0-9]/.test(letter)
-      ? `<img src="${gameAssetUrl('/assets/graffiti/')}${tone}/${letter}.png" alt="" draggable="false" decoding="async">`
+      ? `<img src="${gameAssetUrl('/assets/graffiti/')}${tone}/${letter}.webp" alt="" draggable="false" decoding="async">`
       : `<span class="graffiti-punctuation">${escape(letter)}</span>`).join('')}</span>`).join(' ');
   return `<span class="graffiti-lettering graffiti-loading" role="img" aria-label="${escape(text)}"><span class="graffiti-art" aria-hidden="true">${words}</span><span class="graffiti-fallback" aria-hidden="true">${escape(text)}</span></span>`;
 }
@@ -21,7 +21,7 @@ export function prepareGraffitiHudGlyphs(text, palette='cyan-purple'){
   const tone=palettes.has(palette)?palette:'cyan-purple';
   let loading=false,failed=false;
   for(const letter of new Set([...String(text).toUpperCase()].filter(char=>/^[A-Z0-9]$/.test(char)))){
-    const url=`${gameAssetUrl('/assets/graffiti/')}${tone}/${letter}.png`;
+    const url=`${gameAssetUrl('/assets/graffiti/')}${tone}/${letter}.webp`;
     let glyph=hudGlyphs.get(url);
     if(!glyph){
       const image=new Image();glyph={image,status:'loading'};hudGlyphs.set(url,glyph);

@@ -3,12 +3,12 @@
 #app{min-height:0}
 /* Keep the gameplay canvas unobstructed: HUD text provides its own contrast. */
 #viewport:after{display:none}
-.skate-hud{bottom:26px!important}.skate-hud .ride-state small{font-size:9px}
+.skate-hud{bottom:26px!important}.skate-hud .ride-state small{font-size:11px}
 body:not([data-screen='playing']) .skate-hud,body:not([data-screen='playing']) #trick-feedback,body:not([data-screen='playing']) #balance-hud{display:none!important}
 #game-shell{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;color:#fff;background:#070915a8;backdrop-filter:blur(7px)}
 #game-shell[hidden]{display:none}#game-shell .title-art{display:none}
 #game-shell.title-screen{background:#100d1c;backdrop-filter:none}
-.title-screen .shell-content{position:relative;width:min(100vw,calc(100dvh * 16 / 9));height:min(100dvh,calc(100vw * 9 / 16));background:url('/media/title-screen.png') center/contain no-repeat}
+.title-screen .shell-content{position:relative;width:min(100vw,calc(100dvh * 16 / 9));height:min(100dvh,calc(100vw * 9 / 16));background:url('/media/title-screen.webp') center/contain no-repeat}
 .title-menu{position:absolute;right:5%;top:51%;width:36%;min-height:36%;padding:1.2% 1.5%;box-sizing:border-box;background:linear-gradient(145deg,#100d1ffa,#24172ff5);border:1px solid #ed70ac88;box-shadow:0 0 35px #da28896b;border-radius:12px;display:grid;gap:clamp(5px,1vh,13px)}
 .title-menu>p{font-size:clamp(8px,1.05vw,15px);letter-spacing:.22em;margin:0 0 4px;color:#ffcd78}
 #game-shell button{border:1px solid #ffffff3d;border-radius:5px;background:#221b30;color:#f7eff8;font:800 clamp(11px,1.25vw,20px)/1.25 'DM Sans',Arial,sans-serif;letter-spacing:.04em;padding:clamp(9px,1.5vh,18px) 18px;text-align:left;transition:background .12s,transform .12s;cursor:pointer}
@@ -156,14 +156,14 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 
 
 /* Critical hotfix: title artwork keeps exact 16:9 button hitboxes; gutters receive artwork instead of black bars. */
-#game-shell.title-screen{background:#140f24 url('/media/title-screen.png') center / cover no-repeat;backdrop-filter:none}
+#game-shell.title-screen{background:#140f24 url('/media/title-screen.webp') center / cover no-repeat;backdrop-filter:none}
 #game-shell.title-screen .art-hit span{display:none!important}
 #game-shell.title-screen button.art-hit.selected,#game-shell.title-screen button.art-hit:focus-visible{
  outline:2px solid #ffe7a8;outline-offset:-2px;border-color:#ffd77a;background:rgba(255,255,255,.035);
  box-shadow:0 0 25px #ff3fa988,inset 0 0 14px #fff2
 }
 #game-shell.loadout-screen{
- background:linear-gradient(135deg,rgba(8,8,22,.60),rgba(29,10,37,.76)),url('/media/title-screen.png') center/cover no-repeat;
+ background:linear-gradient(135deg,rgba(8,8,22,.60),rgba(29,10,37,.76)),url('/media/title-screen.webp') center/cover no-repeat;
  backdrop-filter:none
 }
 .loadout-screen .shell-content{
@@ -195,7 +195,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 }
 #game-shell .deck-preview::before{left:17%}
 #game-shell .deck-preview::after{right:17%}
-#game-shell.menu-screen{background:linear-gradient(130deg,#0b0915c9,#200d26c2),url('/media/title-screen.png') center/cover no-repeat}
+#game-shell.menu-screen{background:linear-gradient(130deg,#0b0915c9,#200d26c2),url('/media/title-screen.webp') center/cover no-repeat}
 #game-shell.menu-screen .menu-card{
  background:linear-gradient(150deg,#191328f5,#0c1020f6);border:1px solid #ff60aa9a;
  box-shadow:0 20px 80px #000b,0 0 45px #e624802b;width:min(510px,90vw);gap:12px
@@ -231,7 +231,7 @@ body[data-screen='tutorial'] .menu-footnote{display:none}
 #game-shell.title-screen{isolation:isolate;background:#120d21;overflow:hidden}
 #game-shell.title-screen::before{
  content:'';position:absolute;inset:-32px;z-index:-1;pointer-events:none;
- background:url('/media/title-screen.png') center/cover no-repeat;
+ background:url('/media/title-screen.webp') center/cover no-repeat;
  filter:blur(25px) brightness(.58) saturate(1.2);
 }
 

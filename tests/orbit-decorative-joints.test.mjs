@@ -32,7 +32,7 @@ function collisionHash(collision) {
 test('ORBIT removes both decorative deck-joint directions and preserves actual ramp seams, grilles and collision', async () => {
   const asset = new URL('../public/assets/spacepark/orbit.glb', import.meta.url);
   assert.equal(createHash('sha256').update(await readFile(asset)).digest('hex'),
-    '5038ff2ea2e65620faf098bbdf333b47163fe0837542e551e09561a2d45e674d', 'authored source GLB is untouched');
+    '62f48f9e794f383a9039e11791c8ee39812dd34cfdac83d62922a8791db56ae7', 'authored source GLB is untouched');
   const scene = await loadGeometry(asset);
   let expansion = 0, short = 0, panelJoins = 0, grilles = 0;
   const retainedPositions = [];

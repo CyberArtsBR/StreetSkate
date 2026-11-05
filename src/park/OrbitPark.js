@@ -229,8 +229,7 @@ export async function createOrbitPark() {
       if (!response.ok) throw new Error('ORBIT manifest unavailable.');
       return response.json();
     }),
-    new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.webp'))
-      .catch(() => new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.png'))),
+    new THREE.TextureLoader().loadAsync(gameAssetUrl('/assets/spacepark/textures/galaxy-4k.webp')),
   ]);
   const world = splitOrbitScene(gltf.scene, manifest.rails);
   addChimpionsOrbitSign(world.park, world.brandingAnchor);

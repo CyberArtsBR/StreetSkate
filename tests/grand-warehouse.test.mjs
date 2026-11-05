@@ -15,7 +15,7 @@ import { excludeGrandWarehouseMisplacedSixStair, isGrandWarehouseMisplacedSixSta
 import { batchWarehouseVisuals } from '../src/park/WarehouseVariants.js';
 
 const file = 'public/assets/warehouse/granwarehouse.glb';
-const expectedHash = 'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c';
+const expectedHash = '759af97a43197371f68704e7f93092f5b416e7b282355a8b5554125a6c318c38';
 
 
 test('Map 3 is distinct and preserves ORBIT as Map 2', () => {

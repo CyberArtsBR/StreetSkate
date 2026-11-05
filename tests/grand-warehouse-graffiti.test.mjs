@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 test('Grand Warehouse renders the exact Skatewarehouse GLB, not the former asset', () => {
   const bytes = readFileSync('public/assets/warehouse/granwarehouse.glb');
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
-    'fbc46ba3e414bb4380366c749fa0aa526e06328ae3bff702e956b43c37f0902c');
+    '759af97a43197371f68704e7f93092f5b416e7b282355a8b5554125a6c318c38');
 });
 
 test('Grand Warehouse adds no runtime graffiti to the warehouse visual root', () => {

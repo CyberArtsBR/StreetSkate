@@ -40,7 +40,7 @@ export class GameShell {
     this.sessionFlow=new SessionFlow();this.playerPreferences=applyPlayerPreferences(readPlayerPreferences());
     this.settingsPanel=null;this.goRemaining=0;this.timeupSeen=false;
     this.selection=0;this.previousPad={};this.padFocused=false;this.padIdentity=null;this.navRepeat=0;this.tutorialSeen=false;this.page=0;
-    this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.png')},...tutorialPages()];
+    this.pages=[{image:gameAssetUrl('/media/trick-guide-16x9.webp')},...tutorialPages()];
     this.flipLessonIndex=0;this.flipInputMode='xbox';this.flipPlayer=null;
     this.cameraIndex=Math.max(0,CAMERA_MODES.indexOf(stored('streetskate.camera','follow')));
     this.graphicsIndex=GRAPHICS_PRESET_ORDER.indexOf(DEFAULT_GRAPHICS_PRESET);
@@ -126,6 +126,10 @@ export class GameShell {
   get simulating(){return this.active&&this.sessionFlow.snapshot().allowSimulation;}
   get open(){return this.phase==='tutorial';}
   setReady(){this.ready=true;this.render();}
+  // Hide a subtitle that only repeats the rider's name (e.g. "The Hollow / THE HOLLOW").
+  heroSubtitle(hero){return String(hero.subtitle||'').toLowerCase()===String(hero.name||'').toLowerCase()?'':hero.subtitle||'';}
+  // The start button says what is still missing instead of sitting greyed out.
+  loadoutStartLabel(){return this.selectBusy?'LOADING RIDER…':!this.heroConfirmed?'PICK A RIDER':!this.boardConfirmed?'PICK A DECK':'LET’S SKATE →';}
   setScreen(phase){
     if(this.phase==='creator'&&phase!=='creator'&&this.mapUploadBusy){
       this.mapUploadGeneration++;this.mapUploadBusy=false;this.mapUploadStatus='';this.actions.cancelLoadout?.();
@@ -248,7 +252,7 @@ export class GameShell {
       const cards=this.heroes.map((hero,i)=>`<button data-menu data-action="hero" data-index="${i}" class="loadout-character ${this.heroConfirmed&&i===this.heroIndex?'is-chosen':''}"
         style="--rider-accent:${hero.accent}" aria-pressed="${this.heroConfirmed&&i===this.heroIndex}">
         <span class="rider-portrait" data-portrait-url="${safe(hero.url)}" data-preview-state="loading"><span class="rider-initial">${safe(hero.name[0]||'?')}</span><span class="preview-status">Loading preview…</span></span>
-        <strong>${safe(hero.name)}</strong><small>${safe(hero.subtitle)}</small></button>`).join('');
+        <strong>${safe(hero.name)}</strong><small>${safe(this.heroSubtitle(hero))}</small></button>`).join('');
       const colors=BOARD_CHOICES.map((board,i)=>`<button data-menu data-action="board" data-index="${i}" class="loadout-deck ${this.boardConfirmed&&i===this.boardIndex?'is-chosen':''}"
         style="--deck-gradient:${board.gradient}" aria-pressed="${this.boardConfirmed&&i===this.boardIndex}"><span class="deck-thumb" data-board-preview="${i}"><span class="deck-preview"></span></span><b>${safe(board.label)}</b><span class="deck-swatch" aria-hidden="true"></span></button>`).join('');
       const spots=LOCATIONS.map((spot,i)=>`<button data-menu data-action="location" data-index="${i}"
@@ -261,13 +265,13 @@ export class GameShell {
         <section class="loadout-section rider-panel" aria-label="Choose your rider"><div class="loadout-heading"><span class="section-number">01</span><h3>${graffitiLettering('RIDER','gold')}</h3><span class="panel-kicker">THE CREW</span></div>
         <div class="selected-rider" style="--rider-accent:${this.heroes[this.heroIndex].accent}"><span class="rider-stage-number" aria-hidden="true">${String(this.heroIndex+1).padStart(2,'0')}</span>
           <span class="rider-portrait" data-portrait-url="${safe(this.heroes[this.heroIndex].url)}" data-preview-state="loading"><span class="preview-status">Loading preview…</span></span>
-          <div class="selected-rider-copy"><span>${this.heroConfirmed?'YOUR RIDER':'MEET THE CREW'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong><small>${safe(this.heroes[this.heroIndex].subtitle)}</small></div>
+          <div class="selected-rider-copy"><span>${this.heroConfirmed?'YOUR RIDER':'MEET THE CREW'}</span><strong>${safe(this.heroes[this.heroIndex].name)}</strong><small>${safe(this.heroSubtitle(this.heroes[this.heroIndex]))}</small></div>
         </div>${this.button('↑ IMPORT YOUR RIDER .GLB','upload')}</section>
         <section class="loadout-section deck-panel" aria-label="Choose your skateboard"><div class="loadout-heading"><span class="section-number">02</span><h3>${graffitiLettering('DECK','gold')}</h3><span class="panel-kicker">GRADIENT GLOW</span></div>
         <div class="loadout-boards">${colors}</div><div class="selection-note"><span>${this.boardConfirmed?'DECK LOCKED IN':'CHOOSE YOUR FINISH'}</span><strong>${safe(BOARD_CHOICES[this.boardIndex].label)}</strong></div></section>
         <section class="loadout-section spot-panel" aria-label="Choose your location"><div class="loadout-heading"><span class="section-number">03</span><h3>${graffitiLettering('SPOT','gold')}</h3><span class="panel-kicker">THREE PARKS. YOUR LINE.</span></div>
         <div class="loadout-locations">${spots}</div><div class="selection-note"><span>SESSION LOCATION</span><strong>MAP ${LOCATIONS[this.locationIndex].number} / ${safe(LOCATIONS[this.locationIndex].name)}</strong></div></section></div>
-        <footer>${this.button('← BACK','back')}<div class="loadout-recap"><span class="loadout-checks"><span class="${this.heroConfirmed?'complete':''}">${this.heroConfirmed?'✓':'01'} RIDER</span><span class="${this.boardConfirmed?'complete':''}">${this.boardConfirmed?'✓':'02'} DECK</span><span class="complete">✓ SPOT</span></span><span><span data-recap-rider>${safe(this.heroes[this.heroIndex].name)}</span> <i>/</i> <span data-recap-deck>${safe(BOARD_CHOICES[this.boardIndex].label)}</span> <i>/</i> <span data-recap-spot>MAP ${LOCATIONS[this.locationIndex].number}</span></span></div>${this.button(this.selectBusy?'LOADING RIDER…':'LET’S SKATE →','confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
+        <footer>${this.button('← BACK','back')}<div class="loadout-recap"><span class="loadout-checks"><span class="${this.heroConfirmed?'complete':''}">${this.heroConfirmed?'✓':'01'} RIDER</span><span class="${this.boardConfirmed?'complete':''}">${this.boardConfirmed?'✓':'02'} DECK</span><span class="complete">✓ SPOT</span></span><span><span data-recap-rider>${safe(this.heroes[this.heroIndex].name)}</span> <i>/</i> <span data-recap-deck>${safe(BOARD_CHOICES[this.boardIndex].label)}</span> <i>/</i> <span data-recap-spot>MAP ${LOCATIONS[this.locationIndex].number}</span></span></div>${this.button(this.loadoutStartLabel(),'confirmLoadout',this.selectBusy||!this.heroConfirmed||!this.boardConfirmed)}</footer>
         <p class="loadout-status" aria-live="polite">${safe(this.loadoutStatus())}</p></div>`;
     } else if(this.phase==='pause') {
       title='PAUSED';body=this.button('▶ RESUME SESSION','resume')+this.button('RESTART SESSION','restart')+
@@ -467,7 +471,7 @@ export class GameShell {
     rider.querySelector('.rider-stage-number').textContent=String(this.heroIndex+1).padStart(2,'0');
     rider.querySelector('.selected-rider-copy span').textContent=this.heroConfirmed?'YOUR RIDER':'MEET THE CREW';
     rider.querySelector('.selected-rider-copy strong').textContent=hero.name;
-    rider.querySelector('.selected-rider-copy small').textContent=hero.subtitle;
+    rider.querySelector('.selected-rider-copy small').textContent=this.heroSubtitle(hero);
     const portrait=rider.querySelector('[data-portrait-url]');
     if(portrait.dataset.portraitUrl!==hero.url){
       portrait.dataset.portraitUrl=hero.url;portrait.dataset.previewState='loading';
@@ -484,7 +488,9 @@ export class GameShell {
     root.querySelector('[data-recap-rider]').textContent=hero.name;
     root.querySelector('[data-recap-deck]').textContent=board.label;
     root.querySelector('[data-recap-spot]').textContent=`MAP ${spot.number}`;
-    root.querySelector('[data-action="confirmLoadout"]').disabled=this.selectBusy||!this.heroConfirmed||!this.boardConfirmed;
+    const start=root.querySelector('[data-action="confirmLoadout"]');
+    start.disabled=this.selectBusy||!this.heroConfirmed||!this.boardConfirmed;
+    if(start.textContent!==this.loadoutStartLabel())start.textContent=this.loadoutStartLabel();
     root.querySelector('.loadout-status').textContent=this.loadoutStatus();
     const button=root.querySelector(`[data-action="${action}"][data-index="${index}"]`);
     const selection=this.menuButtons().indexOf(button);

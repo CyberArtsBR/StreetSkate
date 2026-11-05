@@ -3,3 +3,10 @@
 *.png binary
 *.jpg binary
 *.blend binary
+*.webp binary
+*.gz binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.webm binary
+*.hdr binary

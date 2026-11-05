@@ -1,6 +1,6 @@
 // Agent 10: safe structural validation; never executes uploaded content.
 export const GLB_LIMITS=Object.freeze({bytes:35*1024*1024,nodes:1024,meshes:512,primitives:2048,skins:24,joints:256,animations:128});
-const supported=new Set(['KHR_materials_unlit','KHR_texture_transform','KHR_mesh_quantization','KHR_materials_clearcoat','KHR_materials_emissive_strength','KHR_materials_sheen','KHR_materials_transmission','KHR_materials_ior','KHR_materials_specular','KHR_lights_punctual']);
+const supported=new Set(['KHR_materials_unlit','KHR_texture_transform','KHR_mesh_quantization','KHR_materials_clearcoat','KHR_materials_emissive_strength','KHR_materials_sheen','KHR_materials_transmission','KHR_materials_ior','KHR_materials_specular','KHR_lights_punctual','EXT_texture_webp']);
 function fail(code,message){const error=new Error(message);error.code=code;throw error;}
 function arr(x,n,max){if(x===undefined)return [];if(!Array.isArray(x))fail('INVALID_JSON',n+' is not an array');if(x.length>max)fail('RESOURCE_LIMIT',n+' exceeds '+max);return x;}
 export function inspectGlb(input,limits=GLB_LIMITS){

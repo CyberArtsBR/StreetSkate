@@ -18,7 +18,7 @@ export const REQUIRED_GLBS = Object.freeze([
 ]);
 export const REQUIRED_MEDIA = Object.freeze([
   'assets/menu/riders/thehollowf.png',
-  'media/title-screen.png', 'media/trick-guide-16x9.png',
+  'media/title-screen.webp', 'media/trick-guide-16x9.webp',
   'assets/menu/rooftop.webp', 'assets/menu/urban-warehouse.webp',
 ]);
 async function readExactly(handle, count, at) {

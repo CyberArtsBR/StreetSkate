@@ -137,7 +137,7 @@ try{
  await checked('packaged rider and title media are accessible',async()=>{
   for(const asset of ['/assets/rider/thehollowf.glb','/assets/menu/riders/thehollowf.png','/assets/rider/The_Heretic.glb','/assets/rider/The_AdolescentUR.glb',
    '/assets/rider/The_Anchor.glb','/assets/rider/TuxR.glb',
-   '/media/title-screen.png','/media/trick-guide-16x9.png']){
+   '/media/title-screen.webp','/media/trick-guide-16x9.webp']){
    const r=await page.request.head(url+asset);
    assert.ok(r.ok(),asset+' returned '+r.status());
   }
