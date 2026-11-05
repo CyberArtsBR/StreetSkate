@@ -1,21 +1,27 @@
-# Deploying to Cloudflare Pages
+# Deploying to Cloudflare (Workers static assets)
 
-Cloudflare Pages has no bandwidth limit on its free plan. Its one hard limit is **25 MB per file**. After the Phase 0 asset diet, the largest shipped file is about 14 MB, so the game fits.
+Cloudflare serves static files with no bandwidth limit on the free plan. Its one hard limit is **25 MB per file**. After the Phase 0 asset diet, the largest shipped file is about 14 MB, so the game fits.
 
-## One-time setup (owner)
+## One-time setup (owner) — Workers "Create an app" flow
+
+Cloudflare's dashboard now creates a **Worker with static assets** (successor to Pages; same free, unlimited static traffic). `wrangler.jsonc` in the repo root tells it to serve `./dist`.
 
 1. Create a free account at https://dash.cloudflare.com (sign-up must be done by you).
-2. **Workers & Pages → Create → Pages → Connect to Git**, then authorise GitHub and choose `CyberArtsBR/StreetSkate`.
-3. Build settings:
-   - Production branch: `main`
-   - Framework preset: `None` (or `Vite`)
+2. **Workers & Pages → Create → Import a repository**, authorise GitHub, choose `CyberArtsBR/StreetSkate`.
+3. Settings:
+   - Project name: `streetskate` (must match `name` in `wrangler.jsonc`)
    - Build command: `npm run build`
-   - Build output directory: `dist`
-   - Environment variable: `NODE_VERSION` = `22` (also pinned in `.nvmrc`)
-4. Save and deploy. The game will be live at `https://<project-name>.pages.dev`.
-5. Optional: **Custom domains** → add your own domain (free SSL).
+   - Deploy command: `npx wrangler deploy`
+   - Preview command: `npx wrangler versions upload` (default is fine)
+4. Click **Deploy**. Builds use the repo's default branch (`main`). Until Phase 0 is merged, `main` has no `wrangler.jsonc` and contains a 50 MB file, so **that first build is expected to fail**.
+5. In the Worker: **Settings → Build → Branch control**:
+   - either set the production branch to `phase0-asset-diet` for now,
+   - or keep `main` and turn on **builds for non-production branches** to get a preview URL for `phase0-asset-diet`.
+   Then **Deployments → Retry/Redeploy**.
+6. The game will be live at `https://streetskate.<your-subdomain>.workers.dev`.
+7. Optional: **Settings → Domains & Routes** → add your own domain (free SSL).
 
-Every push to `main` redeploys automatically. Other branches get their own preview URLs, so you can test Phase work before it goes live.
+After the Phase 0 PR is merged into `main`, set the production branch back to `main`. Every push then redeploys automatically.
 
 ## What's already in the repo
 
