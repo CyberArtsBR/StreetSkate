@@ -19,6 +19,8 @@ Cloudflare's dashboard now creates a **Worker with static assets** (successor to
    - or keep `main` and turn on **builds for non-production branches** to get a preview URL for `phase0-asset-diet`.
    Then **Deployments → Retry/Redeploy**.
 6. The game will be live at `https://streetskate.<your-subdomain>.workers.dev`.
+
+**Current live address:** https://chimphawk.pages.dev (Cloudflare Pages project `chimphawk`, branch `phase0-asset-diet`, build `npm run build`, output `dist`, `NODE_VERSION=22`).
 7. Optional: **Settings → Domains & Routes** → add your own domain (free SSL).
 
 After the Phase 0 PR is merged into `main`, set the production branch back to `main`. Every push then redeploys automatically.
